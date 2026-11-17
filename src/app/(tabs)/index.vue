@@ -30,6 +30,11 @@ const styles = {
     fontSize: 17,
   },
   list: { flex: 1 },
+  row: { flex: 1, marginBottom: 8 },
+  action: { width: 88, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  doneAction: { marginRight: 8, backgroundColor: '#42b883' },
+  deleteAction: { marginLeft: 8, backgroundColor: '#ff3b30' },
+  actionText: { color: '#ffffff', fontSize: 15, fontWeight: '600' },
   listNote: { paddingVertical: 12, textAlign: 'center', color: '#8e8e93', fontSize: 13 },
   button: {
     height: 52,
@@ -45,7 +50,6 @@ const styles = {
 function itemStyle(item) {
   return {
     flex: 1,
-    marginBottom: 8,
     paddingHorizontal: 16,
     justifyContent: 'center',
     borderRadius: 12,
@@ -110,14 +114,36 @@ function refresh() {
       </template>
 
       <template #item="{ item }">
-        <Pressable
-          :style="itemStyle(item)"
-          :pressed-style="{ opacity: 0.5 }"
-          @press="router.push(`/items/${item.id}`)"
-          @long-press="removeWithAnimation(item)"
-        >
-          <Text>{{ item.done ? '✓ ' : '' }}{{ item.text }}</Text>
-        </Pressable>
+        <Swipeable :style="styles.row">
+          <template #left-actions>
+            <Pressable
+              :style="{ ...styles.action, ...styles.doneAction }"
+              :pressed-style="{ opacity: 0.6 }"
+              @press="item.done = !item.done"
+            >
+              <Text :style="styles.actionText">{{ item.done ? 'Reabrir' : 'Concluir' }}</Text>
+            </Pressable>
+          </template>
+
+          <template #right-actions>
+            <Pressable
+              :style="{ ...styles.action, ...styles.deleteAction }"
+              :pressed-style="{ opacity: 0.6 }"
+              @press="removeWithAnimation(item)"
+            >
+              <Text :style="styles.actionText">Apagar</Text>
+            </Pressable>
+          </template>
+
+          <Pressable
+            :style="itemStyle(item)"
+            :pressed-style="{ opacity: 0.5 }"
+            @press="router.push(`/items/${item.id}`)"
+            @long-press="removeWithAnimation(item)"
+          >
+            <Text>{{ item.done ? '✓ ' : '' }}{{ item.text }}</Text>
+          </Pressable>
+        </Swipeable>
       </template>
 
       <template #empty>

@@ -259,14 +259,62 @@ globalThis.__openURL('vuenative://explore') // navigate: back to the tab's first
 await settle()
 assert.equal(childScreenIds(exploreStackId()).length, 1)
 
+// ---------- Gestures ----------
+
+globalThis.__openURL('vuenative://explore/gestures')
+await settle()
+const gesturesScreenId = childScreenIds(exploreStackId()).at(-1)
+assert.equal(viewsById[gesturesScreenId].props.title, 'Gestos')
+
+const cardId = findViewId((view) => view.props.onPan === true, gesturesScreenId) // @pan tells native
+const cardTransform = () => viewsById[cardId].style.transform
+
+globalThis.__dispatch(cardId, 'pan', { state: 'changed', translationX: 40, translationY: -10 })
+globalThis.__dispatch(cardId, 'pinch', { state: 'changed', scale: 1.5 })
+await settle()
+assert.deepEqual(cardTransform().slice(0, 3), [
+  { translateX: 40 },
+  { translateY: -10 },
+  { scale: 1.5 },
+])
+
+const animationsBeforeRelease = layoutAnimations.length
+globalThis.__dispatch(cardId, 'pan', { state: 'ended', translationX: 40, translationY: -10 })
+await settle()
+assert.deepEqual(cardTransform()[0], { translateX: 0 }) // springs back
+assert.equal(layoutAnimations.at(-1).type, 'spring')
+assert.equal(layoutAnimations.length, animationsBeforeRelease + 1)
+
+globalThis.__openURL('vuenative://explore')
+await settle()
+
 // ---------- List editing ----------
 
 selectTab(0)
+// A <Swipeable> row: [left actions, right actions, row], revealed natively by a drag.
+const swipeableRowId = (text) =>
+  findViewId(
+    (view) => view.type === 'SwipeableView' && renderedTexts(view.children[2]).includes(text),
+  )
+const swipeActionId = (text, side) =>
+  descendantOfType(
+    viewsById[swipeableRowId(text)].children[side === 'left' ? 0 : 1],
+    'PressableView',
+  )
+
+press(swipeActionId('Item 2', 'left')) // Concluir
+await settle()
+assert.ok(renderedTexts().includes('✓ Item 2'))
+assert.ok(renderedTexts(swipeActionId('✓ Item 2', 'left')).includes('Reabrir'))
+
+const deleteActionId = swipeActionId('✓ Item 2', 'right')
+assert.ok(renderedTexts(deleteActionId).includes('Apagar'))
+
 const animationsBeforeRemoval = layoutAnimations.length
-press(pressableShowing('Item 2'), 'longpress')
+press(deleteActionId)
 await settle()
 assert.equal(layoutAnimations.length, animationsBeforeRemoval + 1) // rows slide up
-assert.ok(!renderedTexts().includes('Item 2'))
+assert.ok(!renderedTexts().includes('✓ Item 2'))
 assert.ok(renderedTexts().includes('998 itens'))
 
 // Typing updates v-model; adding appends the typed text and clears the input.

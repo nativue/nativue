@@ -12,6 +12,10 @@ const styles = {
 
 <template>
   <View :style="styles.screen">
+    <Link href="/explore/gestures" :style="styles.link">
+      <Text :style="styles.linkText">Gestos ›</Text>
+    </Link>
+
     <Link v-for="topic in TOPICS" :key="topic" :href="`/explore/${topic}`" :style="styles.link">
       <Text :style="styles.linkText">{{ topic }} ›</Text>
     </Link>

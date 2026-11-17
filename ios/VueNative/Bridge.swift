@@ -34,6 +34,7 @@ final class Bridge {
     // Only touched on javaScriptQueue.
     private(set) var context: JSContext!
     private var pendingOperations: [() -> Void] = []
+    private var gestureReportersByNodeId: [Int: GestureReporter] = [:]
     /// Set by LayoutAnimation.configureNext in JS; animates the batch it's sent with.
     private var nextLayoutAnimation: LayoutAnimation?
 
@@ -264,6 +265,7 @@ final class Bridge {
         rootView.subviews.forEach { $0.removeFromSuperview() }
         contentRootsByNodeId.values.forEach { ($0 as? ModalController)?.setVisible(false) }
         contentRootsByNodeId = [:]
+        gestureReportersByNodeId = [:] // node ids start over
         nodesById = [0: NativeNode(view: rootView, measuresContent: false)]
     }
 
@@ -321,6 +323,9 @@ final class Bridge {
 
         case "Image":
             return NativeNode(view: ImageView(frame: .zero), measuresContent: false)
+
+        case "SwipeableView":
+            return NativeNode(view: SwipeableView(frame: .zero), measuresContent: false)
 
         case "PressableView":
             let pressableView = PressableView()
@@ -413,6 +418,17 @@ final class Bridge {
         }, for: .editingDidEnd)
 
         return textInput
+    }
+
+    private func gestureReporter(forNodeId id: Int) -> GestureReporter {
+        if let reporter = gestureReportersByNodeId[id] { return reporter }
+
+        let reporter = GestureReporter { [unowned self] event, payload in
+            dispatchEvent(event, toNodeId: id, payload: payload)
+        }
+        gestureReportersByNodeId[id] = reporter
+
+        return reporter
     }
 
     private func dispatchEvent(_ eventName: String, toNodeId id: Int, payload: Any? = nil) {
@@ -541,6 +557,10 @@ final class Bridge {
 
         case "refreshing":
             (node.view as? VueScrollView)?.setRefreshing(isTruthyAttribute(value))
+
+        case "onPan", "onPinch", "onRotate":
+            let event = key.dropFirst(2).lowercased()
+            gestureReporter(forNodeId: id).setReporting(event, isTruthyAttribute(value), on: node.view)
 
         case "onLongPress":
             (node.view as? PressableView)?.reportsLongPress = isTruthyAttribute(value)

@@ -103,3 +103,28 @@ export const FlatList = defineComponent({
     }
   },
 })
+
+const SWIPE_ACTIONS_STYLE = { position: 'absolute', top: 0, bottom: 0, flexDirection: 'row' }
+const SWIPE_LEFT_ACTIONS_STYLE = { ...SWIPE_ACTIONS_STYLE, left: 0 }
+const SWIPE_RIGHT_ACTIONS_STYLE = { ...SWIPE_ACTIONS_STYLE, right: 0 }
+const SWIPE_ROW_STYLE = { flex: 1 }
+
+// A row that slides sideways to reveal actions behind it (like Mail); the drag runs natively.
+// #left-actions show when dragging right, #right-actions when dragging left.
+//   <Swipeable>
+//     <template #right-actions><Pressable @press="remove">...</Pressable></template>
+//     row content
+//   </Swipeable>
+export const Swipeable = defineComponent({
+  name: 'Swipeable',
+  props: { style: Object },
+
+  setup(props, { slots }) {
+    return () =>
+      h('SwipeableView', { style: props.style }, [
+        h('View', { style: SWIPE_LEFT_ACTIONS_STYLE }, slots['left-actions']?.()),
+        h('View', { style: SWIPE_RIGHT_ACTIONS_STYLE }, slots['right-actions']?.()),
+        h('View', { style: SWIPE_ROW_STYLE }, slots.default?.()),
+      ])
+  },
+})
