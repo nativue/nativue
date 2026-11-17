@@ -15,9 +15,15 @@ final class Bridge {
         rootView.onLayoutSubviews = { [unowned self] in layout() }
 
         let bundleURL = Bundle.main.url(forResource: "main.bundle", withExtension: "js")!
-        run(try! String(contentsOf: bundleURL, encoding: .utf8))
+        let source = try! String(contentsOf: bundleURL, encoding: .utf8)
+        run(source)
 
         #if DEBUG
+        if isBenchmarkBundle {
+            DispatchQueue.main.async { [unowned self] in runBenchmark(source: source) }
+            return
+        }
+
         Task { await listenForReload() }
         #endif
     }

@@ -21,7 +21,7 @@ export default defineConfig(({ mode }) => ({
   define: { 'process.env.NODE_ENV': JSON.stringify(mode) },
   build: {
     lib: {
-      entry: 'src/main.js',
+      entry: process.env.BENCHMARK ? 'src/benchmark/main.js' : 'src/main.js',
       formats: ['iife'],
       name: 'VueNativeApp',
       fileName: () => 'main.bundle.js',

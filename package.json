@@ -5,7 +5,8 @@
   "scripts": {
     "build": "vite build",
     "test": "vite build && node test.mjs",
-    "dev": "node dev.mjs"
+    "dev": "node dev.mjs",
+    "benchmark": "BENCHMARK=1 vite build"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^6.0.11",
