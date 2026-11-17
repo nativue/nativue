@@ -207,14 +207,39 @@ final class Bridge {
             }
             return node
 
+        case "TextInput":
+            return NativeNode(view: makeTextInput(id: id), measuresContent: true)
+
         default:
             return NativeNode(view: UIView(), measuresContent: false)
         }
     }
 
-    private func dispatchEvent(_ eventName: String, toNodeId id: Int) {
+    private func makeTextInput(id: Int) -> TextInputView {
+        let textInput = TextInputView()
+
+        textInput.addAction(UIAction { [unowned self, unowned textInput] _ in
+            textInput.recordTextSentToJavaScript()
+            dispatchEvent("changetext", toNodeId: id, payload: textInput.text ?? "")
+        }, for: .editingChanged)
+
+        // Listening to "did end on exit" also makes the return key close the keyboard (React Native's
+        // default for single-line inputs).
+        textInput.addAction(UIAction { [unowned self, unowned textInput] _ in
+            dispatchEvent("submitediting", toNodeId: id, payload: textInput.text ?? "")
+        }, for: .editingDidEndOnExit)
+
+        textInput.addAction(UIAction { [unowned textInput] _ in
+            textInput.endEditingSession()
+        }, for: .editingDidEnd)
+
+        return textInput
+    }
+
+    private func dispatchEvent(_ eventName: String, toNodeId id: Int, payload: Any? = nil) {
         evaluate { [unowned self] in
-            context.objectForKeyedSubscript("__dispatch").call(withArguments: [id, eventName])
+            let arguments: [Any] = [id, eventName, payload ?? NSNull()]
+            context.objectForKeyedSubscript("__dispatch").call(withArguments: arguments)
         }
     }
 
@@ -238,6 +263,18 @@ final class Bridge {
 
         case "horizontal":
             setScrollDirection(of: node, horizontal: isTruthyAttribute(value))
+
+        case "value":
+            (node.view as? TextInputView)?.setTextFromJavaScript(value as? String ?? "")
+
+        case "placeholder":
+            (node.view as? TextInputView)?.placeholder = value as? String
+
+        case "secureTextEntry":
+            (node.view as? TextInputView)?.isSecureTextEntry = isTruthyAttribute(value)
+
+        case "keyboardType":
+            (node.view as? TextInputView)?.keyboardType = TextInputView.keyboardTypes[value as? String ?? ""] ?? .default
 
         default:
             break // event props (onPress...): the handler lives in JS

@@ -45,10 +45,13 @@ extension NativeNode {
         case "color":
             let color = UIColor(rgba: value)
             (view as? UILabel)?.textColor = color
+            (view as? UITextField)?.textColor = color
             (view as? UIButton)?.setTitleColor(color, for: .normal)
 
         case "textAlign":
-            (view as? UILabel)?.textAlignment = textAlignments[value as? String ?? ""] ?? .natural
+            let alignment = textAlignments[value as? String ?? ""] ?? .natural
+            (view as? UILabel)?.textAlignment = alignment
+            (view as? UITextField)?.textAlignment = alignment
 
         default:
             break
@@ -67,6 +70,7 @@ extension NativeNode {
 
         let font = UIFont.systemFont(ofSize: fontSize, weight: fontWeight)
         (view as? UILabel)?.font = font
+        (view as? UITextField)?.font = font
         (view as? UIButton)?.titleLabel?.font = font
 
         markContentChanged()

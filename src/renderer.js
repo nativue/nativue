@@ -143,8 +143,28 @@ const { createApp: createBaseApp } = createRenderer({
   },
 })
 
-globalThis.__dispatch = (nodeId, eventName, payload) =>
-  eventHandlersByNodeId[nodeId]?.[eventName]?.(payload)
+// v-model compiles to an "onUpdate:modelValue" handler; it listens to the same native event as @changeText.
+const MODEL_EVENT_BY_NATIVE_EVENT = { changetext: 'update:modelvalue' }
+
+globalThis.__dispatch = (nodeId, eventName, payload) => {
+  const handlers = eventHandlersByNodeId[nodeId]
+  if (!handlers) return
+
+  handlers[eventName]?.(payload)
+  handlers[MODEL_EVENT_BY_NATIVE_EVENT[eventName]]?.(payload)
+}
+
+// Replaces Vue's DOM-only vModelText, which the template compiler emits for v-model on <TextInput>.
+// ponytail: v-model modifiers (.trim, .number, .lazy) are not supported yet.
+export const vModelText = {
+  created(element, { value }) {
+    native.setProp(element.id, 'value', value ?? '')
+  },
+
+  beforeUpdate(element, { value, oldValue }) {
+    if (value !== oldValue) native.setProp(element.id, 'value', value ?? '')
+  },
+}
 
 const rootNode = { id: 0, type: 'root', parent: null, children: [] }
 

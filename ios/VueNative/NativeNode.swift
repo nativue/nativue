@@ -98,7 +98,20 @@ final class NativeNode {
             if let scrollView = childView as? UIScrollView {
                 scrollView.contentSize = contentSize(of: child)
             }
+
+            if let textInput = childView as? TextInputView {
+                textInput.contentPadding = padding(of: child)
+            }
         }
+    }
+
+    private static func padding(of yogaNode: YGNodeRef) -> UIEdgeInsets {
+        UIEdgeInsets(
+            top: CGFloat(YGNodeLayoutGetPadding(yogaNode, .top)),
+            left: CGFloat(YGNodeLayoutGetPadding(yogaNode, .left)),
+            bottom: CGFloat(YGNodeLayoutGetPadding(yogaNode, .bottom)),
+            right: CGFloat(YGNodeLayoutGetPadding(yogaNode, .right))
+        )
     }
 
     /// Children of a scroll view don't shrink (flexShrink defaults to 0), so they overflow its bounds;

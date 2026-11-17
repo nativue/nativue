@@ -36,31 +36,44 @@ function renderedTexts(viewId = 0) {
   return [...ownText, ...view.children.flatMap((childId) => renderedTexts(childId))]
 }
 
-const safeAreaView = viewsById[viewsById[0].children[0]]
-const appRootView = viewsById[safeAreaView.children[0]]
-const scrollView = viewsById[appRootView.children[1]]
-
-function pressButton(title, times) {
-  const buttonId = Object.keys(viewsById).find((id) => viewsById[id].props.title === title)
-  for (let press = 0; press < times; press++) globalThis.__dispatch(Number(buttonId), 'press')
+function findViewId(predicate) {
+  return Number(Object.keys(viewsById).find((id) => predicate(viewsById[id])))
 }
 
+function pressButton(title, times = 1) {
+  const buttonId = findViewId((view) => view.props.title === title)
+  for (let press = 0; press < times; press++) globalThis.__dispatch(buttonId, 'press')
+}
+
+const safeAreaView = viewsById[viewsById[0].children[0]]
+const scrollView = viewsById[findViewId((view) => view.type === 'ScrollView')]
+const textInputId = findViewId((view) => view.type === 'TextInput')
+
 assert.equal(safeAreaView.type, 'SafeAreaView')
-assert.equal(appRootView.children.length, 3)
-assert.equal(scrollView.type, 'ScrollView')
 assert.equal(scrollView.children.length, 20)
+assert.equal(viewsById[textInputId].props.value, '')
 
-pressButton('+1', 3)
+// Typing updates v-model; adding pushes the typed text and clears the input.
+globalThis.__dispatch(textInputId, 'changetext', 'Comprar pão')
+pressButton('Adicionar')
 await Promise.resolve()
 
-assert.equal(scrollView.children.length, 23)
-assert.ok(renderedTexts().includes('Item 23'))
+assert.equal(scrollView.children.length, 21)
+assert.ok(renderedTexts().includes('Comprar pão'))
+assert.equal(viewsById[textInputId].props.value, '')
 
-pressButton('-1', 5)
+// Return key (submitEditing) adds too.
+globalThis.__dispatch(textInputId, 'changetext', 'Pagar contas')
+globalThis.__dispatch(textInputId, 'submitediting', 'Pagar contas')
 await Promise.resolve()
 
-assert.equal(scrollView.children.length, 18)
-assert.ok(!renderedTexts().includes('Item 19'))
+assert.ok(renderedTexts().includes('Pagar contas'))
+
+pressButton('Remover último', 2)
+await Promise.resolve()
+
+assert.equal(scrollView.children.length, 20)
+assert.ok(!renderedTexts().includes('Pagar contas'))
 
 assert.equal(processColor('red'), 0xff0000ff)
 assert.equal(processColor('#42b883'), 0x42b883ff)
