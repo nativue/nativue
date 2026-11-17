@@ -1,11 +1,25 @@
 import UIKit
 import JavaScriptCore
 
-/// Receives the operations sent by the Vue renderer (src/renderer.js) and applies them to UIKit + Yoga.
+/// Runs the JS bundle off the main thread and applies the operations sent by the Vue renderer
+/// (src/renderer.js) to UIKit + Yoga in batches on the main thread.
 final class Bridge {
     static let devServerURL = URL(string: "http://localhost:42883")!
 
-    var context: JSContext!
+    struct EvaluationTimings {
+        let javaScript: Duration
+        let apply: Duration
+    }
+
+    // ponytail: GCD threads have a 512 KB stack; move to a Thread with a bigger stack if deep trees hit
+    // "RangeError: Maximum call stack size exceeded".
+    private let javaScriptQueue = DispatchQueue(label: "dev.vuenative.javascript", qos: .userInteractive)
+
+    // Only touched on javaScriptQueue.
+    private(set) var context: JSContext!
+    private var pendingOperations: [() -> Void] = []
+
+    // Only touched on the main thread.
     var rootView: RootView!
     // ponytail: children of a removed node stay in the dictionary; clean up recursively if memory leaks.
     var nodesById: [Int: NativeNode] = [:]
@@ -16,37 +30,66 @@ final class Bridge {
 
         let bundleURL = Bundle.main.url(forResource: "main.bundle", withExtension: "js")!
         let source = try! String(contentsOf: bundleURL, encoding: .utf8)
-        run(source)
 
         #if DEBUG
-        if isBenchmarkBundle {
-            DispatchQueue.main.async { [unowned self] in runBenchmark(source: source) }
-            return
-        }
-
-        Task { await listenForReload() }
+        startBenchmarkOrDevelopment(source: source)
+        #else
+        run(source)
         #endif
     }
 
     /// Discards the current node tree and JSContext, then runs the bundle from scratch.
-    func run(_ source: String) {
-        rootView.subviews.forEach { $0.removeFromSuperview() }
-        nodesById = [0: NativeNode(view: rootView, measuresContent: false)]
+    func run(_ source: String, completion: ((EvaluationTimings) -> Void)? = nil) {
+        evaluate({ [unowned self] in
+            enqueue { [unowned self] in resetNodeTree() }
 
-        context = makeContext()
-        context.evaluateScript(source, withSourceURL: URL(string: "main.bundle.js"))
+            context = makeContext()
+            context.evaluateScript(source, withSourceURL: URL(string: "main.bundle.js"))
+        }, completion: completion)
+    }
+
+    /// Runs `work` on the JS queue, then applies every native operation it produced, in one batch, on the
+    /// main thread. JavaScriptCore drains microtasks when `work` returns, so Vue's updates are included.
+    func evaluate(_ work: @escaping () -> Void, completion: ((EvaluationTimings) -> Void)? = nil) {
+        javaScriptQueue.async { [unowned self] in
+            let javaScriptDuration = ContinuousClock().measure(work)
+            let operations = pendingOperations
+            pendingOperations = []
+
+            DispatchQueue.main.async { [unowned self] in
+                let applyDuration = ContinuousClock().measure { operations.forEach { $0() } }
+                requestLayout()
+                completion?(EvaluationTimings(javaScript: javaScriptDuration, apply: applyDuration))
+            }
+        }
     }
 
     func layout() {
         nodesById[0]?.calculateLayout(width: rootView.bounds.width, height: rootView.bounds.height)
     }
 
-    /// UIKit coalesces these requests, so the layout pass runs once after a burst of JS mutations.
+    /// UIKit coalesces these requests, so the layout pass runs once per batch.
     func requestLayout() {
         rootView.setNeedsLayout()
     }
 
     #if DEBUG
+    private func startBenchmarkOrDevelopment(source: String) {
+        run(source) { [unowned self] _ in
+            evaluate { [unowned self] in
+                let isBenchmark = isBenchmarkBundle
+
+                DispatchQueue.main.async { [unowned self] in
+                    if isBenchmark {
+                        runBenchmark(source: source)
+                    } else {
+                        Task { await listenForReload() }
+                    }
+                }
+            }
+        }
+    }
+
     // ponytail: localhost only reaches the Mac from the simulator; a physical device needs the Mac's IP.
     @MainActor func listenForReload() async {
         let eventsURL = Self.devServerURL.appending(path: "events")
@@ -68,7 +111,13 @@ final class Bridge {
     }
     #endif
 
-    func makeContext() -> JSContext {
+    // MARK: - JS queue
+
+    private func enqueue(_ operation: @escaping () -> Void) {
+        pendingOperations.append(operation)
+    }
+
+    private func makeContext() -> JSContext {
         let context = JSContext()!
         context.exceptionHandler = { _, exception in
             let message = exception?.toString() ?? ""
@@ -84,31 +133,24 @@ final class Bridge {
         define("log", { message in print("[JS]", message) } as @convention(block) (String) -> Void)
 
         define("create", { [unowned self] id, type in
-            nodesById[id] = makeNode(type: type, id: id)
+            enqueue { [unowned self] in nodesById[id] = makeNode(type: type, id: id) }
         } as @convention(block) (Int, String) -> Void)
 
         define("insert", { [unowned self] parentId, childId, index in
-            insertNode(childId: childId, parentId: parentId, at: index)
+            enqueue { [unowned self] in insertNode(childId: childId, parentId: parentId, at: index) }
         } as @convention(block) (Int, Int, Int) -> Void)
 
         define("remove", { [unowned self] id in
-            nodesById.removeValue(forKey: id)?.removeFromParent()
-            requestLayout()
+            enqueue { [unowned self] in nodesById.removeValue(forKey: id)?.removeFromParent() }
         } as @convention(block) (Int) -> Void)
 
         define("setText", { [unowned self] id, text in
-            guard let node = nodesById[id] else { return }
-
-            (node.view as? UILabel)?.text = text
-            node.markContentChanged()
-            requestLayout()
+            enqueue { [unowned self] in setText(text, onNodeId: id) }
         } as @convention(block) (Int, String) -> Void)
 
         define("setProp", { [unowned self] id, key, value in
-            guard let node = nodesById[id] else { return }
-
-            setProp(on: node, key: key, value: value)
-            requestLayout()
+            let convertedValue = value.toObject() // JSValue must not leave the JS queue
+            enqueue { [unowned self] in setProp(key, value: convertedValue, onNodeId: id) }
         } as @convention(block) (Int, String, JSValue) -> Void)
 
         context.setObject(nativeModule, forKeyedSubscript: "__native" as NSString)
@@ -120,7 +162,14 @@ final class Bridge {
         return context
     }
 
-    func insertNode(childId: Int, parentId: Int, at index: Int) {
+    // MARK: - Main thread
+
+    private func resetNodeTree() {
+        rootView.subviews.forEach { $0.removeFromSuperview() }
+        nodesById = [0: NativeNode(view: rootView, measuresContent: false)]
+    }
+
+    private func insertNode(childId: Int, parentId: Int, at index: Int) {
         guard let parent = nodesById[parentId], let child = nodesById[childId] else { return }
 
         guard parent.canHaveChildren else {
@@ -129,10 +178,9 @@ final class Bridge {
         }
 
         parent.insertChild(child, at: index)
-        requestLayout()
     }
 
-    func makeNode(type: String, id: Int) -> NativeNode {
+    private func makeNode(type: String, id: Int) -> NativeNode {
         switch type {
         case "Text":
             let label = UILabel()
@@ -149,18 +197,29 @@ final class Bridge {
         }
     }
 
-    func dispatchEvent(_ eventName: String, toNodeId id: Int) {
-        context.objectForKeyedSubscript("__dispatch").call(withArguments: [id, eventName])
+    private func dispatchEvent(_ eventName: String, toNodeId id: Int) {
+        evaluate { [unowned self] in
+            context.objectForKeyedSubscript("__dispatch").call(withArguments: [id, eventName])
+        }
     }
 
-    func setProp(on node: NativeNode, key: String, value: JSValue) {
+    private func setText(_ text: String, onNodeId id: Int) {
+        guard let node = nodesById[id] else { return }
+
+        (node.view as? UILabel)?.text = text
+        node.markContentChanged()
+    }
+
+    private func setProp(_ key: String, value: Any?, onNodeId id: Int) {
+        guard let node = nodesById[id] else { return }
+
         switch key {
         case "title":
-            (node.view as? UIButton)?.setTitle(value.toString(), for: .normal)
+            (node.view as? UIButton)?.setTitle(value as? String, for: .normal)
             node.markContentChanged()
 
         case "style":
-            node.applyStyle(value.toDictionary() as? [String: Any] ?? [:])
+            node.applyStyle(value as? [String: Any] ?? [:])
 
         default:
             break // event props (onPress...): the handler lives in JS
