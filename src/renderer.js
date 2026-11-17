@@ -42,6 +42,36 @@ function nativeIndexBefore(parent, childIndex) {
   return parent.children.slice(0, childIndex).filter(isNativeNode).length
 }
 
+// Only changed properties cross the bridge; removed ones are sent as null.
+function styleChanges(previousStyle = {}, nextStyle = {}) {
+  const changes = {}
+
+  for (const property in nextStyle) {
+    if (previousStyle[property] !== nextStyle[property]) changes[property] = nextStyle[property]
+  }
+
+  for (const property in previousStyle) {
+    if (!(property in nextStyle)) changes[property] = null
+  }
+
+  return changes
+}
+
+function patchStyle(element, previousStyle, nextStyle) {
+  const changes = styleChanges(previousStyle ?? {}, nextStyle ?? {})
+  if (Object.keys(changes).length === 0) return
+
+  native.setProp(element.id, 'style', changes)
+}
+
+function patchEventHandler(element, key, handler) {
+  const eventName = key.slice(2).toLowerCase()
+  eventHandlersByNodeId[element.id] ??= {}
+  eventHandlersByNodeId[element.id][eventName] = handler
+
+  native.setProp(element.id, key, handler != null)
+}
+
 const { createApp: createBaseApp } = createRenderer({
   createElement(type) {
     const element = createNode(type)
@@ -99,17 +129,10 @@ const { createApp: createBaseApp } = createRenderer({
     return siblings?.[siblings.indexOf(node) + 1] ?? null
   },
 
-  patchProp(element, key, _previousValue, nextValue) {
-    if (!isEventProp(key)) {
-      native.setProp(element.id, key, nextValue ?? null)
-      return
-    }
-
-    const eventName = key.slice(2).toLowerCase()
-    eventHandlersByNodeId[element.id] ??= {}
-    eventHandlersByNodeId[element.id][eventName] = nextValue
-
-    native.setProp(element.id, key, nextValue != null)
+  patchProp(element, key, previousValue, nextValue) {
+    if (key === 'style') patchStyle(element, previousValue, nextValue)
+    else if (isEventProp(key)) patchEventHandler(element, key, nextValue)
+    else native.setProp(element.id, key, nextValue ?? null)
   },
 })
 

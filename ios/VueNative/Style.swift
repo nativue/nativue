@@ -1,10 +1,11 @@
 import UIKit
 import yoga
 
-// ponytail: properties removed from a style object keep their last value; reset them when it matters.
+// ponytail: removed properties arrive as null and keep their last value; reset them when it matters.
 extension NativeNode {
-    func applyStyle(_ style: [String: Any]) {
-        for (property, value) in style {
+    /// Receives only the properties that changed: the JS renderer diffs style objects before sending.
+    func applyStyle(_ changes: [String: Any]) {
+        for (property, value) in changes where !(value is NSNull) {
             if let applyLayoutProperty = layoutPropertySetters[property] {
                 applyLayoutProperty(yogaNode, value)
             } else {
@@ -12,8 +13,9 @@ extension NativeNode {
             }
         }
 
-        applyFont(from: style)
-        markContentChanged()
+        if changes["fontSize"] != nil || changes["fontWeight"] != nil {
+            applyFont(changes)
+        }
     }
 
     private func applyVisualProperty(_ property: String, _ value: Any) {
@@ -49,15 +51,21 @@ extension NativeNode {
         }
     }
 
-    private func applyFont(from style: [String: Any]) {
-        guard style["fontSize"] != nil || style["fontWeight"] != nil else { return }
+    /// Font size and weight can change independently, so the node remembers both.
+    private func applyFont(_ changes: [String: Any]) {
+        if let size = number(changes["fontSize"] as Any) {
+            fontSize = CGFloat(size)
+        }
 
-        let size = CGFloat(number(style["fontSize"] as Any) ?? 17)
-        let weight = fontWeights[String(describing: style["fontWeight"] ?? "normal")] ?? .regular
-        let font = UIFont.systemFont(ofSize: size, weight: weight)
+        if let weightName = changes["fontWeight"], !(weightName is NSNull) {
+            fontWeight = fontWeights[String(describing: weightName)] ?? .regular
+        }
 
+        let font = UIFont.systemFont(ofSize: fontSize, weight: fontWeight)
         (view as? UILabel)?.font = font
         (view as? UIButton)?.titleLabel?.font = font
+
+        markContentChanged()
     }
 }
 

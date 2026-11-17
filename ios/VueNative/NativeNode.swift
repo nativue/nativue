@@ -1,3 +1,4 @@
+import CoreText
 import UIKit
 import yoga
 
@@ -12,6 +13,9 @@ final class NativeNode {
 
     let view: UIView
     let yogaNode: YGNodeRef
+
+    var fontSize: CGFloat = UIFont.labelFontSize
+    var fontWeight: UIFont.Weight = .regular
 
     /// Leaf nodes (Text, Button) measure their own content; containers are sized by their children.
     init(view: UIView, measuresContent: Bool) {
@@ -64,9 +68,13 @@ final class NativeNode {
         Self.applyFrames(of: yogaNode)
     }
 
+    /// Only visits subtrees Yoga laid out again; untouched subtrees keep their frames.
     private static func applyFrames(of yogaNode: YGNodeRef) {
         for index in 0..<YGNodeGetChildCount(yogaNode) {
             let child = YGNodeGetChild(yogaNode, index)!
+            guard YGNodeGetHasNewLayout(child) else { continue }
+
+            YGNodeSetHasNewLayout(child, false)
 
             view(of: child).frame = CGRect(
                 x: CGFloat(YGNodeLayoutGetLeft(child)),
@@ -92,11 +100,25 @@ private func measureView(
         let maxHeight = heightMode == .undefined ? CGFloat.greatestFiniteMagnitude : CGFloat(height)
 
         let view = NativeNode.view(of: yogaNode!)
-        let fittingSize = view.sizeThatFits(CGSize(width: maxWidth, height: maxHeight))
+        let singleLineLabelSize = (view as? UILabel).flatMap { singleLineSize(of: $0, maxWidth: maxWidth) }
+        let fittingSize = singleLineLabelSize ?? view.sizeThatFits(CGSize(width: maxWidth, height: maxHeight))
 
         return YGSize(
             width: Float(min(fittingSize.width, maxWidth)),
             height: Float(min(fittingSize.height, maxHeight))
         )
     }
+}
+
+/// Fast path for the common case: CoreText measures a single line far faster than UILabel.sizeThatFits.
+/// Returns nil when the text needs wrapping, so the caller falls back to the full measurement.
+@MainActor private func singleLineSize(of label: UILabel, maxWidth: CGFloat) -> CGSize? {
+    guard let text = label.text, !text.contains(where: \.isNewline) else { return nil }
+
+    let attributedText = NSAttributedString(string: text, attributes: [.font: label.font!])
+    let line = CTLineCreateWithAttributedString(attributedText)
+    let width = ceil(CTLineGetTypographicBounds(line, nil, nil, nil))
+    guard width <= maxWidth else { return nil }
+
+    return CGSize(width: width, height: ceil(label.font.lineHeight))
 }
