@@ -1,4 +1,4 @@
-// Components built in JS on top of native primitives, like React Native's Pressable and FlatList.
+// Components built in JS on top of native primitives.
 import {
   computed,
   defineComponent,
@@ -12,7 +12,7 @@ import type { ScrollEvent, Style } from './types'
 
 type Listener = ((payload: unknown) => void) | undefined
 
-// Vue's template compiler normalizes `:style`, dropping React Native's style function, so the pressed
+// Vue's template compiler normalizes `:style`, so it can't be a function of the pressed state: the pressed
 // look goes in `pressed-style`, merged over `style` while pressed. The slot also receives { pressed }.
 export const Pressable = defineComponent({
   name: 'Pressable',
@@ -50,8 +50,8 @@ export const Pressable = defineComponent({
 const OFFSCREEN_ROWS_RENDERED = 10
 
 // Renders only the rows near the visible area; the rest is empty padding of the same height.
-// Slots: #item="{ item, index }", plus #header, #footer and #empty (React Native's List*Component).
-// ponytail: rows have a fixed `itemHeight` (React Native's getItemLayout); measure rows natively if
+// Slots: #item="{ item, index }", plus #header, #footer and #empty.
+// ponytail: rows have a fixed `itemHeight`; measure rows natively if
 // variable heights are ever needed. Vertical only. The window ignores the header's height, which the
 // offscreen rows absorb while the header is shorter than them; measure it if tall headers show gaps.
 // ponytail: items are `any` in the #item slot; make FlatList generic if typed rows are wanted.

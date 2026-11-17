@@ -1,7 +1,7 @@
 import UIKit
 
 /// View behind <KeyboardAvoidingView>: reports how much of it the keyboard covers, inside the keyboard's
-/// own animation, so its content moves up in sync (React Native's behavior="padding").
+/// own animation, so its content moves up in sync (by padding its bottom).
 final class KeyboardAvoidingView: UIView {
     var onKeyboardOverlapChange: ((CGFloat) -> Void)?
 

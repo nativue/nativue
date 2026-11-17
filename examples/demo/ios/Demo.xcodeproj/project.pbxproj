@@ -134,7 +134,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Lets a physical device reach the dev server on this Mac (like React Native's ip.txt).\n[ \"$CONFIGURATION\" = \"Debug\" ] || exit 0\necho \"$(scutil --get LocalHostName).local\" > \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/dev-server-host.txt\"\n";
+			shellScript = "# Lets a physical device reach the dev server on this Mac.\n[ \"$CONFIGURATION\" = \"Debug\" ] || exit 0\necho \"$(scutil --get LocalHostName).local\" > \"$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/dev-server-host.txt\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

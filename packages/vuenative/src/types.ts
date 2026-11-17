@@ -13,7 +13,7 @@ export type TransformStep =
   | { scaleY: number | AnimatedNode }
   | { rotate: string | number | AnimatedNode } // '45deg', or radians
 
-// Like React Native's: Yoga's flexbox (column by default), plus the visual and text properties.
+// Yoga's flexbox (column by default), plus the visual and text properties.
 export type Style = {
   [property in `margin${Edge}` | `padding${Edge}`]?: Dimension
 } & {

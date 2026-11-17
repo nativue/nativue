@@ -34,7 +34,7 @@ extension UIView {
 
 /// View behind <ScreenStack>: a UINavigationController whose view controllers mirror the <Screen> children
 /// JS renders. JS owns the stack; a pop started natively (back button, edge swipe, sheet swiped down) is
-/// reported back so JS drops the screen too (like react-native-screens).
+/// reported back so JS drops the screen too.
 ///
 /// A modal screen (`stackPresentation`) starts a group: it and the screens pushed after it live in their own
 /// navigation controller, presented over the previous group's.
@@ -201,7 +201,7 @@ final class ScreenStackView: UIView, ScreenContainer, UINavigationControllerDele
         }
     }
 
-    /// iOS reads the back button title from the previous screen; expo-router sets it on the current one.
+    /// iOS reads the back button title from the previous screen; headerBackTitle is set on the current one.
     private func updateBackButtonTitles() {
         for (index, screen) in screens.enumerated().dropFirst() {
             screens[index - 1].navigationItem.backButtonTitle = screen.headerBackTitle

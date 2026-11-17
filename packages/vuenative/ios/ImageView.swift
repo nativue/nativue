@@ -17,7 +17,7 @@ final class ImageView: UIImageView {
     override init(frame: CGRect) {
         super.init(frame: frame)
 
-        contentMode = .scaleAspectFill // React Native's default resizeMode is "cover"
+        contentMode = .scaleAspectFill // resizeMode defaults to "cover"
         clipsToBounds = true
     }
 

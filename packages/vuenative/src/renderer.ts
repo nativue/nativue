@@ -41,7 +41,7 @@ function isEventProp(key: string): boolean {
   return /^on[A-Z]/.test(key)
 }
 
-// Raw text inside <Text> becomes the text of the parent label (like RCTRawText in React Native).
+// Raw text inside <Text> becomes the text of the parent label.
 // Text is trimmed like HTML does, so it can wrap onto its own lines in the template.
 function syncTextContent(parent: Node | null) {
   if (parent?.type !== 'Text') return
@@ -120,7 +120,7 @@ function patchStyle(element: Node, previousStyle: Style | null, nextStyle: Style
   }
 }
 
-// <Image :source="logo" /> or :source="{ uri }", like React Native. Color props (<ActivityIndicator
+// <Image :source="logo" /> or :source="{ uri }". Color props (<ActivityIndicator
 // color>) are converted like color styles.
 function nativePropValue(key: string, value: unknown): unknown {
   if (value == null) return value
@@ -241,7 +241,7 @@ const LAYOUT_ANIMATION_PRESETS = {
   spring: { type: 'spring', duration: 700, springDamping: 0.4 },
 } satisfies Record<string, LayoutAnimationConfig>
 
-// Like React Native: configure before changing state, and the native side animates every layout,
+// Configure before changing state, and the native side animates every layout,
 // opacity, color and transform change of that update.
 //   LayoutAnimation.configureNext(LayoutAnimation.Presets.spring)
 //   items.value.splice(index, 1)
@@ -253,7 +253,7 @@ export const LayoutAnimation = {
   },
 }
 
-// Like React Native's: returns the styles as they are, only typing them (so flexDirection stays
+// Returns the styles as they are, only typing them (so flexDirection stays
 // 'row' instead of widening to string).
 export const StyleSheet = {
   create<Styles extends Record<string, Style>>(styles: Styles): Styles {
@@ -261,7 +261,7 @@ export const StyleSheet = {
   },
 }
 
-// Like React Native's: Dimensions.get('window') -> { width, height } in points.
+// Dimensions.get('window') -> { width, height } in points.
 export const Dimensions = {
   get(_dimension: 'window'): { width: number; height: number } {
     return native.windowSize()

@@ -34,7 +34,7 @@ const FEATURES = [
     icon: RulerIcon,
     tint: colors.orange,
     title: 'Yoga flexbox',
-    text: 'Same layout as React Native.',
+    text: 'The flexbox you know from CSS.',
   },
   {
     icon: ZapIcon,

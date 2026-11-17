@@ -4,7 +4,7 @@ import UIKit
 final class PressableView: UIControl {
     var onEvent: ((String) -> Void)?
 
-    /// Like React Native: once a long press fires, the release is not a press.
+    /// Once a long press fires, the release is not a press.
     private var didLongPress = false
 
     private lazy var longPressRecognizer: UILongPressGestureRecognizer = {
@@ -41,8 +41,7 @@ final class PressableView: UIControl {
         fatalError("init(coder:) is not supported")
     }
 
-    /// Touches on plain children (containers, labels, images) press this control, like React Native's
-    /// Pressable; interactive children (controls, scroll views, views with gestures) keep their touches.
+    /// Touches on plain children (containers, labels, images) press this control; interactive children (controls, scroll views, views with gestures) keep their touches.
     override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
         guard let hitView = super.hitTest(point, with: event) else { return nil }
 

@@ -1,5 +1,5 @@
-// Converts CSS colors to a single 0xRRGGBBAA number before they cross the bridge (like React Native's
-// processColor), so the native side only deals with numbers.
+// Converts CSS colors to a single 0xRRGGBBAA number before they cross the bridge, so the native side
+// only deals with numbers.
 
 export const COLOR_PROPERTIES = new Set(['color', 'backgroundColor', 'borderColor', 'shadowColor'])
 

@@ -1,8 +1,8 @@
 import UIKit
 import yoga
 
-/// Pads its content by the safe area insets (status bar, notch, home indicator), like React Native's
-/// SafeAreaView: padding set in its style is replaced by the insets.
+/// Pads its content by the safe area insets (status bar, notch, home indicator): padding set in its
+/// style is replaced by the insets.
 final class SafeAreaView: UIView {
     var onSafeAreaInsetsChange: (() -> Void)?
 

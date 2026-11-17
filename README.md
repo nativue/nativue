@@ -1,7 +1,7 @@
 # Vue Native
 
 Vue rendering real iOS views: a custom Vue renderer runs in JavaScriptCore and drives UIKit through
-a native bridge, with Yoga for flexbox layout. Like React Native, with Vue.
+a native bridge, with Yoga for flexbox layout.
 
 ## Repository
 
@@ -25,7 +25,7 @@ They also work as tab icons: `<Tabs.Screen :options="{ tabBarIcon: HouseIcon }" 
 
 ```
 src/
-  app/          routes, file-based like expo-router (_layout.vue, [param].vue, (group)/)
+  app/          routes, one file per screen (_layout.vue, [param].vue, (group)/)
   assets/       images and other files
   components/   shared components (optional)
   lib/          everything else: stores, theme, helpers (optional)

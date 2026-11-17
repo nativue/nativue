@@ -1,4 +1,4 @@
-// fetch, Headers and Response, like the browser's and React Native's: native runs the request with
+// fetch, Headers and Response, like the browser's: native runs the request with
 // URLSession and calls back __fetchFinished.
 // ponytail: text bodies only (no Blob, FormData or streaming) and no AbortController.
 const native = globalThis.__native

@@ -1,6 +1,6 @@
 import UIKit
 
-/// React Native's LayoutAnimation: JS configures it before a state change, and every frame, opacity, color
+/// LayoutAnimation: JS configures it before a state change, and every frame, opacity, color
 /// and transform that change in that batch animate natively, with no JS per frame.
 struct LayoutAnimation {
     let type: String

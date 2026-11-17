@@ -1,5 +1,5 @@
-// AsyncStorage, like @react-native-async-storage: promise-based, string values. Native keeps every
-// value in memory (reads never touch the disk, like MMKV) and saves to a file in the background, so
+// AsyncStorage: promise-based, string values. Native keeps every
+// value in memory (reads never touch the disk) and saves to a file in the background, so
 // each call is a fast synchronous native call behind the promise.
 const native = globalThis.__native
 

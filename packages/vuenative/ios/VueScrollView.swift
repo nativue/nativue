@@ -15,8 +15,8 @@ final class VueScrollView: UIScrollView {
         "interactive": .interactive,
     ]
 
-    /// React Native's keyboardShouldPersistTaps="never" (its default): a tap outside a text input
-    /// closes the keyboard. "always" / "handled" turn it off.
+    /// keyboardShouldPersistTaps="never" (the default): a tap outside a text input closes the keyboard.
+    /// "always" / "handled" turn it off.
     var dismissesKeyboardOnTap = true
 
     /// Set when JS listens to @scroll. Called on every scroll step and size change (FlatList windowing).
@@ -45,7 +45,7 @@ final class VueScrollView: UIScrollView {
     override init(frame: CGRect) {
         super.init(frame: frame)
 
-        contentInsetAdjustmentBehavior = .never // like React Native: <SafeAreaView> handles it, or the prop
+        contentInsetAdjustmentBehavior = .never // <SafeAreaView> handles it, or the prop
         alwaysBounceVertical = true
 
         let tapRecognizer = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
@@ -73,7 +73,7 @@ final class VueScrollView: UIScrollView {
     }
 
     /// UIScrollView refuses to cancel touches on UIControls, so a drag starting on a Pressable or Button
-    /// wouldn't scroll. React Native scrolls in that case too.
+    /// wouldn't scroll.
     override func touchesShouldCancel(in view: UIView) -> Bool {
         true
     }

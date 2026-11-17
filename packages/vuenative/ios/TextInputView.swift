@@ -17,7 +17,7 @@ final class TextInputView: UITextField {
     }
 
     // ponytail: a value JS sets on purpose that equals text typed earlier in the same editing session is
-    // ignored too; switch to React Native's event counter if that ever matters.
+    // ignored too; tag each change with a counter if that ever matters.
     private var textsSentToJavaScript: Set<String> = []
 
     override func textRect(forBounds bounds: CGRect) -> CGRect {

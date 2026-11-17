@@ -52,7 +52,7 @@ extension NativeNode {
         case "overflow":
             view.clipsToBounds = (value as? String) == "hidden"
 
-        // Like React Native's iOS shadows; overflow: 'hidden' clips them.
+        // Shadows; overflow: 'hidden' clips them.
         case "shadowColor":
             view.layer.shadowColor = UIColor(rgba: value)?.cgColor
 
@@ -321,7 +321,7 @@ extension UIColor {
 }
 
 extension NativeNode {
-    /// React Native's transform list: [{ translateX }, { translateY }, { scale }, { scaleX }, { scaleY },
+    /// A transform list: [{ translateX }, { translateY }, { scale }, { scaleX }, { scaleY },
     /// { rotate: '45deg' | '1rad' }], applied in order.
     static func affineTransform(_ value: Any) -> CGAffineTransform {
         let steps = value as? [[String: Any]] ?? []

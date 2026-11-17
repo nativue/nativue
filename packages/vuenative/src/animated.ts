@@ -1,4 +1,4 @@
-// Animated, like React Native's with the native driver: values live on the native side, which updates
+// Animated: values live on the native side, which updates
 // the views bound to them (opacity and transform) and runs animations on every frame, with no JS per
 // frame. JS only hears back when an animation finishes.
 //
@@ -200,7 +200,7 @@ export const Animated = {
   },
 }
 
-// So apps can write `Animated.Value` as a type too, like React Native.
+// So apps can write `Animated.Value` as a type too.
 export namespace Animated {
   export type Value = AnimatedValue
 }

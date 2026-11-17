@@ -49,7 +49,7 @@ final class ScreenController: UIViewController, ContentRoot {
 
     /// The view extends under the header, so its background is there during transitions; the content
     /// starts below a visible header. Without one (header hidden, a tab, a nested navigator) the content
-    /// fills the screen and <SafeAreaView> opts into the insets, like React Native.
+    /// fills the screen and <SafeAreaView> opts into the insets.
     func layoutContent() {
         guard isViewLoaded else { return }
 

@@ -77,7 +77,7 @@ final class ModalController: UIViewController, ContentRoot, UIAdaptivePresentati
         return top
     }
 
-    // A sheet swiped down is already gone; JS is expected to set `visible` to false, like React Native.
+    // A sheet swiped down is already gone; JS is expected to set `visible` to false.
     func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
         onEvent?("requestclose")
         onEvent?("dismiss")

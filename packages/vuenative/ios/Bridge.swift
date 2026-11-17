@@ -246,7 +246,7 @@ final class Bridge {
             var console = { log: (...args) => __native.log(args.map(String).join(' ')) }
             console.warn = console.error = console.info = console.log
 
-            // JavaScriptCore has no timers; native schedules them (like React Native's Timing module).
+            // JavaScriptCore has no timers; native schedules them.
             var timerCallbacks = new Map()
             var nextTimerId = 1
 
@@ -431,7 +431,7 @@ final class Bridge {
         case "ActivityIndicator":
             let indicator = UIActivityIndicatorView(style: .medium)
             indicator.hidesWhenStopped = true
-            indicator.startAnimating() // React Native's `animating` defaults to true
+            indicator.startAnimating() // `animating` defaults to true
             return NativeNode(view: indicator, measuresContent: true)
 
         case "Modal":
@@ -457,8 +457,8 @@ final class Bridge {
             dispatchEvent("changetext", toNodeId: id, payload: textInput.text ?? "")
         }, for: .editingChanged)
 
-        // Listening to "did end on exit" also makes the return key close the keyboard (React Native's
-        // default for single-line inputs).
+        // Listening to "did end on exit" also makes the return key close the keyboard, as single-line
+        // inputs are expected to.
         textInput.addAction(UIAction { [unowned self, unowned textInput] _ in
             dispatchEvent("submitediting", toNodeId: id, payload: textInput.text ?? "")
         }, for: .editingDidEndOnExit)

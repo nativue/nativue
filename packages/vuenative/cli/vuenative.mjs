@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// The vuenative CLI, run from the app's folder (like Metro / the Expo CLI):
+// The vuenative CLI, run from the app's folder:
 //   vuenative build [--entry file]   bundles src/app/ into ios/App/main.bundle.js
 //   vuenative dev                    rebuilds on save and tells the app (via SSE) to reload the bundle
 import { build } from 'vite'

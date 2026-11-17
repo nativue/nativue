@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// The whole app: runs main.bundle.js (or the dev server's bundle) and shows what it renders.
-/// Like React Native, it fills the whole screen; <SafeAreaView> opts into the safe area.
+/// It fills the whole screen; <SafeAreaView> opts into the safe area.
 public struct VueNativeView: View {
     public init() {}
 

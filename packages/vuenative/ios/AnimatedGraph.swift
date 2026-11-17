@@ -1,7 +1,7 @@
 import QuartzCore
 import UIKit
 
-/// Native side of Animated (React Native's native driver): values and their interpolations, the views
+/// Native side of Animated: values and their interpolations, the views
 /// whose opacity and transform follow them, and the animations that move them on every frame
 /// (CADisplayLink), with no JS per frame. Main thread only.
 final class AnimatedGraph {
@@ -141,7 +141,7 @@ final class AnimatedGraph {
         }
     }
 
-    /// Piecewise linear, like React Native's interpolate; past the ends it extends the nearest segment
+    /// Piecewise linear; past the ends it extends the nearest segment
     /// unless clamped.
     static func interpolate(_ input: Double, _ inputRange: [Double], _ outputRange: [Double], clamps: Bool) -> Double {
         guard inputRange.count >= 2, inputRange.count == outputRange.count else { return input }

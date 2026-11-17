@@ -1,4 +1,4 @@
-// File-based routing in the style of expo-router: every .vue file in src/app is a route.
+// File-based routing: every .vue file in src/app is a route.
 //   app/index.vue           -> /
 //   app/items/[id].vue      -> /items/:id     (useLocalSearchParams().id)
 //   app/[...rest].vue       -> catch-all      (params.rest is an array)
@@ -7,7 +7,7 @@
 //   app/(tabs)/_layout.vue  -> nested layout: <Tabs /> or <Stack />, for the routes in its folder
 //   app/+not-found.vue      -> shown when no route matches
 //
-// Navigation state is a tree like React Navigation's: every layout on screen owns a navigator (a stack
+// Navigation state is a tree: every layout on screen owns a navigator (a stack
 // of entries, or a set of tabs), and an entry for a nested layout owns that layout's navigator.
 import {
   computed,
@@ -465,7 +465,7 @@ export function useRouter() {
   return router
 }
 
-// Type the params you expect, like expo-router: useLocalSearchParams<{ id: string }>()
+// Type the params you expect: useLocalSearchParams<{ id: string }>()
 export function useLocalSearchParams<RouteParams extends Params = Params>(): RouteParams {
   return inject(ENTRY_KEY)!.params as RouteParams
 }
@@ -481,7 +481,7 @@ export function useIsFocused(): ComputedRef<boolean> {
 }
 
 // Runs `effect` whenever the screen gains focus; the function it returns runs when it loses focus
-// (or unmounts). Like expo-router's useFocusEffect, e.g. to reload data when coming back to a screen.
+// (or unmounts), e.g. to reload data when coming back to a screen.
 export function useFocusEffect(effect: () => void | (() => void)) {
   const isFocused = useIsFocused()
   let cleanup: (() => void) | null = null
@@ -521,7 +521,7 @@ globalThis.__openURL = (url) => router.navigate(hrefFromURL(url))
 
 // ---------- Components ----------
 
-// Screen options, as in expo-router: title, headerShown, headerLargeTitle, headerBackTitle,
+// Screen options: title, headerShown, headerLargeTitle, headerBackTitle,
 // headerTintColor, headerRight / headerLeft: [{ title?, systemImage?, onPress }], and presentation:
 // 'card' (pushed, the default), 'modal', 'formSheet' or 'fullScreenModal'. A modal brings its own
 // header, and screens pushed after it open inside it.
@@ -780,7 +780,7 @@ const TabsNavigatorComponent = defineComponent({
 export const Stack = Object.assign(StackNavigatorComponent, { Screen: NavigatorScreen })
 export const Tabs = Object.assign(TabsNavigatorComponent, { Screen: NavigatorScreen })
 
-// Like expo-router: navigates by default (back to the route if it's in a stack); `push` always adds
+// Navigates by default (back to the route if it's in a stack); `push` always adds
 // a screen, `replace` swaps the current one.
 export const Link = defineComponent({
   name: 'Link',
