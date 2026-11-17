@@ -1,0 +1,37 @@
+// What JavaScriptCore has globally: the bridge, the hooks native calls into, and the web APIs the
+// prelude in Bridge.swift (timers, console) and fetch.ts provide. No DOM.
+import type { NativeModule } from './types'
+
+declare global {
+  var __native: NativeModule
+  var __dispatch: (nodeId: number, eventName: string, payload: unknown) => void
+  var __openURL: (url: string) => void
+  var __animationFinished: (animationId: number, finished: boolean) => void
+  var __fetchFinished: (
+    requestId: number,
+    response: { status: number; headers: Record<string, string>; body: string } | null,
+    errorMessage: string | null,
+  ) => void
+
+  var console: {
+    log(...values: unknown[]): void
+    info(...values: unknown[]): void
+    warn(...values: unknown[]): void
+    error(...values: unknown[]): void
+  }
+
+  function setTimeout<Args extends unknown[]>(
+    callback: (...args: Args) => void,
+    delay?: number,
+    ...args: Args
+  ): number
+  function clearTimeout(timerId: number | undefined | null): void
+  function setInterval<Args extends unknown[]>(
+    callback: (...args: Args) => void,
+    delay?: number,
+    ...args: Args
+  ): number
+  function clearInterval(timerId: number | undefined | null): void
+}
+
+export {}

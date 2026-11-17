@@ -1,0 +1,13 @@
+{
+  "name": "demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vuenative dev",
+    "build": "vuenative build",
+    "typecheck": "vue-tsc"
+  },
+  "dependencies": {
+    "vuenative": "*"
+  }
+}

@@ -1,6 +1,6 @@
 node_modules
 build
-ios/VueNative/main.bundle.js
+main.bundle.js
 .DS_Store
 xcuserdata/
 *.xcuserstate

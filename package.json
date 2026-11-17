@@ -1,17 +1,16 @@
 {
-  "name": "vuenative",
+  "name": "vuenative-monorepo",
   "private": true,
   "type": "module",
+  "workspaces": [
+    "packages/*",
+    "examples/*"
+  ],
   "scripts": {
-    "build": "vite build",
-    "test": "vite build && node test.mjs",
-    "dev": "node dev.mjs",
-    "benchmark": "BENCHMARK=1 vite build"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-vue": "^6.0.11",
-    "@vue/runtime-core": "^3.5.45",
-    "vite": "^8.3.8",
-    "vue": "^3.5.45"
+    "dev": "npm run dev -w demo",
+    "build": "npm run build -w demo",
+    "test": "npm test -w vuenative",
+    "benchmark": "npm run benchmark -w vuenative",
+    "typecheck": "npm run typecheck --workspaces"
   }
 }
