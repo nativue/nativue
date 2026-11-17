@@ -36,26 +36,49 @@ globalThis.__native = {
 
 ;(0, eval)(readFileSync('ios/VueNative/main.bundle.js', 'utf8'))
 
-// Walks the tree from the root, so removed views don't count.
+// ---------- Helpers ----------
+
+// Walks the tree from a view, so removed views don't count.
 function renderedViewIds(viewId = 0) {
   return [viewId, ...viewsById[viewId].children.flatMap((childId) => renderedViewIds(childId))]
 }
 
-function renderedTexts() {
-  return renderedViewIds()
+function renderedTexts(viewId = 0) {
+  return renderedViewIds(viewId)
     .map((id) => viewsById[id])
     .filter((view) => view.type === 'Text')
     .map((view) => view.text)
 }
 
-function findViewId(predicate) {
-  return renderedViewIds().find((id) => predicate(viewsById[id]))
+function findViewId(predicate, rootId = 0) {
+  const viewId = renderedViewIds(rootId).find((id) => predicate(viewsById[id]))
+  assert.ok(viewId !== undefined, `no rendered view matches ${predicate}`)
+
+  return viewId
 }
 
-function pressButton(title, times = 1) {
-  const buttonId = findViewId((view) => view.props.title === title)
-  for (let press = 0; press < times; press++) globalThis.__dispatch(buttonId, 'press')
+function press(viewId, eventName = 'press') {
+  globalThis.__dispatch(viewId, eventName)
 }
+
+function pressButton(title, times = 1, rootId = 0) {
+  const buttonId = findViewId(
+    (view) => view.type === 'Button' && view.props.title === title,
+    rootId,
+  )
+  for (let count = 0; count < times; count++) press(buttonId)
+}
+
+const settle = () => new Promise((resolve) => setTimeout(resolve))
+
+const screenStack = viewsById[viewsById[0].children[0]]
+const screenIds = () => screenStack.children.filter((id) => viewsById[id].type === 'Screen')
+const topScreenId = () => screenIds().at(-1)
+
+const indexScreenId = topScreenId()
+const scrollViewId = findViewId((view) => view.type === 'ScrollView')
+const scrollView = viewsById[scrollViewId]
+const textInputId = findViewId((view) => view.type === 'TextInput')
 
 function scrollList(y, height = 600) {
   globalThis.__dispatch(scrollViewId, 'scroll', { x: 0, y, width: 300, height })
@@ -78,19 +101,27 @@ function pressableShowing(text) {
   )
 }
 
-const settle = () => new Promise((resolve) => setTimeout(resolve))
+// ---------- Router: root stack and header options ----------
 
-const safeAreaView = viewsById[viewsById[0].children[0]]
-const scrollViewId = findViewId((view) => view.type === 'ScrollView')
-const scrollView = viewsById[scrollViewId]
-const textInputId = findViewId((view) => view.type === 'TextInput')
+await settle() // options set by a page apply on the next tick
+
+assert.equal(screenStack.type, 'ScreenStack')
+assert.equal(screenIds().length, 1)
+
+const indexScreen = viewsById[indexScreenId]
+assert.equal(indexScreen.props.title, 'Vue Native') // <Stack.Screen name="index"> in _layout
+assert.equal(indexScreen.props.headerLargeTitle, false)
+assert.equal(indexScreen.props.headerTintColor, processColor('#42b883')) // screenOptions
+assert.deepEqual(indexScreen.props.headerRightItems, [
+  { title: undefined, systemImage: 'gearshape' },
+])
+
+// ---------- Components on the index screen ----------
+
 const image = viewsById[findViewId((view) => view.type === 'Image')]
-
-assert.equal(safeAreaView.type, 'SafeAreaView')
-assert.equal(viewsById[textInputId].props.value, '')
 assert.match(image.props.source, /^data:image\/png;base64,/) // imported asset is inlined
 assert.equal(image.props.resizeMode, 'contain') // kebab-case attribute arrives camelized
-assert.equal(scrollView.props.onScroll, true)
+assert.equal(viewsById[textInputId].props.value, '')
 
 // FlatList renders a window of rows; the rest is padding.
 assert.equal(renderedRows(), 10)
@@ -113,34 +144,66 @@ scrollList(-150)
 await settle()
 assert.equal(renderedRows(), rowsAtTop)
 
-// Pressable: pressed-style applies while pressed; press toggles, long press removes.
+assert.ok(renderedTexts().includes('Puxe para atualizar')) // #header slot
+assert.ok(renderedTexts().includes('Fim da lista')) // #footer slot
+
+// ---------- Navigation: push, params, Link, native pop, back ----------
 
 const firstRowId = pressableShowing('Item 1')
-globalThis.__dispatch(firstRowId, 'pressin')
+press(firstRowId, 'pressin')
 await settle()
-assert.equal(viewsById[firstRowId].style.opacity, 0.5)
+assert.equal(viewsById[firstRowId].style.opacity, 0.5) // pressed-style
 
-globalThis.__dispatch(firstRowId, 'pressout')
-globalThis.__dispatch(firstRowId, 'press')
+press(firstRowId, 'pressout')
+press(firstRowId)
 await settle()
 assert.equal(viewsById[firstRowId].style.opacity, null) // removed: native resets it
-assert.equal(viewsById[firstRowId].style.backgroundColor, processColor('#d8f3e6'))
-assert.ok(renderedTexts().includes('✓ Item 1'))
 
-globalThis.__dispatch(pressableShowing('Item 2'), 'longpress')
+assert.equal(screenIds().length, 2)
+const detailScreen = viewsById[topScreenId()]
+assert.equal(detailScreen.props.title, 'Item 1') // set by the page from useLocalSearchParams().id
+assert.equal(detailScreen.props.headerBackTitle, 'Lista')
+
+// Switch v-model on the detail page marks the item done on the list too.
+const doneSwitchId = findViewId((view) => view.type === 'Switch', topScreenId())
+assert.equal(viewsById[doneSwitchId].props.value, false)
+globalThis.__dispatch(doneSwitchId, 'valuechange', true)
+await settle()
+assert.ok(renderedTexts(indexScreenId).includes('✓ Item 1'))
+
+// <Link> pushes the next item.
+press(findViewId((view) => view.type === 'PressableView', topScreenId()))
+await settle()
+assert.equal(screenIds().length, 3)
+assert.equal(viewsById[topScreenId()].props.title, 'Item 2')
+
+// Back button / edge swipe: native pops and reports it.
+globalThis.__dispatch(topScreenId(), 'dismissed')
+await settle()
+assert.equal(screenIds().length, 2)
+
+// Deleting goes back (router.back()).
+pressButton('Excluir item', 1, topScreenId())
+await settle()
+assert.equal(screenIds().length, 1)
+assert.ok(!renderedTexts().includes('✓ Item 1'))
+assert.ok(renderedTexts().includes('999 itens'))
+
+// ---------- List editing ----------
+
+press(pressableShowing('Item 2'), 'longpress')
 await settle()
 assert.ok(!renderedTexts().includes('Item 2'))
-assert.ok(renderedTexts().includes('999 itens'))
+assert.ok(renderedTexts().includes('998 itens'))
 
 // Typing updates v-model; adding appends the typed text and clears the input.
 globalThis.__dispatch(textInputId, 'changetext', 'Comprar pão')
 pressButton('Adicionar')
 await settle()
-
 assert.equal(viewsById[textInputId].props.value, '')
-assert.ok(renderedTexts().includes('1000 itens'))
+assert.ok(renderedTexts().includes('999 itens'))
 
-scrollList(1000 * ITEM_HEIGHT - 600)
+scrollList(999 * ITEM_HEIGHT - 600)
 await settle()
 assert.ok(renderedTexts().includes('Comprar pão'))
 
@@ -150,52 +213,66 @@ globalThis.__dispatch(textInputId, 'submitediting', 'Pagar contas')
 await settle()
 assert.ok(renderedTexts().includes('Pagar contas'))
 
-pressButton('Remover último', 2)
-await settle()
+// ---------- Settings modal (header button) ----------
 
-assert.ok(renderedTexts().includes('999 itens'))
-assert.ok(!renderedTexts().includes('Pagar contas'))
-assert.equal(keyboardDismissCount, 2)
-
-// Modal: the settings button shows it; swiping the sheet down (requestclose) hides it.
 const modal = viewsById[findViewId((view) => view.type === 'Modal')]
-pressButton('Ajustes')
+globalThis.__dispatch(indexScreenId, 'headeritempress', { side: 'right', index: 0 })
 await settle()
 assert.equal(modal.props.visible, true)
 
-const modalId = findViewId((view) => view === modal)
-globalThis.__dispatch(modalId, 'requestclose')
+pressButton('Remover último', 2)
+await settle()
+assert.ok(renderedTexts().includes('998 itens'))
+assert.ok(!renderedTexts().includes('Pagar contas'))
+assert.equal(keyboardDismissCount, 2)
+
+globalThis.__dispatch(
+  findViewId((view) => view === modal),
+  'requestclose',
+) // sheet swiped down
 await settle()
 assert.equal(modal.props.visible, false)
 
-// Switch v-model: hiding done items filters them out of the list.
+// ---------- Deep links and not found ----------
+
+globalThis.__openURL('vuenative://items/3')
+await settle()
+assert.equal(viewsById[topScreenId()].props.title, 'Item 3')
+
+const itemThreeSwitchId = findViewId((view) => view.type === 'Switch', topScreenId())
+globalThis.__dispatch(itemThreeSwitchId, 'valuechange', true)
+globalThis.__openURL('vuenative://') // navigating to a route already in the stack pops back to it
+await settle()
+assert.equal(screenIds().length, 1)
+
+// Settings switch hides done items.
 scrollList(0)
 await settle()
-globalThis.__dispatch(pressableShowing('Item 3'), 'press')
-await settle()
+const hideSwitchId = findViewId((view) => view.type === 'Switch')
 assert.ok(renderedTexts().includes('✓ Item 3'))
-const switchId = findViewId((view) => view.type === 'Switch')
-assert.equal(viewsById[switchId].props.value, false)
 
-globalThis.__dispatch(switchId, 'valuechange', true)
+globalThis.__dispatch(hideSwitchId, 'valuechange', true)
 await settle()
-assert.equal(viewsById[switchId].props.value, true)
 assert.ok(!renderedTexts().includes('✓ Item 3'))
 assert.ok(renderedTexts().includes('Item 4'))
 
-globalThis.__dispatch(switchId, 'valuechange', false)
+globalThis.__dispatch(hideSwitchId, 'valuechange', false)
 await settle()
-assert.ok(renderedTexts().includes('✓ Item 3'))
 
-// Header and footer slots render around the rows.
-assert.ok(renderedTexts().includes('Puxe para atualizar'))
-assert.ok(renderedTexts().includes('Fim da lista'))
+globalThis.__openURL('vuenative://does/not/exist')
+await settle()
+assert.equal(viewsById[topScreenId()].props.title, 'Ops!')
+assert.ok(renderedTexts(topScreenId()).includes('Essa tela não existe.'))
 
-// Pull to refresh: refreshing turns on, then the timer reloads the list and turns it off.
+press(findViewId((view) => view.type === 'PressableView', topScreenId())) // <Link href="/">
+await settle()
+assert.equal(screenIds().length, 1)
+
+// ---------- Pull to refresh and empty list ----------
+
 globalThis.__dispatch(scrollViewId, 'refresh')
 await settle()
 assert.equal(scrollView.props.refreshing, true)
-assert.ok(findViewId((view) => view.type === 'ActivityIndicator'))
 assert.equal(
   viewsById[findViewId((view) => view.type === 'ActivityIndicator')].props.color,
   0x8e8e93ff,
@@ -205,10 +282,11 @@ await new Promise((resolve) => setTimeout(resolve, 900))
 assert.equal(scrollView.props.refreshing, false)
 assert.ok(renderedTexts().includes('1000 itens'))
 
-// Empty slot shows once every item is gone.
 pressButton('Remover último', 1000)
 await settle()
 assert.ok(renderedTexts().includes('Nenhum item'))
+
+// ---------- Colors ----------
 
 assert.equal(processColor('red'), 0xff0000ff)
 assert.equal(processColor('#42b883'), 0x42b883ff)

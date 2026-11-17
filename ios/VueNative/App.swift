@@ -4,7 +4,11 @@ import SwiftUI
 struct VueNativeApp: App {
     var body: some Scene {
         // Like React Native, the root fills the whole screen; <SafeAreaView> opts into the safe area.
-        WindowGroup { VueRoot().ignoresSafeArea() }
+        WindowGroup {
+            VueRoot()
+                .ignoresSafeArea()
+                .onOpenURL { url in NotificationCenter.default.post(name: Bridge.openURLNotification, object: url) }
+        }
     }
 }
 

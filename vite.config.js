@@ -28,6 +28,10 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: [
       { find: /^vue$/, replacement: fileURLToPath(new URL('./src/renderer.js', import.meta.url)) },
+      {
+        find: /^vuenative\/router$/,
+        replacement: fileURLToPath(new URL('./src/router.js', import.meta.url)),
+      },
     ],
   },
   define: { 'process.env.NODE_ENV': JSON.stringify(mode) },

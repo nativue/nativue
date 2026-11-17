@@ -1,4 +1,3 @@
-import { createApp } from 'vue'
-import App from './App.vue'
+import { createRouterApp } from 'vuenative/router'
 
-createApp(App).mount()
+createRouterApp(import.meta.glob('./app/**/*.vue', { eager: true })).mount()

@@ -1,11 +1,12 @@
 <script setup>
 import { computed, Keyboard, ref } from 'vue'
-import logo from './assets/vue-logo.png'
+import { Stack, useRouter } from 'vuenative/router'
+import logo from '../assets/vue-logo.png'
+import { createItem, createItems, items, removeItem } from '../store.js'
 
 const ITEM_HEIGHT = 60
 
-let nextItemId = 1
-const items = ref(createItems())
+const router = useRouter()
 const newItemText = ref('')
 const refreshing = ref(false)
 const settingsVisible = ref(false)
@@ -15,14 +16,15 @@ const visibleItems = computed(() =>
   hideDoneItems.value ? items.value.filter((item) => !item.done) : items.value,
 )
 
+const screenOptions = {
+  headerRight: [{ systemImage: 'gearshape', onPress: () => (settingsVisible.value = true) }],
+}
+
 const styles = {
-  screen: { flex: 1, padding: 24, gap: 16 },
-  header: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  logo: { width: 44, height: 44 },
-  headerText: { flex: 1, gap: 4 },
-  title: { fontSize: 28, fontWeight: 'bold', color: '#42b883' },
+  screen: { flex: 1, paddingHorizontal: 24, paddingBottom: 24, gap: 16 },
   subtitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   subtitle: { fontSize: 15, color: '#8e8e93' },
+  logo: { width: 32, height: 32, alignSelf: 'center', marginTop: 12 },
   settings: { flex: 1, padding: 24, gap: 24 },
   settingsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   settingsTitle: { fontSize: 22, fontWeight: 'bold' },
@@ -50,14 +52,6 @@ const styles = {
     fontSize: 17,
     fontWeight: '600',
   },
-}
-
-function createItems() {
-  return Array.from({ length: 1000 }, (_, index) => createItem(`Item ${index + 1}`))
-}
-
-function createItem(text) {
-  return { id: nextItemId++, text, done: false }
 }
 
 function itemStyle(item) {
@@ -88,10 +82,6 @@ function refresh() {
   }, 800)
 }
 
-function removeItem(item) {
-  items.value.splice(items.value.indexOf(item), 1)
-}
-
 function removeLastItem() {
   items.value.pop()
   Keyboard.dismiss()
@@ -100,18 +90,13 @@ function removeLastItem() {
 
 <template>
   <SafeAreaView :style="{ flex: 1 }">
+    <Stack.Screen :options="screenOptions" />
+
     <KeyboardAvoidingView behavior="padding" :style="{ flex: 1 }">
       <View :style="styles.screen">
-        <View :style="styles.header">
-          <Image :source="logo" resize-mode="contain" :style="styles.logo" />
-          <View :style="styles.headerText">
-            <Text :style="styles.title">Vue Native</Text>
-            <View :style="styles.subtitleRow">
-              <Text :style="styles.subtitle">{{ items.length }} itens</Text>
-              <ActivityIndicator v-if="refreshing" color="#8e8e93" />
-            </View>
-          </View>
-          <Button title="Ajustes" @press="settingsVisible = true" />
+        <View :style="styles.subtitleRow">
+          <Text :style="styles.subtitle">{{ items.length }} itens</Text>
+          <ActivityIndicator v-if="refreshing" color="#8e8e93" />
         </View>
 
         <FlatList
@@ -130,7 +115,7 @@ function removeLastItem() {
             <Pressable
               :style="itemStyle(item)"
               :pressed-style="{ opacity: 0.5 }"
-              @press="item.done = !item.done"
+              @press="router.push(`/items/${item.id}`)"
               @long-press="removeItem(item)"
             >
               <Text>{{ item.done ? '✓ ' : '' }}{{ item.text }}</Text>
@@ -142,6 +127,7 @@ function removeLastItem() {
           </template>
 
           <template #footer>
+            <Image :source="logo" resize-mode="contain" :style="styles.logo" />
             <Text :style="styles.listNote">Fim da lista</Text>
           </template>
         </FlatList>

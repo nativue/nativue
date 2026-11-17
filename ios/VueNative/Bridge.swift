@@ -7,6 +7,9 @@ import yoga
 final class Bridge {
     /// The simulator shares the Mac's network; a device uses the Mac's name, written into the app at build
     /// time by the "Write Dev Server Host" build phase.
+    /// Posted by the app with a URL it was opened with (deep link); forwarded to JS (`__openURL`).
+    static let openURLNotification = Notification.Name("VueNativeOpenURL")
+
     static let devServerURL: URL = {
         #if targetEnvironment(simulator)
         let host = "localhost"
@@ -36,12 +39,20 @@ final class Bridge {
     var rootView: RootView!
     // ponytail: children of a removed node stay in the dictionary; clean up recursively if memory leaks.
     var nodesById: [Int: NativeNode] = [:]
+    /// Modals and screens: their content is laid out as a separate Yoga root.
     // ponytail: controllers of removed modals stay here; drop them on remove if many modals come and go.
-    private var modalControllersByNodeId: [Int: ModalController] = [:]
+    private var contentRootsByNodeId: [Int: ContentRoot] = [:]
 
     func start(rootView: RootView) {
         self.rootView = rootView
         rootView.onLayoutSubviews = { [unowned self] in layout() }
+
+        NotificationCenter.default.addObserver(forName: Self.openURLNotification, object: nil, queue: .main) {
+            [unowned self] notification in
+            guard let url = notification.object as? URL else { return }
+
+            openURL(url)
+        }
 
         let bundleURL = Bundle.main.url(forResource: "main.bundle", withExtension: "js")!
         let source = try! String(contentsOf: bundleURL, encoding: .utf8)
@@ -82,9 +93,18 @@ final class Bridge {
     func layout() {
         nodesById[0]?.calculateLayout(width: rootView.bounds.width, height: rootView.bounds.height)
 
-        for modalController in modalControllersByNodeId.values {
-            modalController.dismissIfDetached()
-            modalController.layoutContent()
+        for contentRoot in contentRootsByNodeId.values {
+            (contentRoot as? ModalController)?.dismissIfDetached()
+            contentRoot.layoutContent()
+        }
+    }
+
+    /// Queued on the JS queue, so a URL that opens the app arrives after the bundle has run.
+    private func openURL(_ url: URL) {
+        evaluate { [unowned self] in
+            guard let openURL = context.objectForKeyedSubscript("__openURL"), openURL.isObject else { return }
+
+            openURL.call(withArguments: [url.absoluteString])
         }
     }
 
@@ -160,7 +180,7 @@ final class Bridge {
         } as @convention(block) (Int, Int, Int) -> Void)
 
         define("remove", { [unowned self] id in
-            enqueue { [unowned self] in nodesById.removeValue(forKey: id)?.removeFromParent() }
+            enqueue { [unowned self] in removeNode(id: id) }
         } as @convention(block) (Int) -> Void)
 
         define("setText", { [unowned self] id, text in
@@ -222,8 +242,8 @@ final class Bridge {
 
     private func resetNodeTree() {
         rootView.subviews.forEach { $0.removeFromSuperview() }
-        modalControllersByNodeId.values.forEach { $0.setVisible(false) }
-        modalControllersByNodeId = [:]
+        contentRootsByNodeId.values.forEach { ($0 as? ModalController)?.setVisible(false) }
+        contentRootsByNodeId = [:]
         nodesById = [0: NativeNode(view: rootView, measuresContent: false)]
     }
 
@@ -235,7 +255,33 @@ final class Bridge {
             return
         }
 
+        if let stack = parent.view as? ScreenStackView, let screen = screenController(childId) {
+            stack.insertScreen(screen, at: index)
+            return
+        }
+
         (parent.contentNode ?? parent).insertChild(child, at: index)
+    }
+
+    /// A screen leaves through its stack, so the navigation controller animates it out.
+    private func removeNode(id: Int) {
+        guard let node = nodesById.removeValue(forKey: id) else { return }
+
+        guard let screen = screenController(id) else {
+            node.removeFromParent()
+            return
+        }
+
+        contentRootsByNodeId[id] = nil
+        screen.stack?.removeScreen(screen)
+    }
+
+    private func modalController(_ id: Int) -> ModalController? {
+        contentRootsByNodeId[id] as? ModalController
+    }
+
+    private func screenController(_ id: Int) -> ScreenController? {
+        contentRootsByNodeId[id] as? ScreenController
     }
 
     private func makeNode(type: String, id: Int) -> NativeNode {
@@ -282,6 +328,17 @@ final class Bridge {
         case "TextInput":
             return NativeNode(view: makeTextInput(id: id), measuresContent: true)
 
+        case "ScreenStack":
+            return NativeNode(view: ScreenStackView(), measuresContent: false)
+
+        case "Screen":
+            let screen = ScreenController()
+            screen.onEvent = { [unowned self] eventName, payload in
+                dispatchEvent(eventName, toNodeId: id, payload: payload)
+            }
+            contentRootsByNodeId[id] = screen
+            return screen.contentNode
+
         case "Switch":
             let toggle = UISwitch()
             toggle.addAction(UIAction { [unowned self, unowned toggle] _ in
@@ -298,7 +355,7 @@ final class Bridge {
         case "Modal":
             let modalController = ModalController()
             modalController.onEvent = { [unowned self] eventName in dispatchEvent(eventName, toNodeId: id) }
-            modalControllersByNodeId[id] = modalController
+            contentRootsByNodeId[id] = modalController
 
             let node = NativeNode(view: modalController.placeholderView, measuresContent: false)
             YGNodeStyleSetDisplay(node.yogaNode, .none)
@@ -351,7 +408,26 @@ final class Bridge {
         switch key {
         case "title":
             (node.view as? UIButton)?.setTitle(value as? String, for: .normal)
+            screenController(id)?.navigationItem.title = value as? String
             node.markContentChanged()
+
+        case "headerShown":
+            screenController(id)?.headerShown = isTruthyAttribute(value)
+
+        case "headerLargeTitle":
+            screenController(id)?.navigationItem.largeTitleDisplayMode = isTruthyAttribute(value) ? .always : .never
+
+        case "headerBackTitle":
+            screenController(id)?.headerBackTitle = value as? String
+
+        case "headerTintColor":
+            screenController(id)?.headerTintColor = UIColor(rgba: value as Any)
+
+        case "headerRightItems":
+            screenController(id)?.setHeaderItems(value, side: "right")
+
+        case "headerLeftItems":
+            screenController(id)?.setHeaderItems(value, side: "left")
 
         case "style":
             node.applyStyle(value as? [String: Any] ?? [:])
@@ -378,16 +454,16 @@ final class Bridge {
             (node.view as? UIActivityIndicatorView)?.color = UIColor(rgba: value as Any)
 
         case "visible":
-            modalControllersByNodeId[id]?.setVisible(isTruthyAttribute(value))
+            modalController(id)?.setVisible(isTruthyAttribute(value))
 
         case "animationType":
-            modalControllersByNodeId[id]?.animationType = value as? String ?? "none"
+            modalController(id)?.animationType = value as? String ?? "none"
 
         case "presentationStyle":
-            modalControllersByNodeId[id]?.presentationStyleName = value as? String ?? "fullScreen"
+            modalController(id)?.presentationStyleName = value as? String ?? "fullScreen"
 
         case "transparent":
-            modalControllersByNodeId[id]?.transparent = isTruthyAttribute(value)
+            modalController(id)?.transparent = isTruthyAttribute(value)
 
         case "placeholder":
             (node.view as? TextInputView)?.placeholder = value as? String

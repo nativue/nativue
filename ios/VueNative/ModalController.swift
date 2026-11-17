@@ -2,7 +2,7 @@ import UIKit
 
 /// Presents the content of a <Modal>. The <Modal> itself is a hidden placeholder in the tree; its children
 /// live in this controller's view, laid out as a separate Yoga root (the node's `contentNode`).
-final class ModalController: UIViewController, UIAdaptivePresentationControllerDelegate {
+final class ModalController: UIViewController, ContentRoot, UIAdaptivePresentationControllerDelegate {
     static let presentationStyles: [String: UIModalPresentationStyle] = [
         "fullScreen": .fullScreen,
         "pageSheet": .pageSheet,
