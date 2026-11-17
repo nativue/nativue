@@ -5,6 +5,8 @@ import { COLOR_PROPERTIES, processColor } from './colors.js'
 import { FlatList, Pressable, Swipeable } from './components.js'
 export * from '@vue/runtime-core'
 export { Animated } from './animated.js'
+export { AsyncStorage } from './storage.js'
+import './fetch.js'
 
 const native = globalThis.__native
 let nextNodeId = 1

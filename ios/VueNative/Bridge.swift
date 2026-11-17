@@ -36,6 +36,7 @@ final class Bridge {
     private var pendingOperations: [() -> Void] = []
     private var gestureReportersByNodeId: [Int: GestureReporter] = [:]
     private let animatedGraph = AnimatedGraph()
+    private lazy var storage = KeyValueStorage(javaScriptQueue: javaScriptQueue)
     /// Set by LayoutAnimation.configureNext in JS; animates the batch it's sent with.
     private var nextLayoutAnimation: LayoutAnimation?
 
@@ -211,6 +212,8 @@ final class Bridge {
         } as @convention(block) (Int, String, JSValue) -> Void)
 
         defineAnimatedFunctions(define)
+        defineStorageFunctions(define)
+        defineFetch(define)
 
         define("setTimer", { [unowned self, weak context] timerId, delayInMilliseconds in
             // Weak: after a hot reload, the old context's timers die with it instead of firing in the new
@@ -236,7 +239,6 @@ final class Bridge {
             console.warn = console.error = console.info = console.log
 
             // JavaScriptCore has no timers; native schedules them (like React Native's Timing module).
-            // ponytail: no setInterval yet; chain setTimeout or add it when something needs it.
             var timerCallbacks = new Map()
             var nextTimerId = 1
 
@@ -251,6 +253,26 @@ final class Bridge {
             function clearTimeout(timerId) {
               timerCallbacks.delete(timerId)
             }
+
+            // Re-arms before running the callback, so clearInterval inside it still stops the interval.
+            function setInterval(callback, delay = 0, ...args) {
+              const timerId = nextTimerId++
+              const interval = Math.max(0, Math.round(delay))
+
+              function arm() {
+                timerCallbacks.set(timerId, () => {
+                  arm()
+                  callback(...args)
+                })
+                __native.setTimer(timerId, interval)
+              }
+
+              arm()
+
+              return timerId
+            }
+
+            var clearInterval = clearTimeout
 
             function __fireTimer(timerId) {
               const callback = timerCallbacks.get(timerId)
@@ -427,6 +449,65 @@ final class Bridge {
         }, for: .editingDidEnd)
 
         return textInput
+    }
+
+    /// AsyncStorage: synchronous on the JS queue (values are in memory); JS wraps them in promises.
+    private func defineStorageFunctions(_ define: (String, Any) -> Void) {
+        define("storageGet", { [unowned self] key in
+            storage.value(forKey: key)
+        } as @convention(block) (String) -> String?)
+
+        define("storageSet", { [unowned self] key, value in
+            storage.setValue(value, forKey: key)
+        } as @convention(block) (String, String) -> Void)
+
+        define("storageRemove", { [unowned self] key in
+            storage.removeValue(forKey: key)
+        } as @convention(block) (String) -> Void)
+
+        define("storageKeys", { [unowned self] in
+            storage.keys
+        } as @convention(block) () -> [String])
+
+        define("storageClear", { [unowned self] in
+            storage.removeAll()
+        } as @convention(block) () -> Void)
+    }
+
+    /// fetch: URLSession runs the request; JS hears back through __fetchFinished(requestId, response, error).
+    /// ponytail: text bodies only (no binary, FormData or streaming) and no abort.
+    private func defineFetch(_ define: (String, Any) -> Void) {
+        define("fetch", { [unowned self] requestId, url, method, headers, body in
+            let bodyText = body.isNull || body.isUndefined ? nil : body.toString()
+
+            guard let url = URL(string: url) else {
+                return finishFetch(requestId, response: nil, error: "invalid URL \(url)")
+            }
+
+            var request = URLRequest(url: url)
+            request.httpMethod = method
+            request.httpBody = bodyText?.data(using: .utf8)
+            headers.forEach { name, value in request.setValue(value, forHTTPHeaderField: name) }
+
+            URLSession.shared.dataTask(with: request) { [unowned self] data, response, error in
+                guard let response = response as? HTTPURLResponse, error == nil else {
+                    return finishFetch(requestId, response: nil, error: error?.localizedDescription ?? "no response")
+                }
+
+                finishFetch(requestId, response: [
+                    "status": response.statusCode,
+                    "headers": response.allHeaderFields,
+                    "body": String(decoding: data ?? Data(), as: UTF8.self),
+                ], error: nil)
+            }.resume()
+        } as @convention(block) (Int, String, String, [String: String], JSValue) -> Void)
+    }
+
+    private func finishFetch(_ requestId: Int, response: [String: Any]?, error: String?) {
+        evaluate { [unowned self] in
+            let arguments: [Any] = [requestId, response ?? NSNull(), error ?? NSNull()]
+            context.objectForKeyedSubscript("__fetchFinished")?.call(withArguments: arguments)
+        }
     }
 
     /// Animated's native driver (see AnimatedGraph); queued like the view operations, so a value bound in

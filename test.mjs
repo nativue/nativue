@@ -8,6 +8,12 @@ const viewsById = { 0: { type: 'root', children: [], props: {}, style: {} } }
 let keyboardDismissCount = 0
 const layoutAnimations = []
 const animated = { nodes: {}, started: [], stopped: [], styles: {}, events: {} }
+const storage = new Map()
+const fetchRequests = []
+const POSTS = [
+  { id: 1, title: 'Primeiro post' },
+  { id: 2, title: 'Segundo post' },
+]
 
 function detachEverywhere(childId) {
   for (const view of Object.values(viewsById)) {
@@ -42,6 +48,23 @@ globalThis.__native = {
   stopAnimation: (nodeId) => animated.stopped.push(nodeId),
   setAnimatedStyle: (viewId, binding) => (animated.styles[viewId] = binding),
   setAnimatedEvent: (viewId, event, mapping) => ((animated.events[viewId] ??= {})[event] = mapping),
+
+  storageGet: (key) => storage.get(key) ?? null,
+  storageSet: (key, value) => storage.set(key, value),
+  storageRemove: (key) => storage.delete(key),
+  storageKeys: () => [...storage.keys()],
+  storageClear: () => storage.clear(),
+
+  // Answers like URLSession would, on a later turn.
+  fetch: (requestId, url, method, headers, body) => {
+    fetchRequests.push({ url, method, headers, body })
+    const response = {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(POSTS),
+    }
+    setTimeout(() => globalThis.__fetchFinished(requestId, response, null))
+  },
 }
 
 ;(0, eval)(readFileSync('ios/VueNative/main.bundle.js', 'utf8'))
@@ -321,6 +344,43 @@ globalThis.__openURL('vuenative://explore')
 await settle()
 assert.deepEqual(animated.stopped.slice(-2).sort(), loops.map((loop) => loop.nodeId).sort()) // leaving the page stops its loops
 
+// ---------- Data: fetch, AsyncStorage, setInterval ----------
+
+globalThis.__openURL('vuenative://explore/data')
+await settle()
+const dataScreenId = childScreenIds(exploreStackId()).at(-1)
+assert.ok(renderedTexts(dataScreenId).includes('Visitas a esta página: 1 (AsyncStorage)'))
+assert.equal(storage.get('dataPageVisits'), '1')
+
+pressButton('Carregar posts (fetch)', 1, dataScreenId)
+await settle()
+await settle() // the response arrives on a later turn
+assert.deepEqual(fetchRequests.at(-1), {
+  url: 'https://jsonplaceholder.typicode.com/posts?_limit=5',
+  method: 'GET',
+  headers: {},
+  body: null,
+})
+assert.ok(renderedTexts(dataScreenId).includes('Primeiro post'))
+assert.ok(renderedTexts(dataScreenId).includes('Segundo post'))
+
+const response = await fetch('https://example.com', {
+  method: 'post',
+  headers: { 'Content-Type': 'text/plain' },
+  body: 'oi',
+})
+assert.equal(response.ok, true)
+assert.equal(response.headers.get('content-type'), 'application/json') // case-insensitive
+assert.deepEqual(fetchRequests.at(-1), {
+  url: 'https://example.com',
+  method: 'POST',
+  headers: { 'content-type': 'text/plain' },
+  body: 'oi',
+})
+
+globalThis.__openURL('vuenative://explore')
+await settle()
+
 // ---------- List editing ----------
 
 selectTab(0)
@@ -483,5 +543,10 @@ assert.equal(processColor('rgba(255, 0, 0, 0.5)'), 0xff000080)
 assert.equal(processColor('rgb(0, 128, 255)'), 0x0080ffff)
 assert.equal(processColor('transparent'), 0x00000000)
 assert.equal(processColor('not-a-color'), null)
+
+// ---------- Saved state ----------
+
+assert.deepEqual(JSON.parse(storage.get('items')), []) // the list was emptied above
+assert.equal(storage.get('hideDoneItems'), 'false')
 
 console.log('ok')

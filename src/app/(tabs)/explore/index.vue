@@ -20,6 +20,10 @@ const styles = {
       <Text :style="styles.linkText">Animações ›</Text>
     </Link>
 
+    <Link href="/explore/data" :style="styles.link">
+      <Text :style="styles.linkText">Dados ›</Text>
+    </Link>
+
     <Link v-for="topic in TOPICS" :key="topic" :href="`/explore/${topic}`" :style="styles.link">
       <Text :style="styles.linkText">{{ topic }} ›</Text>
     </Link>
