@@ -6,6 +6,7 @@ import { processColor } from './src/colors.js'
 const ITEM_HEIGHT = 60
 const viewsById = { 0: { type: 'root', children: [], props: {}, style: {} } }
 let keyboardDismissCount = 0
+const layoutAnimations = []
 
 function detachEverywhere(childId) {
   for (const view of Object.values(viewsById)) {
@@ -32,6 +33,7 @@ globalThis.__native = {
   setText: (id, text) => (viewsById[id].text = text),
 
   dismissKeyboard: () => keyboardDismissCount++,
+  configureNextLayoutAnimation: (config) => layoutAnimations.push(config),
 }
 
 ;(0, eval)(readFileSync('ios/VueNative/main.bundle.js', 'utf8'))
@@ -196,6 +198,9 @@ assert.equal(detailScreen.props.headerTintColor, processColor('#42b883')) // roo
 globalThis.__dispatch(descendantOfType(topRootScreenId(), 'Switch'), 'valuechange', true)
 await settle()
 assert.ok(renderedTexts(listTabId).includes('✓ Item 1'))
+assert.deepEqual(layoutAnimations.at(-1), { type: 'spring', duration: 700, springDamping: 0.4 })
+const badge = viewsById[findViewId((view) => view.style.transform !== undefined, topRootScreenId())]
+assert.deepEqual(badge.style.transform, [{ scale: 1.15 }, { rotate: '-4deg' }])
 assert.equal(viewsById[listTabId].props.tabBarItem.badge, 1)
 
 // <Link> pushes the next item.
@@ -257,8 +262,10 @@ assert.equal(childScreenIds(exploreStackId()).length, 1)
 // ---------- List editing ----------
 
 selectTab(0)
+const animationsBeforeRemoval = layoutAnimations.length
 press(pressableShowing('Item 2'), 'longpress')
 await settle()
+assert.equal(layoutAnimations.length, animationsBeforeRemoval + 1) // rows slide up
 assert.ok(!renderedTexts().includes('Item 2'))
 assert.ok(renderedTexts().includes('998 itens'))
 

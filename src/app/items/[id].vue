@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { LayoutAnimation, computed, watch } from 'vue'
 import { Link, Stack, useLocalSearchParams, useRouter } from 'vuenative/router'
 import { findItem, items, removeItem } from '../../store.js'
 
@@ -7,6 +7,11 @@ const router = useRouter()
 const { id } = useLocalSearchParams()
 const item = computed(() => findItem(id))
 const nextItem = computed(() => items.value[items.value.indexOf(item.value) + 1])
+
+watch(
+  () => item.value?.done,
+  () => LayoutAnimation.configureNext(LayoutAnimation.Presets.spring),
+)
 
 const styles = {
   screen: { flex: 1, padding: 24, gap: 24 },
@@ -16,6 +21,19 @@ const styles = {
   link: { padding: 16, borderRadius: 12, backgroundColor: '#f2f2f7' },
   linkText: { fontSize: 17, color: '#42b883' },
   deleteButton: { color: '#ff3b30', fontSize: 17 },
+  badgeText: { color: '#ffffff', fontSize: 15, fontWeight: '600' },
+}
+
+function badgeStyle(done) {
+  return {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: done ? '#42b883' : '#c7c7cc',
+    opacity: done ? 1 : 0.5,
+    transform: [{ scale: done ? 1.15 : 1 }, { rotate: done ? '-4deg' : '0deg' }],
+  }
 }
 
 function deleteItem() {
@@ -30,6 +48,10 @@ function deleteItem() {
 
     <template v-if="item">
       <Text :style="styles.text">{{ item.text }}</Text>
+
+      <View :style="badgeStyle(item.done)">
+        <Text :style="styles.badgeText">{{ item.done ? 'Concluído!' : 'Pendente' }}</Text>
+      </View>
 
       <View :style="styles.row">
         <Text :style="styles.label">Concluído</Text>

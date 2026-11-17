@@ -80,6 +80,18 @@ final class NativeNode {
         Self.applyFrames(of: yogaNode)
     }
 
+    /// A view inserted during a layout animation would grow from the corner: it fades in where it lands.
+    private static func appearWithoutMoving(_ view: UIView, at frame: CGRect) {
+        let finalAlpha = view.alpha
+
+        UIView.performWithoutAnimation {
+            view.frame = frame
+            view.alpha = 0
+            view.layoutIfNeeded()
+        }
+        view.alpha = finalAlpha
+    }
+
     /// Only visits subtrees Yoga laid out again; untouched subtrees keep their frames.
     private static func applyFrames(of yogaNode: YGNodeRef) {
         for index in 0..<YGNodeGetChildCount(yogaNode) {
@@ -98,7 +110,15 @@ final class NativeNode {
 
             // Yoga flags whole dirty paths as new layout. Reassigning a scroll view's frame or content
             // size, even unchanged, makes UIKit readjust its offset and shakes a bounce, so skip no-ops.
-            if childView.frame != frame { childView.frame = frame }
+            if childView.frame == .zero, UIView.inheritedAnimationDuration > 0 {
+                appearWithoutMoving(childView, at: frame)
+            } else if childView.transform == .identity {
+                if childView.frame != frame { childView.frame = frame }
+            } else {
+                // With a transform, `frame` is the transformed box: place the untransformed one.
+                childView.bounds.size = frame.size
+                childView.center = CGPoint(x: frame.midX, y: frame.midY)
+            }
 
             applyFrames(of: child)
 

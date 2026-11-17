@@ -169,6 +169,22 @@ globalThis.__dispatch = (nodeId, eventName, payload) => {
   handlers[MODEL_EVENT_BY_NATIVE_EVENT[eventName]]?.(payload)
 }
 
+// Like React Native: configure before changing state, and the native side animates every layout,
+// opacity, color and transform change of that update.
+//   LayoutAnimation.configureNext(LayoutAnimation.Presets.spring)
+//   items.value.splice(index, 1)
+export const LayoutAnimation = {
+  Presets: {
+    easeInEaseOut: { type: 'easeInEaseOut', duration: 300 },
+    linear: { type: 'linear', duration: 500 },
+    spring: { type: 'spring', duration: 700, springDamping: 0.4 },
+  },
+
+  configureNext(config = LayoutAnimation.Presets.easeInEaseOut) {
+    native.configureNextLayoutAnimation(config)
+  },
+}
+
 export const Keyboard = {
   dismiss() {
     native.dismissKeyboard()

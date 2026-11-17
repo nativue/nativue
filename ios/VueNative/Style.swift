@@ -46,6 +46,9 @@ extension NativeNode {
         case "opacity":
             view.alpha = CGFloat(number(value) ?? 1)
 
+        case "transform":
+            view.transform = Self.affineTransform(value)
+
         case "overflow":
             view.clipsToBounds = (value as? String) == "hidden"
 
@@ -297,5 +300,41 @@ extension UIColor {
             blue: CGFloat(rgba >> 8 & 0xFF) / 255,
             alpha: CGFloat(rgba & 0xFF) / 255
         )
+    }
+}
+
+extension NativeNode {
+    /// React Native's transform list: [{ translateX }, { translateY }, { scale }, { scaleX }, { scaleY },
+    /// { rotate: '45deg' | '1rad' }], applied in order.
+    static func affineTransform(_ value: Any) -> CGAffineTransform {
+        let steps = value as? [[String: Any]] ?? []
+
+        return steps.reduce(.identity) { transform, step in
+            guard let (name, amount) = step.first else { return transform }
+
+            return transform.concatenating(affineTransformStep(name, amount))
+        }
+    }
+
+    private static func affineTransformStep(_ name: String, _ amount: Any) -> CGAffineTransform {
+        let value = CGFloat((amount as? Double) ?? 0)
+
+        switch name {
+        case "translateX": return CGAffineTransform(translationX: value, y: 0)
+        case "translateY": return CGAffineTransform(translationX: 0, y: value)
+        case "scale": return CGAffineTransform(scaleX: value, y: value)
+        case "scaleX": return CGAffineTransform(scaleX: value, y: 1)
+        case "scaleY": return CGAffineTransform(scaleX: 1, y: value)
+        case "rotate": return CGAffineTransform(rotationAngle: radians(amount))
+        default: return .identity
+        }
+    }
+
+    private static func radians(_ angle: Any) -> CGFloat {
+        guard let text = angle as? String else { return CGFloat((angle as? Double) ?? 0) }
+
+        let number = CGFloat(Double(text.trimmingCharacters(in: .letters)) ?? 0)
+
+        return text.hasSuffix("deg") ? number * .pi / 180 : number
     }
 }

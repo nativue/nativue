@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { LayoutAnimation, computed, ref } from 'vue'
 import { useRouter } from 'vuenative/router'
 import logo from '../../assets/vue-logo.png'
 import { createItem, createItems, hideDoneItems, items, removeItem } from '../../store.js'
@@ -53,9 +53,16 @@ function itemStyle(item) {
   }
 }
 
+// The rows below slide up into place.
+function removeWithAnimation(item) {
+  LayoutAnimation.configureNext()
+  removeItem(item)
+}
+
 function addItem() {
   const text = newItemText.value.trim() || `Item ${items.value.length + 1}`
 
+  LayoutAnimation.configureNext()
   items.value.push(createItem(text))
   newItemText.value = ''
 }
@@ -107,7 +114,7 @@ function refresh() {
           :style="itemStyle(item)"
           :pressed-style="{ opacity: 0.5 }"
           @press="router.push(`/items/${item.id}`)"
-          @long-press="removeItem(item)"
+          @long-press="removeWithAnimation(item)"
         >
           <Text>{{ item.done ? '✓ ' : '' }}{{ item.text }}</Text>
         </Pressable>

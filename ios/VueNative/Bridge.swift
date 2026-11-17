@@ -34,6 +34,8 @@ final class Bridge {
     // Only touched on javaScriptQueue.
     private(set) var context: JSContext!
     private var pendingOperations: [() -> Void] = []
+    /// Set by LayoutAnimation.configureNext in JS; animates the batch it's sent with.
+    private var nextLayoutAnimation: LayoutAnimation?
 
     // Only touched on the main thread.
     var rootView: RootView!
@@ -80,13 +82,27 @@ final class Bridge {
         javaScriptQueue.async { [unowned self] in
             let javaScriptDuration = ContinuousClock().measure(work)
             let operations = pendingOperations
+            let layoutAnimation = nextLayoutAnimation
             pendingOperations = []
+            nextLayoutAnimation = nil
 
             DispatchQueue.main.async { [unowned self] in
-                let applyDuration = ContinuousClock().measure { operations.forEach { $0() } }
+                let applyDuration = ContinuousClock().measure {
+                    apply(operations, animatedWith: layoutAnimation)
+                }
                 requestLayout()
                 completion?(EvaluationTimings(javaScript: javaScriptDuration, apply: applyDuration))
             }
+        }
+    }
+
+    /// An animated batch lays out right away, inside the animation, so the new frames animate too.
+    private func apply(_ operations: [() -> Void], animatedWith layoutAnimation: LayoutAnimation?) {
+        guard let layoutAnimation else { return operations.forEach { $0() } }
+
+        layoutAnimation.perform { [unowned self] in
+            operations.forEach { $0() }
+            layout()
         }
     }
 
@@ -201,6 +217,10 @@ final class Bridge {
                 }
             }
         } as @convention(block) (Int, Int) -> Void)
+
+        define("configureNextLayoutAnimation", { [unowned self] config in
+            nextLayoutAnimation = LayoutAnimation(config: config)
+        } as @convention(block) ([String: Any]) -> Void)
 
         define("dismissKeyboard", { [unowned self] in
             enqueue { [unowned self] in rootView.window?.endEditing(true) }
