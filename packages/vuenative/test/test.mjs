@@ -1,6 +1,7 @@
 // Runs the demo app's bundle against a fake __native and checks the resulting view tree.
 import { readFileSync } from 'node:fs'
 import assert from 'node:assert'
+import { createSymbolicator } from '../cli/symbolicate.mjs'
 import { processColor } from '../src/colors.ts'
 
 const ROW_HEIGHT = 64
@@ -688,5 +689,25 @@ const renderError = reportedErrors.at(-1)
 assert.match(renderError.message, /^TypeError/)
 assert.ok(renderError.details.startsWith('render function\n'))
 assert.ok(renderError.details.includes('  in src/app/(tabs)/explore/errors.vue\n'))
+
+// ---------- Source maps ----------
+
+// "AAAA;AACA;AACA": the bundle's lines 1 to 3 come from the same lines of the source. Frames outside
+// the app's src/ collapse.
+const symbolicate = createSymbolicator(
+  {
+    version: 3,
+    sources: ['../../src/app/index.vue', '../../node_modules/vue/index.js'],
+    names: [],
+    mappings: 'AAAA;AACA;ACCA',
+  },
+  'ios/App',
+)
+assert.equal(
+  symbolicate(
+    'native event handler\nthrowInHandler@main.bundle.js:2:1\ncall@main.bundle.js:3:1\n@[native code]',
+  ),
+  'native event handler\nthrowInHandler@src/app/index.vue:2:1\n… 1 framework frame(s)\n@[native code]',
+)
 
 console.log('ok')

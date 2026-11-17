@@ -5,12 +5,14 @@
 import { build } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import http from 'node:http'
-import { readFileSync } from 'node:fs'
+import { readFileSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { createSymbolicator } from './symbolicate.mjs'
 
 const PORT = 42883 // #42b883, Vue's green
 const BUNDLE_DIRECTORY = 'ios/App'
 const BUNDLE_PATH = `${BUNDLE_DIRECTORY}/main.bundle.js`
+const SOURCE_MAP_PATH = `${BUNDLE_PATH}.map`
 const KEEPALIVE_INTERVAL_MS = 15000
 
 const NATIVE_COMPONENT_TAGS = [
@@ -32,7 +34,7 @@ function frameworkPath(relativePath) {
   return fileURLToPath(new URL(`../${relativePath}`, import.meta.url))
 }
 
-function viteConfig({ mode, entry, plugins = [], watch = null }) {
+function viteConfig({ mode, entry, plugins = [], watch = null, sourcemap = false }) {
   // Vite reads the mode from NODE_ENV: development builds keep each component's file (for errors).
   process.env.NODE_ENV = mode
 
@@ -67,6 +69,7 @@ function viteConfig({ mode, entry, plugins = [], watch = null }) {
       outDir: BUNDLE_DIRECTORY,
       emptyOutDir: false,
       minify: mode === 'production',
+      sourcemap,
       watch,
     },
   }
@@ -80,6 +83,7 @@ function entryOption(args) {
 
 function startDevServer() {
   const connectedApps = new Set()
+  let symbolicate = (text) => text
   const sendToApps = (message) => connectedApps.forEach((response) => response.write(message))
 
   function handleEvents(request, response) {
@@ -94,9 +98,19 @@ function startDevServer() {
     response.end(readFileSync(BUNDLE_PATH))
   }
 
+  // The app posts an error's stack; it gets it back pointing at the app's files.
+  async function handleSymbolicate(request, response) {
+    let text = ''
+    for await (const chunk of request) text += chunk
+
+    response.writeHead(200, { 'Content-Type': 'text/plain' })
+    response.end(symbolicate(text))
+  }
+
   http
     .createServer((request, response) => {
       if (request.url === '/events') handleEvents(request, response)
+      else if (request.url === '/symbolicate') handleSymbolicate(request, response)
       else handleBundle(response)
     })
     .listen(PORT, () => console.log(`dev server: http://localhost:${PORT}`))
@@ -106,7 +120,14 @@ function startDevServer() {
 
   return {
     name: 'vuenative-reload',
+    // The source map stays in memory: removed from ios/App, so the app never ships it.
     writeBundle() {
+      symbolicate = createSymbolicator(
+        JSON.parse(readFileSync(SOURCE_MAP_PATH, 'utf8')),
+        BUNDLE_DIRECTORY,
+      )
+      rmSync(SOURCE_MAP_PATH)
+
       console.log(`reload -> ${connectedApps.size} app(s)`)
       sendToApps('data: reload\n\n')
     },
@@ -123,6 +144,7 @@ if (command === 'dev') {
       entry: entryOption(args),
       plugins: [reloadPlugin],
       watch: {},
+      sourcemap: 'hidden', // no comment in the bundle: the dev server serves the map
     }),
   )
 } else if (command === 'build') {

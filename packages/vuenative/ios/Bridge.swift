@@ -309,11 +309,29 @@ final class Bridge {
         print("[VueNative] JS error:", message, "\n" + details)
 
         #if DEBUG
-        DispatchQueue.main.async { [unowned self] in
+        Task { @MainActor [unowned self] in
+            let details = await symbolicated(details)
             errorOverlay.show(message: message, details: details) { [unowned self] in run(source) }
         }
         #endif
     }
+
+    #if DEBUG
+    /// The dev server maps main.bundle.js lines back to the app's files with the bundle's source map.
+    /// Without a dev server, the stack stays as it is.
+    private func symbolicated(_ text: String) async -> String {
+        var request = URLRequest(url: Self.devServerURL.appending(path: "symbolicate"), timeoutInterval: 2)
+        request.httpMethod = "POST"
+        request.httpBody = Data(text.utf8)
+
+        guard
+            let (data, response) = try? await URLSession.shared.data(for: request),
+            (response as? HTTPURLResponse)?.statusCode == 200
+        else { return text }
+
+        return String(decoding: data, as: UTF8.self)
+    }
+    #endif
 
     // MARK: - Main thread
 
