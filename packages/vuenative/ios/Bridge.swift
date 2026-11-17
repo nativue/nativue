@@ -65,7 +65,9 @@ final class Bridge {
             openURL(url)
         }
 
-        let bundleURL = Bundle.main.url(forResource: "main.bundle", withExtension: "js")!
+        guard let bundleURL = Bundle.main.url(forResource: "main.bundle", withExtension: "js") else {
+            fatalError("ios/App/main.bundle.js is missing: run `npm run dev` (or `npm run build`), then build again")
+        }
         let source = try! String(contentsOf: bundleURL, encoding: .utf8)
 
         #if DEBUG

@@ -10,6 +10,16 @@
 Vue rendering real iOS views: a custom Vue renderer runs in JavaScriptCore and drives UIKit through
 a native bridge, with Yoga for flexbox layout.
 
+## Create an app
+
+```sh
+npm create vue-native@latest my-app    # add -- --bundle-id com.company.myapp to set it now
+cd my-app
+npm install
+npm run dev                            # keep it running: rebuilds and reloads the app on save
+open ios/App.xcodeproj                 # pick a simulator or your iPhone, then Run
+```
+
 ## Repository
 
 ```
@@ -20,6 +30,7 @@ packages/vuenative/     the framework (npm package "vuenative")
   test/                 runs the demo's bundle against a fake native side
 packages/vuenative-icons/  icon sets as components, drawn by the native <Svg>
   src/lucide.ts         generated from lucide (`npm run generate -w vuenative-icons`)
+packages/create-vue-native/  `npm create vue-native`: copies template/ and fills in the app's names
 examples/demo/          an app, laid out like any Vue Native project
 ```
 
@@ -36,7 +47,7 @@ src/
   assets/       images and other files
   components/   shared components (optional)
   lib/          everything else: stores, theme, helpers (optional)
-ios/            thin host app: App.swift shows VueNativeView()
+ios/            App.xcodeproj, the same in every app: App.swift shows VueNativeView()
 ```
 
 `@/` points at `src/` from anywhere: `import { colors } from '@/lib/theme'`.
@@ -56,4 +67,4 @@ From the repository root:
 | `npm run typecheck` | type-checks the framework and the demo                       |
 | `npm run format`    | formats everything with Prettier                             |
 
-Open `examples/demo/ios/Demo.xcodeproj` in Xcode to run the app on a simulator or device.
+Open `examples/demo/ios/App.xcodeproj` in Xcode to run the app on a simulator or device.

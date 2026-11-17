@@ -1,0 +1,6 @@
+node_modules
+ios/build
+ios/App/main.bundle.js
+.DS_Store
+xcuserdata/
+*.xcuserstate

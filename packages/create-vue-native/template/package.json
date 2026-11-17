@@ -1,0 +1,17 @@
+{
+  "name": "__PACKAGE_NAME__",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vuenative dev",
+    "build": "vuenative build --production",
+    "typecheck": "vue-tsc"
+  },
+  "dependencies": {
+    "vuenative": "__VUENATIVE_VERSION__"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vue-tsc": "^3.3.14"
+  }
+}

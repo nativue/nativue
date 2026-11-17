@@ -11,7 +11,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		AA0000000000000000000001 /* Demo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Demo.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0000000000000000000001 /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -45,7 +45,7 @@
 		AA0000000000000000000005 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				AA0000000000000000000001 /* Demo.app */,
+				AA0000000000000000000001 /* App.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -53,9 +53,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		AA0000000000000000000006 /* Demo */ = {
+		AA0000000000000000000006 /* App */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = AA000000000000000000000A /* Build configuration list for PBXNativeTarget "Demo" */;
+			buildConfigurationList = AA000000000000000000000A /* Build configuration list for PBXNativeTarget "App" */;
 			buildPhases = (
 				AA0000000000000000000007 /* Sources */,
 				AA0000000000000000000003 /* Frameworks */,
@@ -69,12 +69,12 @@
 			fileSystemSynchronizedGroups = (
 				AA0000000000000000000002 /* App */,
 			);
-			name = Demo;
+			name = App;
 			packageProductDependencies = (
 				AA0000000000000000000012 /* VueNative */,
 			);
-			productName = Demo;
-			productReference = AA0000000000000000000001 /* Demo.app */;
+			productName = App;
+			productReference = AA0000000000000000000001 /* App.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -87,7 +87,7 @@
 				LastSwiftUpdateCheck = 1600;
 				LastUpgradeCheck = 1600;
 			};
-			buildConfigurationList = AA000000000000000000000B /* Build configuration list for PBXProject "Demo" */;
+			buildConfigurationList = AA000000000000000000000B /* Build configuration list for PBXProject "App" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -104,7 +104,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				AA0000000000000000000006 /* Demo */,
+				AA0000000000000000000006 /* App */,
 			);
 		};
 /* End PBXProject section */
@@ -183,6 +183,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Demo;
 				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.vuenative.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -198,6 +199,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Demo;
 				MARKETING_VERSION = 0.1;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.vuenative.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -208,7 +210,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		AA000000000000000000000A /* Build configuration list for PBXNativeTarget "Demo" */ = {
+		AA000000000000000000000A /* Build configuration list for PBXNativeTarget "App" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				AA000000000000000000000E /* Debug */,
@@ -217,7 +219,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		AA000000000000000000000B /* Build configuration list for PBXProject "Demo" */ = {
+		AA000000000000000000000B /* Build configuration list for PBXProject "App" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				AA000000000000000000000C /* Debug */,

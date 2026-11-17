@@ -2,7 +2,7 @@ import SwiftUI
 import VueNative
 
 @main
-struct DemoApp: App {
+struct MainApp: App {
     var body: some Scene {
         WindowGroup {
             VueNativeView()
