@@ -69,4 +69,39 @@ final class TabBarView: UIView, ScreenContainer, UITabBarControllerDelegate {
         selectedIndex = tabBarController.selectedIndex
         onTabChange?(selectedIndex)
     }
+
+    /// Tapping the selected tab again: UIKit already pops its stack to the first screen; on that first
+    /// screen, scroll its list to the top instead (UIKit can't find our scroll views).
+    func tabBarController(_ tabBarController: UITabBarController, shouldSelect viewController: UIViewController) -> Bool {
+        if viewController === tabBarController.selectedViewController, !hasScreensToPop(viewController) {
+            firstScrollView(in: viewController.view)?.scrollToTop()
+        }
+
+        return true
+    }
+
+    private func hasScreensToPop(_ viewController: UIViewController) -> Bool {
+        let stack = viewController.children.lazy.compactMap { $0 as? UINavigationController }.first
+
+        return (stack?.viewControllers.count ?? 0) > 1
+    }
+
+    /// Breadth-first, so the list of the screen wins over one nested deeper.
+    private func firstScrollView(in root: UIView) -> VueScrollView? {
+        var queue = [root]
+
+        while !queue.isEmpty {
+            let view = queue.removeFirst()
+            if let scrollView = view as? VueScrollView { return scrollView }
+            queue.append(contentsOf: view.subviews)
+        }
+
+        return nil
+    }
+}
+
+private extension UIScrollView {
+    func scrollToTop() {
+        setContentOffset(CGPoint(x: contentOffset.x, y: -adjustedContentInset.top), animated: true)
+    }
 }
