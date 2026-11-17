@@ -3,12 +3,49 @@ import JavaScriptCore
 
 /// Recebe as operações do renderer Vue (src/renderer.js) e as aplica em UIKit.
 final class Bridge {
-    let ctx = JSContext()!
+    static let devServer = URL(string: "http://localhost:42883")!
+
+    var ctx: JSContext!
+    var root: UIView!
     // ponytail: filhos de uma view removida continuam no dicionário; limpar recursivamente se vazar memória.
     var views: [Int: UIView] = [:]
 
     func start(root: UIView) {
-        views[0] = root
+        self.root = root
+        let url = Bundle.main.url(forResource: "main.bundle", withExtension: "js")!
+        run(try! String(contentsOf: url, encoding: .utf8))
+        #if DEBUG
+        Task { await listenForReload() }
+        #endif
+    }
+
+    /// Descarta a árvore e o JSContext atuais e roda o bundle do zero.
+    func run(_ source: String) {
+        root.subviews.forEach { $0.removeFromSuperview() }
+        views = [0: root]
+        ctx = makeContext()
+        ctx.evaluateScript(source, withSourceURL: URL(string: "main.bundle.js"))
+    }
+
+    #if DEBUG
+    // ponytail: localhost só alcança o Mac a partir do simulador; device físico precisa do IP do Mac.
+    @MainActor func listenForReload() async {
+        while true {
+            do {
+                let (events, _) = try await URLSession.shared.bytes(from: Self.devServer.appending(path: "events"))
+                for try await line in events.lines where line == "data: reload" {
+                    let (data, _) = try await URLSession.shared.data(from: Self.devServer.appending(path: "bundle.js"))
+                    print("[VueNative] reload")
+                    run(String(decoding: data, as: UTF8.self))
+                }
+            } catch {}
+            try? await Task.sleep(for: .seconds(2)) // dev server fora do ar: tenta de novo
+        }
+    }
+    #endif
+
+    func makeContext() -> JSContext {
+        let ctx = JSContext()!
         ctx.exceptionHandler = { _, e in
             print("JS error:", e?.toString() ?? "", e?.objectForKeyedSubscript("stack")?.toString() ?? "")
         }
@@ -35,9 +72,7 @@ final class Bridge {
 
         ctx.setObject(native, forKeyedSubscript: "__native" as NSString)
         ctx.evaluateScript("var console = { log: (...a) => __native.log(a.map(String).join(' ')) }; console.warn = console.error = console.info = console.log")
-
-        let url = Bundle.main.url(forResource: "main.bundle", withExtension: "js")!
-        ctx.evaluateScript(try! String(contentsOf: url, encoding: .utf8), withSourceURL: url)
+        return ctx
     }
 
     func make(_ type: String, _ id: Int) -> UIView {
