@@ -73,6 +73,8 @@ final class ScreenStackView: UIView, ScreenContainer, UINavigationControllerDele
         scheduleSync()
     }
 
+    var navigationBarBottom: CGFloat { navigationController.navigationBar.frame.maxY }
+
     func screenDidChangeHeaderVisibility(_ screen: ScreenController) {
         guard navigationController.topViewController === screen else { return }
 

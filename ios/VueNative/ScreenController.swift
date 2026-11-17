@@ -52,9 +52,11 @@ final class ScreenController: UIViewController, ContentRoot {
 
     /// From this screen's own `headerShown`, never from the bar's current state: the bar belongs to the
     /// screen on top and is shown or hidden mid-transition, which would move the screens below it. The
-    /// bar keeps its frame while hidden, so its bottom edge is stable.
+    /// bar keeps its frame while hidden, so its bottom edge is stable. Read through the container, since a
+    /// screen being swiped away has already left the navigation controller.
     private func updateTopPadding() {
-        let headerBottom = headerShown ? navigationController?.navigationBar.frame.maxY ?? 0 : 0
+        let stack = container as? ScreenStackView
+        let headerBottom = headerShown ? stack?.navigationBarBottom ?? 0 : 0
 
         YGNodeStyleSetPadding(contentNode.yogaNode, .top, Float(headerBottom))
     }
