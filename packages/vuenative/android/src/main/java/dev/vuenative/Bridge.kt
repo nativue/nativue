@@ -1,5 +1,6 @@
 package dev.vuenative
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.pm.ApplicationInfo
@@ -36,6 +37,11 @@ import kotlin.concurrent.thread
  */
 class Bridge(private val activity: Activity, private val rootView: RootView) {
     private val mainHandler = Handler(Looper.getMainLooper())
+
+    /** The dev server address that answered last (set by listenForReload, read when symbolicating). */
+    @Volatile
+    private var devServerURL = ""
+
     private val javaScriptHandler = startJavaScriptThread()
     private val isDebuggable = activity.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
     private val density = activity.resources.displayMetrics.density
@@ -381,9 +387,27 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
 
     // ---------- Development ----------
 
+    /**
+     * The emulator reaches the computer at 10.0.2.2. A device tries the computer's address on the local
+     * network (written by the debug build), then localhost, through `adb reverse tcp:42883 tcp:42883`.
+     */
+    private fun devServerURLs(): List<String> {
+        if (Build.HARDWARE == "ranchu" || Build.FINGERPRINT.contains("generic")) return listOf("http://10.0.2.2:$DEV_SERVER_PORT")
+
+        @SuppressLint("DiscouragedApi") // the resource only exists in debug builds
+        val hostId = activity.resources.getIdentifier("vuenative_dev_server_host", "string", activity.packageName)
+        val hosts = listOfNotNull(if (hostId == 0) null else activity.getString(hostId), "localhost")
+
+        return hosts.map { "http://$it:$DEV_SERVER_PORT" }
+    }
+
     /** The dev server sends `data: reload` on connect and after each rebuild. */
     private fun listenForReload() {
+        val candidateURLs = devServerURLs()
+        var attempt = 0
+
         while (true) {
+            devServerURL = candidateURLs[attempt++ % candidateURLs.size]
             runCatching {
                 val connection = URL("$devServerURL/events").openConnection() as HttpURLConnection
                 connection.readTimeout = 0
@@ -861,10 +885,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
             "url" to (InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI),
         )
 
-        /** The emulator reaches the computer at 10.0.2.2; a device through `adb reverse tcp:42883 tcp:42883`. */
-        val devServerURL: String =
-            if (Build.HARDWARE == "ranchu" || Build.FINGERPRINT.contains("generic")) "http://10.0.2.2:42883"
-            else "http://localhost:42883"
+        const val DEV_SERVER_PORT = 42883 // #42b883, Vue's green
 
         fun int(value: Any?): Int = (value as Number).toInt()
 

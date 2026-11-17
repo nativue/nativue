@@ -1,7 +1,22 @@
 // The vuenative Android library: Hermes runs the bundle, Yoga lays out the native views.
+import java.net.Inet4Address
+import java.net.NetworkInterface
+
 plugins {
     id("com.android.library")
 }
+
+/**
+ * This computer's address on the local network (Wi-Fi or Ethernet first), for a physical device to
+ * reach the dev server.
+ */
+// ponytail: fixed at build time, like the iOS app's host; rebuild after switching networks.
+fun localNetworkAddress(): String? = NetworkInterface.getNetworkInterfaces().toList()
+    .filter { it.isUp && !it.isLoopback && !it.isVirtual }
+    .sortedBy { if (it.name.startsWith("en") || it.name.startsWith("eth") || it.name.startsWith("wlan")) 0 else 1 }
+    .flatMap { it.inetAddresses.toList() }
+    .firstOrNull { it is Inet4Address && it.isSiteLocalAddress }
+    ?.hostAddress
 
 android {
     namespace = "dev.vuenative"
@@ -30,6 +45,13 @@ android {
 
     buildFeatures {
         prefab = true
+        resValues = true
+    }
+
+    buildTypes {
+        debug {
+            localNetworkAddress()?.let { resValue("string", "vuenative_dev_server_host", it) }
+        }
     }
 
     // The Hermes package already ships these; apps get them from there.
