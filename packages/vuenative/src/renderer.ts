@@ -1,4 +1,5 @@
 // Custom renderer: instead of the DOM, operations are sent to the native side (globalThis.__native).
+import './prelude'
 import './globals'
 import './fetch'
 import './native-components'

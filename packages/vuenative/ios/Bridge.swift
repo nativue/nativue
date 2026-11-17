@@ -232,52 +232,6 @@ final class Bridge {
         } as @convention(block) () -> Void)
 
         context.setObject(nativeModule, forKeyedSubscript: "__native" as NSString)
-        context.evaluateScript("""
-            var console = { log: (...args) => __native.log(args.map(String).join(' ')) }
-            console.warn = console.error = console.info = console.log
-
-            // JavaScriptCore has no timers; native schedules them.
-            var timerCallbacks = new Map()
-            var nextTimerId = 1
-
-            function setTimeout(callback, delay = 0, ...args) {
-              const timerId = nextTimerId++
-              timerCallbacks.set(timerId, () => callback(...args))
-              __native.setTimer(timerId, Math.max(0, Math.round(delay)))
-
-              return timerId
-            }
-
-            function clearTimeout(timerId) {
-              timerCallbacks.delete(timerId)
-            }
-
-            // Re-arms before running the callback, so clearInterval inside it still stops the interval.
-            function setInterval(callback, delay = 0, ...args) {
-              const timerId = nextTimerId++
-              const interval = Math.max(0, Math.round(delay))
-
-              function arm() {
-                timerCallbacks.set(timerId, () => {
-                  arm()
-                  callback(...args)
-                })
-                __native.setTimer(timerId, interval)
-              }
-
-              arm()
-
-              return timerId
-            }
-
-            var clearInterval = clearTimeout
-
-            function __fireTimer(timerId) {
-              const callback = timerCallbacks.get(timerId)
-              timerCallbacks.delete(timerId)
-              callback?.()
-            }
-            """)
 
         return context
     }

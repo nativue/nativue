@@ -1,11 +1,12 @@
-// What JavaScriptCore has globally: the bridge, the hooks native calls into, and the web APIs the
-// prelude in Bridge.swift (timers, console) and fetch.ts provide. No DOM.
+// What the JavaScript engine has globally: the bridge, the hooks native calls into, and the web APIs
+// prelude.ts (timers, console) and fetch.ts provide. No DOM.
 import type { NativeModule } from './types'
 
 declare global {
   var __native: NativeModule
   var __dispatch: (nodeId: number, eventName: string, payload: unknown) => void
   var __openURL: (url: string) => void
+  var __fireTimer: (timerId: number) => void
   var __animationFinished: (animationId: number, finished: boolean) => void
   var __fetchFinished: (
     requestId: number,
