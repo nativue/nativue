@@ -635,6 +635,8 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
 
             "inactiveTintColor" -> (view as? TabBarView)?.inactiveTintColor = androidColor(value)
 
+            "barBackgroundColor" -> (view as? TabBarView)?.barBackgroundColor = androidColor(value)
+
             "visible" -> modalHostsByNodeId[id]?.setVisible(isTruthyAttribute(value))
 
             "animationType" -> modalHostsByNodeId[id]?.animationType = value as? String ?: "none"

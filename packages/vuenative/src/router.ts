@@ -33,9 +33,10 @@ import { createApp } from './renderer'
 
 export type Params = Record<string, string | string[]>
 
+// An icon shows instead of the title, which still names it for screen readers.
 export interface HeaderItem {
   title?: string
-  systemImage?: string // SF Symbol name
+  icon?: string | SvgIcon // SF Symbol name (iOS only), or an icon from vuenative-icons
   onPress?: () => void
 }
 
@@ -54,6 +55,7 @@ export interface ScreenOptions {
   tabBarBadge?: string | number
   tabBarActiveTintColor?: string // the whole bar's: set it in <Tabs :screen-options>
   tabBarInactiveTintColor?: string
+  tabBarBackgroundColor?: string // iOS 26+ keeps its glass bar: iOS 18 and Android only
   lazy?: boolean
 }
 
@@ -522,12 +524,12 @@ globalThis.__openURL = (url) => router.navigate(hrefFromURL(url))
 // ---------- Components ----------
 
 // Screen options: title, headerShown, headerLargeTitle, headerBackTitle,
-// headerTintColor, headerRight / headerLeft: [{ title?, systemImage?, onPress }], and presentation:
+// headerTintColor, headerRight / headerLeft: [{ title?, icon?, onPress }], and presentation:
 // 'card' (pushed, the default), 'modal', 'formSheet' or 'fullScreenModal'. A modal brings its own
 // header, and screens pushed after it open inside it.
 function nativeScreenProps(entry: Entry, options: ScreenOptions, onDismissed?: () => void) {
   const headerItems = (items: HeaderItem[] = []) =>
-    items.map(({ title, systemImage }) => ({ title, systemImage }))
+    items.map(({ title, icon }) => ({ title, ...iconProps(icon) }))
 
   function pressHeaderItem({ side, index }: { side: 'left' | 'right'; index: number }) {
     const items = side === 'right' ? options.headerRight : options.headerLeft
@@ -691,7 +693,8 @@ function optionalColor(color: string | undefined) {
   return color && processColor(color)
 }
 
-function tabBarIconProps(icon: ScreenOptions['tabBarIcon']) {
+// An SF Symbol name or an icon from vuenative-icons, as the native side reads them.
+function iconProps(icon: string | SvgIcon | undefined) {
   return typeof icon === 'string' ? { systemImage: icon } : { svg: icon?.svg }
 }
 
@@ -713,7 +716,7 @@ const TabScreen = defineComponent({
       const options = mergedOptions(tab, props.screenOptions, props.optionsByRouteName)
       const tabBarItem = {
         label: options.tabBarLabel ?? options.title ?? tab.node.name,
-        ...tabBarIconProps(options.tabBarIcon),
+        ...iconProps(options.tabBarIcon),
         badge: options.tabBarBadge,
       }
 
@@ -759,6 +762,7 @@ const TabsNavigatorComponent = defineComponent({
           selectedIndex: orderedTabs.value.indexOf(navigator.tabs[navigator.state.activeIndex]),
           activeTintColor: optionalColor(props.screenOptions?.tabBarActiveTintColor),
           inactiveTintColor: optionalColor(props.screenOptions?.tabBarInactiveTintColor),
+          barBackgroundColor: optionalColor(props.screenOptions?.tabBarBackgroundColor),
           onTabChange: selectTab,
         },
         [

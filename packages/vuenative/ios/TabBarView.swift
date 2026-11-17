@@ -46,15 +46,34 @@ final class TabBarView: UIView, ScreenContainer, UITabBarControllerDelegate {
 
     /// Through the appearance: the glass tab bar (iOS 26) ignores unselectedItemTintColor.
     func setInactiveTintColor(_ color: UIColor?) {
-        let appearance = tabBar.standardAppearance.copy()
-        for itemAppearance in [
-            appearance.stackedLayoutAppearance,
-            appearance.inlineLayoutAppearance,
-            appearance.compactInlineLayoutAppearance,
-        ] {
-            itemAppearance.normal.iconColor = color
-            itemAppearance.normal.titleTextAttributes = color.map { [.foregroundColor: $0] } ?? [:]
+        updateAppearance { appearance in
+            for itemAppearance in [
+                appearance.stackedLayoutAppearance,
+                appearance.inlineLayoutAppearance,
+                appearance.compactInlineLayoutAppearance,
+            ] {
+                itemAppearance.normal.iconColor = color
+                itemAppearance.normal.titleTextAttributes = color.map { [.foregroundColor: $0] } ?? [:]
+            }
         }
+    }
+
+    /// A solid color instead of the system's material; nil brings the material back. Only the background
+    /// changes: configureWith...Background() would also reset the item colors. The glass tab bar (iOS 26)
+    /// ignores it.
+    func setBarBackgroundColor(_ color: UIColor?) {
+        let defaults = UITabBarAppearance()
+
+        updateAppearance { appearance in
+            appearance.backgroundEffect = color == nil ? defaults.backgroundEffect : nil
+            appearance.backgroundColor = color ?? defaults.backgroundColor
+        }
+    }
+
+    /// Scrolled to the bottom or not, the bar looks the same.
+    private func updateAppearance(_ change: (UITabBarAppearance) -> Void) {
+        let appearance = tabBar.standardAppearance.copy()
+        change(appearance)
         tabBar.standardAppearance = appearance
         tabBar.scrollEdgeAppearance = appearance
     }

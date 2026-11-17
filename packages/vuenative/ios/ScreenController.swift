@@ -93,7 +93,7 @@ final class ScreenController: UIViewController, ContentRoot {
         if additionalSafeAreaInsets.top != -headerOverlap { additionalSafeAreaInsets.top = -headerOverlap }
     }
 
-    /// `items` are [{ title?, systemImage? }]; presses are reported with the side and index, since the
+    /// `items` are [{ title?, systemImage?, svg? }]: an icon shows instead of the title; presses are reported with the side and index, since the
     /// handlers live in JS.
     func setHeaderItems(_ items: Any?, side: String) {
         let descriptions = items as? [[String: Any]] ?? []
@@ -111,7 +111,7 @@ final class ScreenController: UIViewController, ContentRoot {
 
     private func makeBarButtonItem(_ description: [String: Any], side: String, index: Int) -> UIBarButtonItem {
         let title = description["title"] as? String ?? ""
-        let image = (description["systemImage"] as? String).flatMap { UIImage(systemName: $0) }
+        let image = SvgView.iconImage(description, size: 22)
 
         let action = UIAction(title: title, image: image) { [unowned self] _ in
             onEvent?("headeritempress", ["side": side, "index": index])

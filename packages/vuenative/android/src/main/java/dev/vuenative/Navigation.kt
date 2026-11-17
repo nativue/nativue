@@ -33,6 +33,7 @@ private const val ON_SURFACE = 0xFF1D1B20.toInt()
 private const val ON_SURFACE_VARIANT = 0xFF49454F.toInt()
 private const val SURFACE = 0xFFFFFFFF.toInt()
 private const val SCRIM = 0x52000000
+private const val BAR_BACKGROUND = 0xFFF3EDF7.toInt() // Material 3 surface container
 
 fun View.dp(value: Float): Int = (value * resources.displayMetrics.density).roundToInt()
 
@@ -212,7 +213,7 @@ class ScreenHeader(context: Context) : LinearLayout(context) {
             field = value
             navigationButton.color = value ?: ON_SURFACE
             listOf(leftItems, rightItems).forEach { items ->
-                for (index in 0 until items.childCount) (items.getChildAt(index) as TextView).setTextColor(actionColor)
+                for (index in 0 until items.childCount) tint(items.getChildAt(index))
             }
         }
 
@@ -278,21 +279,37 @@ class ScreenHeader(context: Context) : LinearLayout(context) {
         (title.layoutParams as LayoutParams).marginStart = dp(if (icon == null) 12f else 4f)
     }
 
-    /** [{ title?, systemImage? }]; presses are reported with the side and index, since the handlers live in JS. */
+    /**
+     * [{ title?, svg?, systemImage? }]: an svg icon (vuenative-icons) shows as an icon button, otherwise the
+     * title as a text button; SF Symbol names are iOS-only. Presses are reported with the side and index,
+     * since the handlers live in JS.
+     */
     fun setItems(value: Any?, side: String) {
         val items = if (side == "right") rightItems else leftItems
         items.removeAllViews()
 
         (value as? List<*>)?.filterIsInstance<Map<*, *>>()?.forEachIndexed { index, item ->
-            val button = textView(14f, Typeface.BOLD)
-            button.text = item["title"] as? String ?: ""
-            button.setTextColor(actionColor)
-            button.gravity = Gravity.CENTER
-            button.setPadding(dp(12f), 0, dp(12f), 0)
-            button.background = ripple(dp(20f).toFloat())
+            val svg = item["svg"] as? Map<*, *>
+            val button = if (svg != null) IconButton(context).apply { setSvg(svg) } else textButton(item["title"] as? String ?: "")
+            val width = if (svg != null) dp(48f) else LayoutParams.WRAP_CONTENT
+
+            tint(button)
+            button.contentDescription = item["title"] as? String
             button.setOnClickListener { onEvent("headeritempress", mapOf("side" to side, "index" to index)) }
-            items.addView(button, LayoutParams(LayoutParams.WRAP_CONTENT, dp(40f)))
+            items.addView(button, LayoutParams(width, if (svg != null) dp(48f) else dp(40f)))
         }
+    }
+
+    private fun textButton(title: String) = textView(14f, Typeface.BOLD).apply {
+        text = title
+        gravity = Gravity.CENTER
+        setPadding(dp(12f), 0, dp(12f), 0)
+        background = ripple(dp(20f).toFloat())
+    }
+
+    private fun tint(item: View) {
+        (item as? TextView)?.setTextColor(actionColor)
+        (item as? IconButton)?.color = actionColor
     }
 
     private fun textView(size: Float, style: Int) = TextView(context).apply {
@@ -334,6 +351,12 @@ class IconButton(context: Context) : FrameLayout(context) {
     init {
         background = ripple(dp(24f).toFloat())
         addView(icon, LayoutParams(dp(24f), dp(24f), Gravity.CENTER))
+    }
+
+    /** An icon from vuenative-icons: { viewBox, elements }. */
+    fun setSvg(svg: Map<*, *>) {
+        icon.elements = svg["elements"] as? List<*> ?: emptyList<Any>()
+        SvgView.rect(svg["viewBox"])?.let { icon.viewBox = it }
     }
 }
 
@@ -504,6 +527,13 @@ class TabBarView(context: Context) : ContainerView(context) {
             updateItems()
         }
 
+    /** Material's surface container by default. */
+    var barBackgroundColor: Int? = null
+        set(value) {
+            field = value
+            bar.setBackgroundColor(value ?: BAR_BACKGROUND)
+        }
+
     /** Pixels the system navigation bar covers; the bar extends under it. */
     var bottomInset = 0
         set(value) {
@@ -524,7 +554,7 @@ class TabBarView(context: Context) : ContainerView(context) {
 
     init {
         clipChildren = true
-        bar.setBackgroundColor(0xFFF3EDF7.toInt())
+        bar.setBackgroundColor(BAR_BACKGROUND)
         addView(bar)
     }
 

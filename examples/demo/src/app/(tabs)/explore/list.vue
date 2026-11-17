@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, LayoutAnimation, ref, StyleSheet, type Style } from 'vue'
-import { CheckIcon, ChevronRightIcon, PlusIcon } from 'vuenative-icons/lucide'
+import { CheckIcon, ChevronRightIcon, EyeIcon, EyeOffIcon, PlusIcon } from 'vuenative-icons/lucide'
 import { Stack, useRouter } from 'vuenative/router'
 import {
   createItem,
@@ -28,6 +28,7 @@ const screenOptions = computed(() => ({
   headerRight: [
     {
       title: hideDoneItems.value ? 'Show done' : 'Hide done',
+      icon: hideDoneItems.value ? EyeIcon : EyeOffIcon,
       onPress: () => (hideDoneItems.value = !hideDoneItems.value),
     },
   ],

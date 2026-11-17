@@ -56,6 +56,15 @@ final class SvgView: UIView {
         return CGRect(x: numbers[0], y: numbers[1], width: numbers[2], height: numbers[3])
     }
 
+    /// A tab bar or header item's icon: `systemImage` is an SF Symbol name, `svg` ({ viewBox, elements }) an
+    /// icon from vuenative-icons.
+    static func iconImage(_ item: [String: Any], size: CGFloat = 25) -> UIImage? {
+        if let name = item["systemImage"] as? String { return UIImage(systemName: name) }
+        guard let svg = item["svg"] as? [String: Any] else { return nil }
+
+        return templateImage(elements: svg["elements"] as? [[Any]] ?? [], viewBox: svg["viewBox"], size: size)
+    }
+
     /// The elements drawn into a template image (tinted by its container, like SF Symbols), sized like
     /// a tab bar icon.
     static func templateImage(elements: [[Any]], viewBox: Any?, size: CGFloat = 25) -> UIImage {
