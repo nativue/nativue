@@ -86,17 +86,22 @@ final class NativeNode {
             YGNodeSetHasNewLayout(child, false)
 
             let childView = view(of: child)
-            childView.frame = CGRect(
+            let frame = CGRect(
                 x: CGFloat(YGNodeLayoutGetLeft(child)),
                 y: CGFloat(YGNodeLayoutGetTop(child)),
                 width: CGFloat(YGNodeLayoutGetWidth(child)),
                 height: CGFloat(YGNodeLayoutGetHeight(child))
             )
 
+            // Yoga flags whole dirty paths as new layout. Reassigning a scroll view's frame or content
+            // size, even unchanged, makes UIKit readjust its offset and shakes a bounce, so skip no-ops.
+            if childView.frame != frame { childView.frame = frame }
+
             applyFrames(of: child)
 
             if let scrollView = childView as? UIScrollView {
-                scrollView.contentSize = contentSize(of: child)
+                let contentSize = contentSize(of: child)
+                if scrollView.contentSize != contentSize { scrollView.contentSize = contentSize }
             }
 
             if let textInput = childView as? TextInputView {

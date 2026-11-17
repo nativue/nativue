@@ -200,6 +200,14 @@ final class Bridge {
         case "ScrollView":
             return NativeNode(view: VueScrollView(), measuresContent: false)
 
+        case "Image":
+            return NativeNode(view: ImageView(frame: .zero), measuresContent: false)
+
+        case "PressableView":
+            let pressableView = PressableView()
+            pressableView.onEvent = { [unowned self] eventName in dispatchEvent(eventName, toNodeId: id) }
+            return NativeNode(view: pressableView, measuresContent: false)
+
         case "KeyboardAvoidingView":
             let keyboardAvoidingView = KeyboardAvoidingView()
             let node = NativeNode(view: keyboardAvoidingView, measuresContent: false)
@@ -293,8 +301,27 @@ final class Bridge {
         case "keyboardShouldPersistTaps":
             (node.view as? VueScrollView)?.dismissesKeyboardOnTap = (value as? String ?? "never") == "never"
 
+        case "source":
+            (node.view as? ImageView)?.load(value as? String)
+
+        case "resizeMode":
+            node.view.contentMode = ImageView.resizeModes[value as? String ?? ""] ?? .scaleAspectFill
+
+        case "onScroll":
+            (node.view as? VueScrollView)?.onScroll = isTruthyAttribute(value) ? reportScroll(toNodeId: id) : nil
+
+        case "onLongPress":
+            (node.view as? PressableView)?.reportsLongPress = isTruthyAttribute(value)
+
         default:
             break // event props (onPress...): the handler lives in JS
+        }
+    }
+
+    private func reportScroll(toNodeId id: Int) -> (CGRect) -> Void {
+        { [unowned self] bounds in
+            let payload = ["x": bounds.minX, "y": bounds.minY, "width": bounds.width, "height": bounds.height]
+            dispatchEvent("scroll", toNodeId: id, payload: payload)
         }
     }
 

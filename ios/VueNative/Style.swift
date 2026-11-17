@@ -1,15 +1,16 @@
 import UIKit
 import yoga
 
-// ponytail: removed properties arrive as null and keep their last value; reset them when it matters.
+// ponytail: removed layout properties arrive as null and keep their last value; reset them to Yoga's
+// defaults when it matters. Visual properties already fall back to UIKit's defaults on null.
 extension NativeNode {
     /// Receives only the properties that changed: the JS renderer diffs style objects before sending.
     func applyStyle(_ changes: [String: Any]) {
-        for (property, value) in changes where !(value is NSNull) {
+        for (property, value) in changes {
             if isDrivenByNativeView(property) { continue }
 
             if let applyLayoutProperty = layoutPropertySetters[property] {
-                applyLayoutProperty(yogaNode, value)
+                if !(value is NSNull) { applyLayoutProperty(yogaNode, value) }
             } else {
                 applyVisualProperty(property, value)
             }

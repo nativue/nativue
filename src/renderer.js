@@ -1,6 +1,7 @@
 // Custom renderer: instead of the DOM, operations are sent to the native side (globalThis.__native).
 import { camelize, createRenderer } from '@vue/runtime-core'
 import { COLOR_PROPERTIES, processColor } from './colors.js'
+import { FlatList, Pressable } from './components.js'
 export * from '@vue/runtime-core'
 
 const native = globalThis.__native
@@ -71,6 +72,11 @@ function patchStyle(element, previousStyle, nextStyle) {
   native.setProp(element.id, 'style', changes)
 }
 
+// <Image :source="logo" /> or :source="{ uri }", like React Native.
+function nativePropValue(key, value) {
+  return key === 'source' ? (value?.uri ?? value) : value
+}
+
 function patchEventHandler(element, key, handler) {
   const eventName = key.slice(2).toLowerCase()
   eventHandlersByNodeId[element.id] ??= {}
@@ -139,7 +145,7 @@ const { createApp: createBaseApp } = createRenderer({
   patchProp(element, key, previousValue, nextValue) {
     if (key === 'style') patchStyle(element, previousValue, nextValue)
     else if (isEventProp(key)) patchEventHandler(element, key, nextValue)
-    else native.setProp(element.id, camelize(key), nextValue ?? null) // keyboard-type -> keyboardType
+    else native.setProp(element.id, camelize(key), nativePropValue(key, nextValue) ?? null) // keyboard-type -> keyboardType
   },
 })
 
@@ -177,6 +183,9 @@ const rootNode = { id: 0, type: 'root', parent: null, children: [] }
 export function createApp(...args) {
   const app = createBaseApp(...args)
   const mountOnContainer = app.mount
+
+  app.component('Pressable', Pressable)
+  app.component('FlatList', FlatList)
   app.mount = () => mountOnContainer(rootNode)
 
   return app

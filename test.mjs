@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs'
 import assert from 'node:assert'
 import { processColor } from './src/colors.js'
 
-const viewsById = { 0: { type: 'root', children: [], props: {} } }
+const ITEM_HEIGHT = 60
+const viewsById = { 0: { type: 'root', children: [], props: {}, style: {} } }
 let keyboardDismissCount = 0
 
 function detachEverywhere(childId) {
@@ -13,7 +14,7 @@ function detachEverywhere(childId) {
 }
 
 globalThis.__native = {
-  create: (id, type) => (viewsById[id] = { type, children: [], props: {} }),
+  create: (id, type) => (viewsById[id] = { type, children: [], props: {}, style: {} }),
 
   insert: (parentId, childId, index) => {
     detachEverywhere(childId)
@@ -22,7 +23,11 @@ globalThis.__native = {
 
   remove: (id) => detachEverywhere(id),
 
-  setProp: (id, key, value) => (viewsById[id].props[key] = value),
+  // Style arrives as a diff, so merge it like the native side does.
+  setProp: (id, key, value) => {
+    if (key === 'style') Object.assign(viewsById[id].style, value)
+    else viewsById[id].props[key] = value
+  },
 
   setText: (id, text) => (viewsById[id].text = text),
 
@@ -32,15 +37,19 @@ globalThis.__native = {
 ;(0, eval)(readFileSync('ios/VueNative/main.bundle.js', 'utf8'))
 
 // Walks the tree from the root, so removed views don't count.
-function renderedTexts(viewId = 0) {
-  const view = viewsById[viewId]
-  const ownText = view.type === 'Text' ? [view.text] : []
+function renderedViewIds(viewId = 0) {
+  return [viewId, ...viewsById[viewId].children.flatMap((childId) => renderedViewIds(childId))]
+}
 
-  return [...ownText, ...view.children.flatMap((childId) => renderedTexts(childId))]
+function renderedTexts() {
+  return renderedViewIds()
+    .map((id) => viewsById[id])
+    .filter((view) => view.type === 'Text')
+    .map((view) => view.text)
 }
 
 function findViewId(predicate) {
-  return Number(Object.keys(viewsById).find((id) => predicate(viewsById[id])))
+  return renderedViewIds().find((id) => predicate(viewsById[id]))
 }
 
 function pressButton(title, times = 1) {
@@ -48,35 +57,99 @@ function pressButton(title, times = 1) {
   for (let press = 0; press < times; press++) globalThis.__dispatch(buttonId, 'press')
 }
 
+function scrollList(y, height = 600) {
+  globalThis.__dispatch(scrollViewId, 'scroll', { x: 0, y, width: 300, height })
+}
+
+function renderedRows() {
+  return viewsById[scrollView.children[0]].children.length
+}
+
+function pressableShowing(text) {
+  return findViewId(
+    (view) =>
+      view.type === 'PressableView' &&
+      view.children.some((childId) => viewsById[childId].text?.endsWith(text)),
+  )
+}
+
+const settle = () => new Promise((resolve) => setTimeout(resolve))
+
 const safeAreaView = viewsById[viewsById[0].children[0]]
-const scrollView = viewsById[findViewId((view) => view.type === 'ScrollView')]
+const scrollViewId = findViewId((view) => view.type === 'ScrollView')
+const scrollView = viewsById[scrollViewId]
 const textInputId = findViewId((view) => view.type === 'TextInput')
+const image = viewsById[findViewId((view) => view.type === 'Image')]
 
 assert.equal(safeAreaView.type, 'SafeAreaView')
-assert.equal(scrollView.children.length, 20)
 assert.equal(viewsById[textInputId].props.value, '')
-assert.equal(scrollView.props.keyboardDismissMode, 'interactive') // kebab-case attribute arrives camelized
+assert.match(image.props.source, /^data:image\/png;base64,/) // imported asset is inlined
+assert.equal(image.props.resizeMode, 'contain') // kebab-case attribute arrives camelized
+assert.equal(scrollView.props.onScroll, true)
 
-// Typing updates v-model; adding pushes the typed text and clears the input.
+// FlatList renders a window of rows; the rest is padding.
+assert.equal(renderedRows(), 10)
+
+scrollList(6000)
+await settle()
+
+const listWindow = viewsById[scrollView.children[0]].style
+assert.equal(renderedRows(), 30)
+assert.equal(listWindow.paddingTop, 90 * ITEM_HEIGHT)
+assert.equal(listWindow.paddingBottom, (1000 - 120) * ITEM_HEIGHT)
+assert.ok(renderedTexts().includes('Item 101'))
+assert.ok(!renderedTexts().includes('Item 1'))
+
+scrollList(0)
+await settle()
+
+// Bouncing past the top reports a negative offset; the window must stay put.
+const rowsAtTop = renderedRows()
+scrollList(-150)
+await settle()
+assert.equal(renderedRows(), rowsAtTop)
+
+// Pressable: pressed-style applies while pressed; press toggles, long press removes.
+
+const firstRowId = pressableShowing('Item 1')
+globalThis.__dispatch(firstRowId, 'pressin')
+await settle()
+assert.equal(viewsById[firstRowId].style.opacity, 0.5)
+
+globalThis.__dispatch(firstRowId, 'pressout')
+globalThis.__dispatch(firstRowId, 'press')
+await settle()
+assert.equal(viewsById[firstRowId].style.opacity, null) // removed: native resets it
+assert.equal(viewsById[firstRowId].style.backgroundColor, processColor('#d8f3e6'))
+assert.ok(renderedTexts().includes('✓ Item 1'))
+
+globalThis.__dispatch(pressableShowing('Item 2'), 'longpress')
+await settle()
+assert.ok(!renderedTexts().includes('Item 2'))
+assert.ok(renderedTexts().includes('999 itens'))
+
+// Typing updates v-model; adding appends the typed text and clears the input.
 globalThis.__dispatch(textInputId, 'changetext', 'Comprar pão')
 pressButton('Adicionar')
-await Promise.resolve()
+await settle()
 
-assert.equal(scrollView.children.length, 21)
-assert.ok(renderedTexts().includes('Comprar pão'))
 assert.equal(viewsById[textInputId].props.value, '')
+assert.ok(renderedTexts().includes('1000 itens'))
+
+scrollList(1000 * ITEM_HEIGHT - 600)
+await settle()
+assert.ok(renderedTexts().includes('Comprar pão'))
 
 // Return key (submitEditing) adds too.
 globalThis.__dispatch(textInputId, 'changetext', 'Pagar contas')
 globalThis.__dispatch(textInputId, 'submitediting', 'Pagar contas')
-await Promise.resolve()
-
+await settle()
 assert.ok(renderedTexts().includes('Pagar contas'))
 
 pressButton('Remover último', 2)
-await Promise.resolve()
+await settle()
 
-assert.equal(scrollView.children.length, 20)
+assert.ok(renderedTexts().includes('999 itens'))
 assert.ok(!renderedTexts().includes('Pagar contas'))
 assert.equal(keyboardDismissCount, 2)
 

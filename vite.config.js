@@ -10,6 +10,7 @@ const nativeComponentTags = [
   'SafeAreaView',
   'TextInput',
   'KeyboardAvoidingView',
+  'Image',
 ]
 
 export default defineConfig(({ mode }) => ({

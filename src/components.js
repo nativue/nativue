@@ -1,0 +1,99 @@
+// Components built in JS on top of native primitives, like React Native's Pressable and FlatList.
+import { computed, defineComponent, h, ref } from '@vue/runtime-core'
+
+// Vue's template compiler normalizes `:style`, dropping React Native's style function, so the pressed
+// look goes in `pressed-style`, merged over `style` while pressed. The slot also receives { pressed }.
+export const Pressable = defineComponent({
+  name: 'Pressable',
+  inheritAttrs: false,
+  props: { style: Object, pressedStyle: Object },
+
+  setup(props, { attrs, slots }) {
+    const pressed = ref(false)
+
+    function setPressed(value, listener) {
+      return (payload) => {
+        pressed.value = value
+        listener?.(payload)
+      }
+    }
+
+    return () => {
+      const style = pressed.value ? { ...props.style, ...props.pressedStyle } : props.style
+
+      return h(
+        'PressableView',
+        {
+          ...attrs,
+          style,
+          onPressIn: setPressed(true, attrs.onPressIn),
+          onPressOut: setPressed(false, attrs.onPressOut),
+        },
+        slots.default?.({ pressed: pressed.value }),
+      )
+    }
+  },
+})
+
+const OFFSCREEN_ROWS_RENDERED = 10
+
+// Renders only the rows near the visible area; the rest is empty padding of the same height.
+// ponytail: rows have a fixed `itemHeight` (React Native's getItemLayout); measure rows natively if
+// variable heights are ever needed. Vertical only.
+export const FlatList = defineComponent({
+  name: 'FlatList',
+  props: {
+    data: { type: Array, required: true },
+    itemHeight: { type: Number, required: true },
+    keyExtractor: { type: Function, default: (_item, index) => index },
+    style: Object,
+  },
+
+  setup(props, { slots }) {
+    // Whole rows, so scrolling within a row doesn't re-render (refs ignore same-value writes).
+    const firstVisibleRow = ref(0)
+    const visibleRowCount = ref(0)
+
+    const visibleRange = computed(() => {
+      const start = Math.max(0, firstVisibleRow.value - OFFSCREEN_ROWS_RENDERED)
+      const end = Math.min(
+        props.data.length,
+        firstVisibleRow.value + visibleRowCount.value + OFFSCREEN_ROWS_RENDERED,
+      )
+
+      return { start, end }
+    })
+
+    // Bouncing past either edge reports offsets outside the list: clamp them, or the window (and the
+    // layout) would change on every frame of the bounce.
+    function handleScroll({ y, height }) {
+      const maxScrollTop = Math.max(0, props.data.length * props.itemHeight - height)
+      const scrollTop = Math.min(Math.max(y, 0), maxScrollTop)
+
+      firstVisibleRow.value = Math.floor(scrollTop / props.itemHeight)
+      visibleRowCount.value = Math.ceil(height / props.itemHeight)
+    }
+
+    function renderRow(item, offset) {
+      const index = visibleRange.value.start + offset
+
+      return h(
+        'View',
+        { key: props.keyExtractor(item, index), style: { height: props.itemHeight } },
+        slots.item?.({ item, index }),
+      )
+    }
+
+    return () => {
+      const { start, end } = visibleRange.value
+      const window = {
+        paddingTop: start * props.itemHeight,
+        paddingBottom: (props.data.length - end) * props.itemHeight,
+      }
+
+      return h('ScrollView', { style: props.style, onScroll: handleScroll }, [
+        h('View', { style: window }, props.data.slice(start, end).map(renderRow)),
+      ])
+    }
+  },
+})
