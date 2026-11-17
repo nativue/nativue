@@ -11,6 +11,10 @@
     "build": "npm run build -w demo",
     "test": "npm test -w vuenative",
     "benchmark": "npm run benchmark -w vuenative",
-    "typecheck": "npm run typecheck --workspaces"
+    "typecheck": "npm run typecheck --workspaces",
+    "format": "prettier --write packages examples"
+  },
+  "devDependencies": {
+    "prettier": "^3.10.1"
   }
 }

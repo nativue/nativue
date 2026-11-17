@@ -1,13 +1,25 @@
 <script setup lang="ts">
-import { Link, Stack } from 'vuenative/router'
+import { StyleSheet } from 'vue'
+import { Link, Stack, usePathname } from 'vuenative/router'
+import Page from '../components/Page.vue'
+import { colors } from '../theme'
+
+const pathname = usePathname()
+
+const styles = StyleSheet.create({
+  title: { fontSize: 28, fontWeight: '800', color: colors.text },
+  body: { fontSize: 17, color: colors.secondaryText },
+  link: { fontSize: 17, fontWeight: '600', color: colors.green },
+})
 </script>
 
 <template>
-  <View :style="{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 }">
-    <Stack.Screen :options="{ title: 'Ops!' }" />
-    <Text :style="{ fontSize: 17 }">Essa tela não existe.</Text>
+  <Page>
+    <Stack.Screen :options="{ title: 'Not found' }" />
+    <Text :style="styles.title">Nothing at {{ pathname }}</Text>
+    <Text :style="styles.body">This screen doesn't exist.</Text>
     <Link href="/">
-      <Text :style="{ fontSize: 17, color: '#42b883' }">Voltar para o início</Text>
+      <Text :style="styles.link">Go to the start ›</Text>
     </Link>
-  </View>
+  </Page>
 </template>

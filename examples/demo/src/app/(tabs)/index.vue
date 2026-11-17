@@ -1,159 +1,256 @@
+<!-- Onboarding: three pages swiped natively; their content and the dots follow the scroll on the
+     native driver (no JS per frame). -->
 <script setup lang="ts">
-import { computed, LayoutAnimation, ref, StyleSheet, type Style } from 'vue'
+import { Animated, Dimensions, onMounted, onUnmounted, StyleSheet } from 'vue'
+import {
+  CodeIcon,
+  DatabaseIcon,
+  FlameIcon,
+  GlobeIcon,
+  HandIcon,
+  PanelsTopLeftIcon,
+  RouteIcon,
+  RulerIcon,
+  SmartphoneIcon,
+  SparklesIcon,
+  ZapIcon,
+} from 'vuenative-icons/lucide'
 import { useRouter } from 'vuenative/router'
 import logo from '../../assets/vue-logo.png'
-import { createItem, createItems, hideDoneItems, items, removeItem, type Item } from '../../store'
+import IconTile from '../../components/IconTile.vue'
+import PrimaryButton from '../../components/PrimaryButton.vue'
+import { cardShadow, colors, radius, spacing } from '../../theme'
 
-const ITEM_HEIGHT = 60
+const PAGE_COUNT = 3
+
+const FEATURES = [
+  {
+    icon: SmartphoneIcon,
+    tint: colors.blue,
+    title: 'Real native views',
+    text: 'No web view, no DOM.',
+  },
+  {
+    icon: RulerIcon,
+    tint: colors.orange,
+    title: 'Yoga flexbox',
+    text: 'Same layout as React Native.',
+  },
+  {
+    icon: ZapIcon,
+    tint: colors.purple,
+    title: 'Native driver',
+    text: 'Animations off the JS thread.',
+  },
+]
+
+const CAPABILITIES = [
+  { icon: RouteIcon, label: 'File-based router' },
+  { icon: PanelsTopLeftIcon, label: 'Tabs & stacks' },
+  { icon: SparklesIcon, label: 'Animated' },
+  { icon: HandIcon, label: 'Gestures' },
+  { icon: DatabaseIcon, label: 'AsyncStorage' },
+  { icon: GlobeIcon, label: 'fetch' },
+  { icon: CodeIcon, label: 'TypeScript' },
+  { icon: FlameIcon, label: 'Hot reload' },
+  { icon: SmartphoneIcon, label: 'iOS & Android' },
+]
 
 const router = useRouter()
-const newItemText = ref('')
-const refreshing = ref(false)
+const { width: pageWidth } = Dimensions.get('window')
 
-const visibleItems = computed(() =>
-  hideDoneItems.value ? items.value.filter((item) => !item.done) : items.value,
-)
+const scrollX = new Animated.Value(0)
+const float = new Animated.Value(0)
+const floatLoop = Animated.loop(Animated.timing(float, { toValue: 1, duration: 3200 }))
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, paddingHorizontal: 24, paddingTop: 8, gap: 16 },
-  subtitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  subtitle: { fontSize: 15, color: '#8e8e93' },
-  logo: { width: 32, height: 32, alignSelf: 'center', marginTop: 12 },
-  form: { flexDirection: 'row', gap: 12 },
-  input: {
-    flex: 1,
-    height: 52,
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#d1d1d6',
-    fontSize: 17,
-  },
-  list: { flex: 1 },
-  row: { flex: 1, marginBottom: 8 },
-  action: { width: 88, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  doneAction: { marginRight: 8, backgroundColor: '#42b883' },
-  deleteAction: { marginLeft: 8, backgroundColor: '#ff3b30' },
-  actionText: { color: '#ffffff', fontSize: 15, fontWeight: '600' },
-  listNote: { paddingVertical: 12, textAlign: 'center', color: '#8e8e93', fontSize: 13 },
-  button: {
-    height: 52,
-    paddingHorizontal: 20,
-    borderRadius: 14,
-    backgroundColor: '#42b883',
-    color: '#ffffff',
-    fontSize: 17,
-    fontWeight: '600',
-  },
-})
+const handleScroll = Animated.event({ x: scrollX })
 
-function itemStyle(item: Item): Style {
+const logoFloat = [
+  { translateY: float.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, -14, 0] }) },
+  { rotate: float.interpolate({ inputRange: [0, 0.5, 1], outputRange: ['0deg', '4deg', '0deg'] }) },
+]
+
+// Input range around page `index`: before it, on it, after it.
+function aroundPage(index: number) {
+  return [(index - 1) * pageWidth, index * pageWidth, (index + 1) * pageWidth]
+}
+
+// The content slides slower than the page and fades at the edges: a parallax.
+function parallaxStyle(index: number) {
+  const inputRange = aroundPage(index)
+
   return {
-    flex: 1,
-    paddingHorizontal: 16,
-    justifyContent: 'center',
-    borderRadius: 12,
-    backgroundColor: item.done ? '#d8f3e6' : '#f2f2f7',
+    opacity: scrollX.interpolate({ inputRange, outputRange: [0, 1, 0], extrapolate: 'clamp' }),
+    transform: [
+      {
+        translateX: scrollX.interpolate({
+          inputRange,
+          outputRange: [pageWidth * 0.35, 0, -pageWidth * 0.35],
+          extrapolate: 'clamp',
+        }),
+      },
+    ],
   }
 }
 
-// The rows below slide up into place.
-function removeWithAnimation(item: Item) {
-  LayoutAnimation.configureNext()
-  removeItem(item)
+function dotStyle(index: number) {
+  const inputRange = aroundPage(index)
+
+  return {
+    opacity: scrollX.interpolate({
+      inputRange,
+      outputRange: [0.25, 1, 0.25],
+      extrapolate: 'clamp',
+    }),
+    transform: [
+      {
+        scale: scrollX.interpolate({ inputRange, outputRange: [1, 1.5, 1], extrapolate: 'clamp' }),
+      },
+    ],
+  }
 }
 
-function addItem() {
-  const text = newItemText.value.trim() || `Item ${items.value.length + 1}`
+const pageParallax = Array.from({ length: PAGE_COUNT }, (_, index) => parallaxStyle(index))
+const dots = Array.from({ length: PAGE_COUNT }, (_, index) => dotStyle(index))
 
-  LayoutAnimation.configureNext()
-  items.value.push(createItem(text))
-  newItemText.value = ''
-}
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.surface },
+  glowTop: {
+    position: 'absolute',
+    top: -120,
+    right: -120,
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    backgroundColor: colors.greenSoft,
+  },
+  glowBottom: {
+    position: 'absolute',
+    bottom: 80,
+    left: -140,
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    backgroundColor: colors.navySoft,
+  },
+  pager: { flex: 1 },
+  page: { paddingHorizontal: 32, justifyContent: 'center' },
+  pageContent: { gap: spacing.large },
+  kicker: { fontSize: 13, fontWeight: '700', color: colors.green },
+  title: { fontSize: 38, fontWeight: '800', color: colors.navy },
+  body: { fontSize: 18, color: colors.secondaryText },
+  logoHalo: {
+    width: 168,
+    height: 168,
+    borderRadius: 84,
+    backgroundColor: colors.greenSoft,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.medium,
+  },
+  logoCore: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: colors.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    ...cardShadow,
+  },
+  logo: { width: 72, height: 72 },
+  featureCard: {
+    padding: spacing.medium,
+    gap: spacing.medium,
+    borderRadius: radius.large,
+    backgroundColor: colors.surface,
+    ...cardShadow,
+  },
+  feature: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  featureTexts: { flex: 1, gap: 2 },
+  featureTitle: { fontSize: 17, fontWeight: '600', color: colors.text },
+  featureText: { fontSize: 15, color: colors.secondaryText },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: colors.background,
+  },
+  chipText: { fontSize: 15, fontWeight: '500', color: colors.navy },
+  footer: { paddingHorizontal: 32, paddingBottom: spacing.large, gap: spacing.large },
+  dots: { flexDirection: 'row', justifyContent: 'center', gap: 12 },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.green },
+})
 
-// Simulates a reload from a server.
-function refresh() {
-  refreshing.value = true
-
-  setTimeout(() => {
-    items.value = createItems()
-    refreshing.value = false
-  }, 800)
-}
+onMounted(() => floatLoop.start())
+onUnmounted(() => floatLoop.stop())
 </script>
 
 <template>
-  <View :style="styles.screen">
-    <View :style="styles.subtitleRow">
-      <Text :style="styles.subtitle">{{ items.length }} itens</Text>
-      <ActivityIndicator v-if="refreshing" color="#8e8e93" />
-    </View>
+  <SafeAreaView :style="styles.screen">
+    <View :style="styles.glowTop" />
+    <View :style="styles.glowBottom" />
 
-    <View :style="styles.form">
-      <TextInput
-        v-model="newItemText"
-        placeholder="Novo item"
-        :style="styles.input"
-        @submit-editing="addItem"
-      />
-      <Button title="Adicionar" :style="styles.button" @press="addItem" />
-    </View>
-
-    <!-- Reaches the bottom edge and scrolls under the tab bar; the inset keeps the last rows reachable. -->
-    <FlatList
-      :data="visibleItems"
-      :item-height="ITEM_HEIGHT"
-      :key-extractor="(item) => item.id"
-      :style="styles.list"
-      :refreshing="refreshing"
-      content-inset-adjustment-behavior="automatic"
-      @refresh="refresh"
+    <ScrollView
+      horizontal
+      paging-enabled
+      :shows-horizontal-scroll-indicator="false"
+      :style="styles.pager"
+      :on-scroll="handleScroll"
     >
-      <template #header>
-        <Text :style="styles.listNote">Puxe para atualizar</Text>
-      </template>
+      <View :style="{ ...styles.page, width: pageWidth }">
+        <View :style="{ ...styles.pageContent, ...pageParallax[0] }">
+          <View :style="{ ...styles.logoHalo, transform: logoFloat }">
+            <View :style="styles.logoCore">
+              <Image :source="logo" resize-mode="contain" :style="styles.logo" />
+            </View>
+          </View>
+          <Text :style="styles.kicker">WELCOME TO VUE NATIVE</Text>
+          <Text :style="styles.title">Vue, but truly native.</Text>
+          <Text :style="styles.body">
+            Write the Vue you already know. Ship real native apps for iOS and Android.
+          </Text>
+        </View>
+      </View>
 
-      <template #item="{ item }">
-        <Swipeable :style="styles.row">
-          <template #left-actions>
-            <Pressable
-              :style="{ ...styles.action, ...styles.doneAction }"
-              :pressed-style="{ opacity: 0.6 }"
-              @press="item.done = !item.done"
-            >
-              <Text :style="styles.actionText">{{ item.done ? 'Reabrir' : 'Concluir' }}</Text>
-            </Pressable>
-          </template>
+      <View :style="{ ...styles.page, width: pageWidth }">
+        <View :style="{ ...styles.pageContent, ...pageParallax[1] }">
+          <Text :style="styles.kicker">FAST BY DEFAULT</Text>
+          <Text :style="styles.title">Native, all the way down.</Text>
+          <View :style="styles.featureCard">
+            <View v-for="feature in FEATURES" :key="feature.title" :style="styles.feature">
+              <IconTile :icon="feature.icon" :tint="feature.tint" :size="44" />
+              <View :style="styles.featureTexts">
+                <Text :style="styles.featureTitle">{{ feature.title }}</Text>
+                <Text :style="styles.featureText">{{ feature.text }}</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
 
-          <template #right-actions>
-            <Pressable
-              :style="{ ...styles.action, ...styles.deleteAction }"
-              :pressed-style="{ opacity: 0.6 }"
-              @press="removeWithAnimation(item)"
-            >
-              <Text :style="styles.actionText">Apagar</Text>
-            </Pressable>
-          </template>
+      <View :style="{ ...styles.page, width: pageWidth }">
+        <View :style="{ ...styles.pageContent, ...pageParallax[2] }">
+          <Text :style="styles.kicker">BATTERIES INCLUDED</Text>
+          <Text :style="styles.title">Everything an app needs.</Text>
+          <View :style="styles.chips">
+            <View v-for="capability in CAPABILITIES" :key="capability.label" :style="styles.chip">
+              <component :is="capability.icon" :size="16" :color="colors.green" />
+              <Text :style="styles.chipText">{{ capability.label }}</Text>
+            </View>
+          </View>
+        </View>
+      </View>
+    </ScrollView>
 
-          <Pressable
-            :style="itemStyle(item)"
-            :pressed-style="{ opacity: 0.5 }"
-            @press="router.push(`/items/${item.id}`)"
-            @long-press="removeWithAnimation(item)"
-          >
-            <Text>{{ item.done ? '✓ ' : '' }}{{ item.text }}</Text>
-          </Pressable>
-        </Swipeable>
-      </template>
-
-      <template #empty>
-        <Text :style="styles.listNote">Nenhum item</Text>
-      </template>
-
-      <template #footer>
-        <Image :source="logo" resize-mode="contain" :style="styles.logo" />
-        <Text :style="styles.listNote">Fim da lista</Text>
-      </template>
-    </FlatList>
-  </View>
+    <View :style="styles.footer">
+      <View :style="styles.dots">
+        <View v-for="(dot, index) in dots" :key="index" :style="{ ...styles.dot, ...dot }" />
+      </View>
+      <PrimaryButton title="Start exploring" @press="router.navigate('/explore')" />
+    </View>
+  </SafeAreaView>
 </template>

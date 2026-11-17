@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs'
 import assert from 'node:assert'
 import { processColor } from '../src/colors.ts'
 
-const ITEM_HEIGHT = 60
+const ROW_HEIGHT = 64
+const WINDOW = { width: 390, height: 844 }
 const viewsById = { 0: { type: 'root', children: [], props: {}, style: {} } }
 let keyboardDismissCount = 0
 const layoutAnimations = []
@@ -22,6 +23,8 @@ function detachEverywhere(childId) {
 }
 
 globalThis.__native = {
+  windowSize: () => WINDOW,
+
   create: (id, type) => (viewsById[id] = { type, children: [], props: {}, style: {} }),
 
   insert: (parentId, childId, index) => {
@@ -90,32 +93,37 @@ function renderedTexts(viewId = 0) {
 }
 
 function findViewId(predicate, rootId = 0) {
-  const viewId = renderedViewIds(rootId).find((id) => predicate(viewsById[id]))
+  const viewId = renderedViewIds(rootId).find((id) => predicate(viewsById[id], id))
   assert.ok(viewId !== undefined, `no rendered view matches ${predicate}`)
 
   return viewId
+}
+
+// Excludes the root itself: a tab's own <Screen> is not the screen inside it.
+function descendantOfType(rootId, type) {
+  return findViewId((view) => view.type === type && view !== viewsById[rootId], rootId)
 }
 
 function press(viewId, eventName = 'press') {
   globalThis.__dispatch(viewId, eventName)
 }
 
-function pressButton(title, times = 1, rootId = 0) {
-  const buttonId = findViewId(
-    (view) => view.type === 'Button' && view.props.title === title,
+function buttonTitled(title, rootId = 0) {
+  return findViewId((view) => view.type === 'Button' && view.props.title === title, rootId)
+}
+
+// The outermost Pressable (or Link) showing `text`.
+function pressableContaining(text, rootId = 0) {
+  return findViewId(
+    (view, id) => view.type === 'PressableView' && renderedTexts(id).includes(text),
     rootId,
   )
-  for (let count = 0; count < times; count++) press(buttonId)
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve))
 
 const childScreenIds = (containerId) =>
   viewsById[containerId].children.filter((id) => viewsById[id].type === 'Screen')
-// Excludes the root itself: a tab's own <Screen> is not the screen inside it.
-function descendantOfType(rootId, type) {
-  return findViewId((view) => view.type === type && view !== viewsById[rootId], rootId)
-}
 
 const rootStackId = viewsById[0].children[0]
 const rootScreenIds = () => childScreenIds(rootStackId)
@@ -123,184 +131,364 @@ const topRootScreenId = () => rootScreenIds().at(-1)
 
 const tabBarId = findViewId((view) => view.type === 'TabBar')
 const tabBar = viewsById[tabBarId]
-const tabScreenIds = () => childScreenIds(tabBarId)
-const [listTabId, exploreTabId, settingsTabId] = tabScreenIds()
+const [welcomeTabId, exploreTabId] = childScreenIds(tabBarId)
 const exploreStackId = () => descendantOfType(exploreTabId, 'ScreenStack') // lazy tab
+const exploreScreenIds = () => childScreenIds(exploreStackId())
+const topExploreScreenId = () => exploreScreenIds().at(-1)
+const titleOf = (screenId) => viewsById[screenId].props.title
 
-const scrollViewId = findViewId((view) => view.type === 'ScrollView')
-const scrollView = viewsById[scrollViewId]
-const textInputId = findViewId((view) => view.type === 'TextInput')
+async function open(url) {
+  globalThis.__openURL(`vuenative://${url}`)
+  await settle()
 
-function scrollList(y, height = 600) {
-  globalThis.__dispatch(scrollViewId, 'scroll', { x: 0, y, width: 300, height })
+  return topExploreScreenId()
 }
 
-// The rows container is the ScrollView child carrying the windowing padding.
-function listWindow() {
-  return viewsById[scrollView.children.find((id) => 'paddingTop' in viewsById[id].style)]
-}
-
-function renderedRows() {
-  return listWindow().children.length
-}
-
-function pressableShowing(text, rootId = 0) {
-  return findViewId(
-    (view) =>
-      view.type === 'PressableView' &&
-      view.children.some((childId) => viewsById[childId].text?.endsWith(text)),
-    rootId,
-  )
-}
-
-function selectTab(index) {
-  globalThis.__dispatch(tabBarId, 'tabchange', { index })
-}
-
-// ---------- Router: layouts, tabs and headers ----------
+// ---------- Router: layouts and tabs ----------
 
 assert.equal(viewsById[rootStackId].type, 'ScreenStack')
 assert.equal(rootScreenIds().length, 1)
 assert.equal(viewsById[rootScreenIds()[0]].props.headerShown, false) // (tabs) brings its own headers
 
 assert.deepEqual(
-  tabScreenIds().map((id) => viewsById[id].props.tabBarItem),
+  childScreenIds(tabBarId).map((id) => viewsById[id].props.tabBarItem),
   [
-    { label: 'Lista', systemImage: 'list.bullet', badge: undefined },
-    { label: 'Explorar', systemImage: 'safari', badge: undefined },
-    { label: 'Ajustes', systemImage: 'gearshape', badge: undefined },
+    { label: 'Welcome', systemImage: 'sparkles', badge: undefined },
+    { label: 'Explore', systemImage: 'square.grid.2x2', badge: undefined },
   ],
 )
 assert.equal(tabBar.props.selectedIndex, 0)
 
-// A page tab gets a single-screen stack for its header.
-const listScreen = viewsById[descendantOfType(listTabId, 'Screen')]
-assert.equal(listScreen.props.title, 'Vue Native') // title from <Tabs.Screen>
-assert.equal(listScreen.props.headerShown, true)
+// A page tab gets a single-screen stack for its header, hidden here.
+assert.equal(viewsById[descendantOfType(welcomeTabId, 'Screen')].props.headerShown, false)
 
-// ---------- Components on the list tab ----------
+// ---------- Welcome: a native pager driven by Animated ----------
 
-const image = viewsById[findViewId((view) => view.type === 'Image')]
-assert.match(image.props.source, /^data:image\/png;base64,/) // imported asset is inlined
-assert.equal(image.props.resizeMode, 'contain') // kebab-case attribute arrives camelized
-assert.equal(viewsById[textInputId].props.value, '')
+const pagerId = findViewId((view) => view.type === 'ScrollView', welcomeTabId)
+const pager = viewsById[pagerId]
+assert.equal(pager.props.horizontal, '') // boolean attribute
+assert.equal(pager.props.pagingEnabled, '')
+assert.equal(pager.props.showsHorizontalScrollIndicator, false)
+assert.deepEqual(Object.keys(animated.events[pagerId].scroll), ['x'])
+assert.equal(pager.props.onScroll, false) // no JS per scroll frame
 
-// FlatList renders a window of rows; the rest is padding.
-assert.equal(renderedRows(), 10)
+// Pages are as wide as the window (Dimensions); their content fades with the scroll.
+const pageIds = pager.children
+assert.equal(pageIds.length, 3)
+assert.ok(pageIds.every((id) => viewsById[id].style.width === WINDOW.width))
+const firstPageContentId = viewsById[pageIds[0]].children[0]
+const firstPageFade = animated.nodes[animated.styles[firstPageContentId].opacity]
+assert.deepEqual(firstPageFade.inputRange, [-WINDOW.width, 0, WINDOW.width])
+assert.equal(animated.started.filter((animation) => animation.iterations === -1).length, 1) // logo float
 
-scrollList(6000)
+// Text is trimmed, so it can wrap onto its own lines in templates.
+assert.ok(
+  renderedTexts(welcomeTabId).includes(
+    'Write the Vue you already know. Ship real native apps for iOS and Android.',
+  ),
+)
+
+// Shadows cross the bridge like colors.
+assert.ok(
+  renderedViewIds(welcomeTabId).some(
+    (id) => viewsById[id].style.shadowColor === processColor('#000000'),
+  ),
+)
+
+// Lazy tab: nothing mounted until opened; navigating there mounts it on its first screen.
+assert.equal(viewsById[exploreTabId].children.length, 0)
+
+press(pressableContaining('Start exploring', welcomeTabId))
 await settle()
+assert.equal(tabBar.props.selectedIndex, 1)
+assert.deepEqual(exploreScreenIds().map(titleOf), ['Explore'])
+assert.equal(viewsById[exploreScreenIds()[0]].props.headerShown, false) // its own header in the content
 
-assert.equal(renderedRows(), 30)
-assert.equal(listWindow().style.paddingTop, 90 * ITEM_HEIGHT)
-assert.equal(listWindow().style.paddingBottom, (1000 - 120) * ITEM_HEIGHT)
-assert.ok(renderedTexts().includes('Item 101'))
-assert.ok(!renderedTexts().includes('Item 1'))
+// ---------- Explore catalog ----------
+
+const catalogId = exploreScreenIds()[0]
+for (const title of ['Components', 'Lists', 'Animations', 'Gestures', 'Navigation', 'Data']) {
+  assert.ok(renderedTexts(catalogId).includes(title), title)
+}
+
+press(pressableContaining('Components', catalogId)) // <Link> inside <DemoRow>
+await settle()
+assert.deepEqual(exploreScreenIds().map(titleOf), ['Explore', 'Components'])
+assert.equal(rootScreenIds().length, 1) // pushed inside the tab
+
+// ---------- Components ----------
+
+const componentsId = topExploreScreenId()
+const tapCount = (count) => renderedTexts(componentsId).includes(`Tapped ${count} times`)
+assert.ok(tapCount(0))
+
+press(pressableContaining('Primary button', componentsId))
+press(buttonTitled('System button', componentsId))
+await settle()
+assert.ok(tapCount(2))
+
+// Pressable: pressed-style while held, and the slot gets { pressed }.
+const customPressableId = pressableContaining('Custom Pressable', componentsId)
+press(customPressableId, 'pressin')
+await settle()
+assert.equal(viewsById[customPressableId].style.backgroundColor, processColor('#42b8831f'))
+assert.ok(renderedTexts(customPressableId).includes('Pressing…'))
+
+press(customPressableId, 'pressout')
+press(customPressableId)
+await settle()
+assert.equal(viewsById[customPressableId].style.backgroundColor, null) // removed: native resets it
+assert.ok(tapCount(3))
+
+// v-model on TextInput and Switch.
+const nameInputId = descendantOfType(componentsId, 'TextInput')
+assert.equal(viewsById[nameInputId].props.value, '')
+globalThis.__dispatch(nameInputId, 'changetext', 'Ana')
+await settle()
+assert.ok(renderedTexts(componentsId).includes('Hello, Ana 👋'))
+
+globalThis.__dispatch(descendantOfType(componentsId, 'Switch'), 'valuechange', false)
+await settle()
+assert.ok(renderedTexts(componentsId).includes('Off'))
+
+press(buttonTitled('Dismiss keyboard', componentsId))
+assert.equal(keyboardDismissCount, 1)
+
+const [localImage, remoteImage] = renderedViewIds(componentsId)
+  .map((id) => viewsById[id])
+  .filter((view) => view.type === 'Image')
+assert.match(localImage.props.source, /^data:image\/png;base64,/) // imported asset is inlined
+assert.equal(localImage.props.resizeMode, 'contain') // kebab-case attribute arrives camelized
+assert.equal(remoteImage.props.source, 'https://picsum.photos/id/1018/800/400') // { uri }
+
+const largeIndicator = renderedViewIds(componentsId)
+  .map((id) => viewsById[id])
+  .find((view) => view.type === 'ActivityIndicator' && view.props.size === 'large')
+assert.equal(largeIndicator.props.color, processColor('#42b883'))
+
+// Icons (vuenative-icons/lucide) render the native <Svg> with the icon's elements.
+const icons = renderedViewIds(componentsId)
+  .map((id) => viewsById[id])
+  .filter((view) => view.type === 'Svg')
+const heart = icons.find((icon) => icon.props.color === processColor('#ff3b30'))
+assert.deepEqual(heart.props.viewBox, [0, 0, 24, 24])
+assert.deepEqual(heart.props.elements[0][0], 'path')
+assert.deepEqual([heart.style.width, heart.style.height], [28, 28])
+assert.deepEqual(
+  icons.filter((icon) => icon.style.width === 32).map((icon) => icon.props.strokeWidth),
+  [1, 1.5, 2, 2.5, 3],
+)
+
+const sheetId = descendantOfType(componentsId, 'Modal')
+press(pressableContaining('Present a sheet', componentsId))
+await settle()
+assert.equal(viewsById[sheetId].props.visible, true)
+
+globalThis.__dispatch(sheetId, 'requestclose') // sheet swiped down
+await settle()
+assert.equal(viewsById[sheetId].props.visible, false)
+
+// ---------- Lists: FlatList, Swipeable, LayoutAnimation ----------
+
+await open('explore') // navigate: back to the tab's first screen
+assert.deepEqual(exploreScreenIds().map(titleOf), ['Explore'])
+
+// Reassigned when the list screen is opened again.
+let listId, listViewId, listView, listInputId
+
+async function openList() {
+  listId = await open('explore/list')
+  listViewId = descendantOfType(listId, 'ScrollView')
+  listView = viewsById[listViewId]
+  listInputId = descendantOfType(listId, 'TextInput')
+}
+
+await openList()
+assert.deepEqual(exploreScreenIds().map(titleOf), ['Explore', 'Lists'])
+const listTexts = () => renderedTexts(listId)
+
+function scrollList(y, height = 600) {
+  globalThis.__dispatch(listViewId, 'scroll', { x: 0, y, width: 358, height })
+}
+
+// The rows container is the ScrollView child carrying the windowing padding.
+const listWindow = () =>
+  viewsById[listView.children.find((id) => 'paddingTop' in viewsById[id].style)]
+
+assert.ok(listTexts().includes('1,000 ITEMS · 0 DONE'))
+assert.ok(listTexts().includes('Swipe a row either way · pull to refresh')) // #header slot
+assert.ok(listTexts().includes('End of the list')) // #footer slot
+assert.equal(listWindow().children.length, 10)
+
+scrollList(100 * ROW_HEIGHT)
+await settle()
+assert.equal(listWindow().children.length, 30)
+assert.equal(listWindow().style.paddingTop, 90 * ROW_HEIGHT)
+assert.equal(listWindow().style.paddingBottom, (1000 - 120) * ROW_HEIGHT)
+assert.ok(listTexts().includes('Item 101'))
+assert.ok(!listTexts().includes('Item 1'))
 
 scrollList(0)
 await settle()
 
 // Bouncing past the top reports a negative offset; the window must stay put.
-const rowsAtTop = renderedRows()
+const rowsAtTop = listWindow().children.length
 scrollList(-150)
 await settle()
-assert.equal(renderedRows(), rowsAtTop)
+assert.equal(listWindow().children.length, rowsAtTop)
 
-assert.ok(renderedTexts().includes('Puxe para atualizar')) // #header slot
-assert.ok(renderedTexts().includes('Fim da lista')) // #footer slot
+// A <Swipeable> row: [left actions, right actions, row], revealed natively by a drag.
+const swipeableRowId = (text) =>
+  findViewId(
+    (view) => view.type === 'SwipeableView' && renderedTexts(view.children[2]).includes(text),
+    listId,
+  )
+const swipeActionId = (text, side) =>
+  descendantOfType(
+    viewsById[swipeableRowId(text)].children[side === 'left' ? 0 : 1],
+    'PressableView',
+  )
 
-// ---------- Root stack: push over the tabs, params, Link, native pop, back ----------
-
-const firstRowId = pressableShowing('Item 1')
-press(firstRowId, 'pressin')
+press(swipeActionId('Item 2', 'left'))
 await settle()
-assert.equal(viewsById[firstRowId].style.opacity, 0.5) // pressed-style
+assert.ok(listTexts().includes('1,000 ITEMS · 1 DONE'))
+assert.ok(renderedTexts(swipeActionId('Item 2', 'left')).includes('Undo'))
 
-press(firstRowId, 'pressout')
-press(firstRowId)
+const animationsBeforeRemoval = layoutAnimations.length
+press(swipeActionId('Item 2', 'right'))
 await settle()
-assert.equal(viewsById[firstRowId].style.opacity, null) // removed: native resets it
+assert.equal(layoutAnimations.length, animationsBeforeRemoval + 1) // rows slide up
+assert.ok(!listTexts().includes('Item 2'))
+assert.ok(listTexts().includes('999 ITEMS · 0 DONE'))
 
-assert.equal(rootScreenIds().length, 2)
-const detailScreen = viewsById[topRootScreenId()]
-assert.equal(detailScreen.props.title, 'Item 1') // set by the page from useLocalSearchParams().id
-assert.equal(detailScreen.props.headerBackTitle, 'Lista')
-assert.equal(detailScreen.props.headerTintColor, processColor('#42b883')) // root screenOptions
-
-// Switch v-model on the detail page marks the item done; the list tab shows a badge.
-globalThis.__dispatch(descendantOfType(topRootScreenId(), 'Switch'), 'valuechange', true)
+// The header button hides done items.
+press(swipeActionId('Item 3', 'left'))
+globalThis.__dispatch(listId, 'headeritempress', { side: 'right', index: 0 })
 await settle()
-assert.ok(renderedTexts(listTabId).includes('✓ Item 1'))
-assert.deepEqual(layoutAnimations.at(-1), { type: 'spring', duration: 700, springDamping: 0.4 })
-const badge = viewsById[findViewId((view) => view.style.transform !== undefined, topRootScreenId())]
-assert.deepEqual(badge.style.transform, [{ scale: 1.15 }, { rotate: '-4deg' }])
-assert.equal(viewsById[listTabId].props.tabBarItem.badge, 1)
+assert.ok(!listTexts().includes('Item 3'))
+assert.deepEqual(viewsById[listId].props.headerRightItems[0].title, 'Show done')
 
-// <Link> pushes the next item.
-press(descendantOfType(topRootScreenId(), 'PressableView'))
+globalThis.__dispatch(listId, 'headeritempress', { side: 'right', index: 0 })
 await settle()
-assert.equal(rootScreenIds().length, 3)
-assert.equal(viewsById[topRootScreenId()].props.title, 'Item 2')
+assert.ok(listTexts().includes('Item 3'))
 
-// Back button / edge swipe: native pops and reports it.
-globalThis.__dispatch(topRootScreenId(), 'dismissed')
-await settle()
-assert.equal(rootScreenIds().length, 2)
+// Typing updates v-model; adding puts the typed text on top and clears the input.
+const firstRowText = () => {
+  const swipeableId = descendantOfType(listWindow().children[0], 'SwipeableView')
 
-// Deleting goes back (router.back()).
-pressButton('Excluir item', 1, topRootScreenId())
-await settle()
-assert.equal(rootScreenIds().length, 1)
-assert.ok(!renderedTexts().includes('✓ Item 1'))
-assert.ok(renderedTexts().includes('999 itens'))
-assert.equal(viewsById[listTabId].props.tabBarItem.badge, undefined)
+  return renderedTexts(viewsById[swipeableId].children[2])[0]
+}
 
-// ---------- Tabs with a nested stack ----------
-
-// Lazy tab: nothing mounted until opened; a deep link before that still stacks on its first screen.
-assert.equal(viewsById[exploreTabId].children.length, 0)
-
-globalThis.__openURL('vuenative://explore/navegacao')
-await settle()
-assert.equal(tabBar.props.selectedIndex, 1)
-assert.deepEqual(
-  childScreenIds(exploreStackId()).map((id) => viewsById[id].props.title),
-  ['Explorar', 'navegacao'],
+globalThis.__dispatch(listInputId, 'changetext', 'Buy milk')
+// The add button holds only a plus icon.
+press(
+  findViewId(
+    (view, id) =>
+      view.type === 'PressableView' &&
+      renderedViewIds(id).some((childId) => viewsById[childId].type === 'Svg'),
+    listId,
+  ),
 )
+await settle()
+assert.equal(viewsById[listInputId].props.value, '')
+assert.equal(firstRowText(), 'Buy milk')
 
-globalThis.__openURL('vuenative://explore')
+// Return key (submitEditing) adds too.
+globalThis.__dispatch(listInputId, 'changetext', 'Pay bills')
+globalThis.__dispatch(listInputId, 'submitediting', 'Pay bills')
 await settle()
-selectTab(1)
-await settle()
-assert.equal(tabBar.props.selectedIndex, 1)
-assert.equal(childScreenIds(exploreStackId()).length, 1)
-assert.equal(viewsById[childScreenIds(exploreStackId())[0]].props.title, 'Explorar')
+assert.equal(firstRowText(), 'Pay bills')
+assert.ok(listTexts().includes('1,001 ITEMS · 1 DONE'))
 
-press(pressableShowing('componentes ›', exploreTabId))
+// ---------- Item screen: params, LayoutAnimation, Link, native pop, back ----------
+
+press(pressableContaining('Item 1', swipeableRowId('Item 1')))
 await settle()
-assert.equal(childScreenIds(exploreStackId()).length, 2) // pushed inside the tab
-assert.equal(viewsById[childScreenIds(exploreStackId())[1]].props.title, 'componentes')
+assert.deepEqual(exploreScreenIds().map(titleOf), ['Explore', 'Lists', 'Item 1'])
+const itemId = topExploreScreenId()
+assert.equal(viewsById[itemId].props.headerBackTitle, 'Lists')
+
+globalThis.__dispatch(descendantOfType(itemId, 'Switch'), 'valuechange', true)
+await settle()
+assert.deepEqual(layoutAnimations.at(-1), { type: 'spring', duration: 700, springDamping: 0.4 })
+const badge = viewsById[findViewId((view) => view.style.transform !== undefined, itemId)]
+assert.deepEqual(badge.style.transform, [{ scale: 1.15 }, { rotate: '-4deg' }])
+assert.ok(listTexts().includes('1,001 ITEMS · 2 DONE'))
+
+press(pressableContaining('Next: Item 3 ›', itemId)) // <Link push>
+await settle()
+assert.equal(titleOf(topExploreScreenId()), 'Item 3')
+
+globalThis.__dispatch(topExploreScreenId(), 'dismissed') // back button / edge swipe
+await settle()
+assert.equal(titleOf(topExploreScreenId()), 'Item 1')
+
+press(buttonTitled('Delete item', itemId)) // router.back()
+await settle()
+assert.equal(titleOf(topExploreScreenId()), 'Lists')
+assert.ok(listTexts().includes('1,000 ITEMS · 1 DONE'))
+
+// ---------- Navigation: stack, modal route, focus, deep links, tabs ----------
+
+const navigationId = await open('explore/navigation')
+// The counter is the text right under the FOCUS section title.
+const focusCount = () => {
+  const texts = renderedTexts(navigationId)
+
+  return texts[texts.indexOf('FOCUS') + 1]
+}
+assert.equal(titleOf(navigationId), 'Navigation')
+assert.equal(focusCount(), '1')
+
+press(pressableContaining('Push a screen', navigationId))
+await settle()
+assert.equal(titleOf(topExploreScreenId()), 'Screen 1')
+
+press(pressableContaining('Push another', topExploreScreenId()))
+await settle()
+assert.equal(titleOf(topExploreScreenId()), 'Screen 2')
+
+press(buttonTitled('Back', topExploreScreenId()))
+await settle()
+assert.equal(titleOf(topExploreScreenId()), 'Screen 1')
+
+press(buttonTitled('Pop to Navigation', topExploreScreenId())) // navigate: back to it, not a new one
+await settle()
+assert.equal(topExploreScreenId(), navigationId)
+assert.equal(focusCount(), '2') // useFocusEffect
+
+// The modal route opens on the root stack, over the tabs.
+press(pressableContaining('Open the modal route', navigationId))
+await settle()
+assert.equal(rootScreenIds().length, 2)
+const modalProps = viewsById[topRootScreenId()].props
+assert.equal(modalProps.stackPresentation, 'modal') // from the root layout
+assert.equal(modalProps.title, 'Modal')
+assert.equal(modalProps.headerTintColor, processColor('#42b883')) // root screenOptions
+assert.equal(focusCount(), '2')
+
+globalThis.__dispatch(topRootScreenId(), 'headeritempress', { side: 'right', index: 0 }) // Close
+await settle()
+assert.equal(rootScreenIds().length, 1)
+assert.equal(focusCount(), '3')
+
+press(pressableContaining('Open the modal route', navigationId))
+await settle()
+press(pressableContaining('Dismiss', topRootScreenId()))
+await settle()
 assert.equal(rootScreenIds().length, 1)
 
-press(descendantOfType(childScreenIds(exploreStackId())[1], 'PressableView')) // <Link href="/items/1" push>
+globalThis.__dispatch(navigationId, 'dismissed') // back button: native pops it and reports it
 await settle()
-assert.equal(rootScreenIds().length, 2) // over the tabs
-globalThis.__dispatch(topRootScreenId(), 'dismissed')
-await settle()
-
-globalThis.__openURL('vuenative://explore') // navigate: back to the tab's first screen
-await settle()
-assert.equal(childScreenIds(exploreStackId()).length, 1)
+assert.deepEqual(exploreScreenIds().map(titleOf), ['Explore', 'Lists'])
 
 // ---------- Gestures and Animated (native driver) ----------
 
-globalThis.__openURL('vuenative://explore/gestures')
-await settle()
-const gesturesScreenId = childScreenIds(exploreStackId()).at(-1)
-assert.equal(viewsById[gesturesScreenId].props.title, 'Gestos')
+const gesturesId = await open('explore/gestures')
+assert.equal(titleOf(gesturesId), 'Gestures')
 
 // The card's transform follows animated values natively; the gestures write into them.
-const cardId = findViewId((view) => view.props.onPan === true, gesturesScreenId)
+const cardId = findViewId((view) => view.props.onPan === true, gesturesId)
 const cardBinding = animated.styles[cardId]
 assert.deepEqual(
   cardBinding.transform.map((step) => step.name),
@@ -324,37 +512,55 @@ assert.deepEqual(
   ],
 )
 
-globalThis.__openURL('vuenative://explore/animations')
-await settle()
-const animationsScreenId = childScreenIds(exploreStackId()).at(-1)
-assert.equal(viewsById[animationsScreenId].props.title, 'Animações')
+const animationCountBeforePage = animated.started.length
+const animationsId = await open('explore/animations')
+assert.equal(titleOf(animationsId), 'Animations')
 
-const loops = animated.started.filter((animation) => animation.iterations === -1)
+const loops = animated.started
+  .slice(animationCountBeforePage)
+  .filter((animation) => animation.iterations === -1)
 assert.equal(loops.length, 2)
 
-const spinnerId = renderedViewIds(animationsScreenId).find(
+const spinnerId = renderedViewIds(animationsId).find(
   (id) => animated.styles[id]?.transform?.[0]?.name === 'rotate',
 )
 const spinInterpolation = animated.nodes[animated.styles[spinnerId].transform[0].node]
 assert.deepEqual(spinInterpolation.outputRange, [0, 2 * Math.PI]) // '360deg' in radians
 
-const animatedScrollViewId = descendantOfType(animationsScreenId, 'ScrollView')
+// <Page :on-scroll> falls through to its ScrollView.
+const animatedScrollViewId = descendantOfType(animationsId, 'ScrollView')
 assert.deepEqual(Object.keys(animated.events[animatedScrollViewId].scroll), ['y'])
-assert.equal(viewsById[animatedScrollViewId].props.onScroll, false) // no JS per scroll frame
 
-globalThis.__openURL('vuenative://explore')
+// The ball travels the track, which is sized from Dimensions.
+const ballTravel = WINDOW.width - 2 * 24 - 2 * 16 - 44
+press(pressableContaining('Timing', animationsId))
 await settle()
+assert.deepEqual(
+  (({ type, toValue, duration }) => ({ type, toValue, duration }))(animated.started.at(-1)),
+  { type: 'timing', toValue: ballTravel, duration: 600 },
+)
+
+press(pressableContaining('Spring', animationsId))
+await settle()
+assert.equal(animated.started.at(-1).type, 'spring')
+assert.equal(animated.started.at(-1).toValue, 0)
+
+press(pressableContaining('Linear', animationsId))
+press(pressableContaining('Tap to expand', animationsId))
+await settle()
+assert.deepEqual(layoutAnimations.at(-1), { type: 'linear', duration: 500 })
+assert.ok(renderedTexts(animationsId).includes('Expanded'))
+
+await open('explore')
 assert.deepEqual(animated.stopped.slice(-2).sort(), loops.map((loop) => loop.nodeId).sort()) // leaving the page stops its loops
 
 // ---------- Data: fetch, AsyncStorage, setInterval ----------
 
-globalThis.__openURL('vuenative://explore/data')
-await settle()
-const dataScreenId = childScreenIds(exploreStackId()).at(-1)
-assert.ok(renderedTexts(dataScreenId).includes('Visitas a esta página: 1 (AsyncStorage)'))
+const dataId = await open('explore/data')
+assert.ok(renderedTexts(dataId).includes('Visits to this page'))
 assert.equal(storage.get('dataPageVisits'), '1')
 
-pressButton('Carregar posts (fetch)', 1, dataScreenId)
+press(pressableContaining('Load posts', dataId))
 await settle()
 await settle() // the response arrives on a later turn
 assert.deepEqual(fetchRequests.at(-1), {
@@ -363,13 +569,13 @@ assert.deepEqual(fetchRequests.at(-1), {
   headers: {},
   body: null,
 })
-assert.ok(renderedTexts(dataScreenId).includes('Primeiro post'))
-assert.ok(renderedTexts(dataScreenId).includes('Segundo post'))
+assert.ok(renderedTexts(dataId).includes('Primeiro post'))
+assert.ok(renderedTexts(dataId).includes('Reload posts'))
 
 const response = await fetch('https://example.com', {
   method: 'post',
   headers: { 'Content-Type': 'text/plain' },
-  body: 'oi',
+  body: 'hi',
 })
 assert.equal(response.ok, true)
 assert.equal(response.headers.get('content-type'), 'application/json') // case-insensitive
@@ -377,163 +583,46 @@ assert.deepEqual(fetchRequests.at(-1), {
   url: 'https://example.com',
   method: 'POST',
   headers: { 'content-type': 'text/plain' },
-  body: 'oi',
+  body: 'hi',
 })
 
-globalThis.__openURL('vuenative://explore')
+press(buttonTitled('Reset', dataId))
 await settle()
+assert.equal(storage.has('dataPageVisits'), false)
 
-// ---------- List editing ----------
-
-selectTab(0)
-// A <Swipeable> row: [left actions, right actions, row], revealed natively by a drag.
-const swipeableRowId = (text) =>
-  findViewId(
-    (view) => view.type === 'SwipeableView' && renderedTexts(view.children[2]).includes(text),
-  )
-const swipeActionId = (text, side) =>
-  descendantOfType(
-    viewsById[swipeableRowId(text)].children[side === 'left' ? 0 : 1],
-    'PressableView',
-  )
-
-press(swipeActionId('Item 2', 'left')) // Concluir
+press(buttonTitled('Pause', dataId))
 await settle()
-assert.ok(renderedTexts().includes('✓ Item 2'))
-assert.ok(renderedTexts(swipeActionId('✓ Item 2', 'left')).includes('Reabrir'))
-
-const deleteActionId = swipeActionId('✓ Item 2', 'right')
-assert.ok(renderedTexts(deleteActionId).includes('Apagar'))
-
-const animationsBeforeRemoval = layoutAnimations.length
-press(deleteActionId)
-await settle()
-assert.equal(layoutAnimations.length, animationsBeforeRemoval + 1) // rows slide up
-assert.ok(!renderedTexts().includes('✓ Item 2'))
-assert.ok(renderedTexts().includes('998 itens'))
-
-// Typing updates v-model; adding appends the typed text and clears the input.
-globalThis.__dispatch(textInputId, 'changetext', 'Comprar pão')
-pressButton('Adicionar')
-await settle()
-assert.equal(viewsById[textInputId].props.value, '')
-assert.ok(renderedTexts().includes('999 itens'))
-
-scrollList(999 * ITEM_HEIGHT - 600)
-await settle()
-assert.ok(renderedTexts().includes('Comprar pão'))
-
-// Return key (submitEditing) adds too.
-globalThis.__dispatch(textInputId, 'changetext', 'Pagar contas')
-globalThis.__dispatch(textInputId, 'submitediting', 'Pagar contas')
-await settle()
-assert.ok(renderedTexts().includes('Pagar contas'))
-
-// ---------- Settings tab: buttons and modal ----------
-
-const focusCountText = (count) => `Vezes que esta aba ganhou foco: ${count}`
-assert.ok(renderedTexts(settingsTabId).includes(focusCountText(0)))
-
-selectTab(2)
-await settle()
-assert.equal(tabBar.props.selectedIndex, 2)
-assert.ok(renderedTexts(settingsTabId).includes(focusCountText(1))) // useFocusEffect
-
-pressButton('Remover último', 2, settingsTabId)
-await settle()
-assert.ok(renderedTexts().includes('998 itens'))
-assert.ok(!renderedTexts().includes('Pagar contas'))
-assert.equal(keyboardDismissCount, 2)
-
-const modal = viewsById[descendantOfType(settingsTabId, 'Modal')]
-pressButton('Sobre', 1, settingsTabId)
-await settle()
-assert.equal(modal.props.visible, true)
-
-globalThis.__dispatch(
-  findViewId((view) => view === modal),
-  'requestclose',
-) // sheet swiped down
-await settle()
-assert.equal(modal.props.visible, false)
-
-// ---------- Modal route ----------
-
-press(pressableShowing('Abrir rota modal ›', settingsTabId)) // <Link href="/about">
-await settle()
-assert.equal(rootScreenIds().length, 2)
-assert.equal(viewsById[topRootScreenId()].props.stackPresentation, 'modal') // from the root layout
-assert.equal(viewsById[topRootScreenId()].props.title, 'Sobre')
-
-press(descendantOfType(topRootScreenId(), 'PressableView')) // pushed after the modal: opens inside it
-await settle()
-assert.equal(rootScreenIds().length, 3)
-assert.equal(viewsById[topRootScreenId()].props.stackPresentation, 'push')
-
-globalThis.__dispatch(rootScreenIds()[1], 'dismissed') // sheet swiped down takes both
-globalThis.__dispatch(topRootScreenId(), 'dismissed')
-await settle()
-assert.equal(rootScreenIds().length, 1)
-
-press(pressableShowing('Abrir rota modal ›', settingsTabId))
-await settle()
-globalThis.__dispatch(topRootScreenId(), 'headeritempress', { side: 'right', index: 0 }) // Fechar
-await settle()
-assert.equal(rootScreenIds().length, 1)
-assert.ok(renderedTexts(settingsTabId).includes(focusCountText(3))) // refocused after each modal
+assert.ok(viewsById[buttonTitled('Resume', dataId)])
 
 // ---------- Deep links and not found ----------
 
-globalThis.__openURL('vuenative://items/3')
+globalThis.__openURL('vuenative://does/not/exist')
 await settle()
-assert.equal(viewsById[topRootScreenId()].props.title, 'Item 3')
+assert.equal(titleOf(topRootScreenId()), 'Not found')
+assert.ok(renderedTexts(topRootScreenId()).includes('Nothing at /does/not/exist'))
 
-globalThis.__dispatch(descendantOfType(topRootScreenId(), 'Switch'), 'valuechange', true)
-globalThis.__openURL('vuenative://') // pops back to the tabs and selects the list tab
+press(pressableContaining('Go to the start ›', topRootScreenId())) // <Link href="/">
 await settle()
 assert.equal(rootScreenIds().length, 1)
 assert.equal(tabBar.props.selectedIndex, 0)
 
-// The settings switch hides done items.
-scrollList(0)
-await settle()
-const hideSwitchId = descendantOfType(settingsTabId, 'Switch')
-assert.ok(renderedTexts().includes('✓ Item 3'))
+// ---------- Pull to refresh and the empty list ----------
 
-globalThis.__dispatch(hideSwitchId, 'valuechange', true)
+await openList()
+globalThis.__dispatch(listViewId, 'refresh')
 await settle()
-assert.ok(!renderedTexts().includes('✓ Item 3'))
-assert.ok(renderedTexts().includes('Item 4'))
-
-globalThis.__dispatch(hideSwitchId, 'valuechange', false)
-await settle()
-
-globalThis.__openURL('vuenative://does/not/exist')
-await settle()
-assert.equal(viewsById[topRootScreenId()].props.title, 'Ops!')
-assert.ok(renderedTexts(topRootScreenId()).includes('Essa tela não existe.'))
-
-press(descendantOfType(topRootScreenId(), 'PressableView')) // <Link href="/">
-await settle()
-assert.equal(rootScreenIds().length, 1)
-
-// ---------- Pull to refresh and empty list ----------
-
-globalThis.__dispatch(scrollViewId, 'refresh')
-await settle()
-assert.equal(scrollView.props.refreshing, true)
-assert.equal(
-  viewsById[findViewId((view) => view.type === 'ActivityIndicator')].props.color,
-  0x8e8e93ff,
-)
+assert.equal(listView.props.refreshing, true)
 
 await new Promise((resolve) => setTimeout(resolve, 900))
-assert.equal(scrollView.props.refreshing, false)
-assert.ok(renderedTexts().includes('1000 itens'))
+assert.equal(listView.props.refreshing, false)
+assert.ok(listTexts().includes('1,000 ITEMS · 0 DONE'))
 
-pressButton('Remover último', 1000, settingsTabId)
-await settle()
-assert.ok(renderedTexts().includes('Nenhum item'))
+while (listWindow().children.length > 0) {
+  const firstRowId = descendantOfType(listWindow().children[0], 'SwipeableView')
+  press(descendantOfType(viewsById[firstRowId].children[1], 'PressableView')) // Delete
+  await settle()
+}
+assert.ok(listTexts().includes('Nothing here. Pull to bring the items back.')) // #empty slot
 
 // ---------- Colors ----------
 

@@ -41,6 +41,20 @@ final class PressableView: UIControl {
         fatalError("init(coder:) is not supported")
     }
 
+    /// Touches on plain children (containers, labels, images) press this control, like React Native's
+    /// Pressable; interactive children (controls, scroll views, views with gestures) keep their touches.
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard let hitView = super.hitTest(point, with: event) else { return nil }
+
+        return isInteractiveChild(hitView) ? hitView : self
+    }
+
+    private func isInteractiveChild(_ view: UIView) -> Bool {
+        sequence(first: view, next: \.superview)
+            .prefix { $0 !== self }
+            .contains { $0 is UIControl || $0 is UIScrollView || !($0.gestureRecognizers ?? []).isEmpty }
+    }
+
     @objc private func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
         guard recognizer.state == .began else { return }
 

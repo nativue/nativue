@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { AsyncStorage, onMounted, onUnmounted, ref, StyleSheet } from 'vue'
 import { Stack } from 'vuenative/router'
+import FieldRow from '../../../components/FieldRow.vue'
+import Page from '../../../components/Page.vue'
+import PrimaryButton from '../../../components/PrimaryButton.vue'
+import Section from '../../../components/Section.vue'
+import { colors, radius } from '../../../theme'
 
 const POSTS_URL = 'https://jsonplaceholder.typicode.com/posts?_limit=5'
 const VISITS_KEY = 'dataPageVisits'
@@ -13,17 +18,17 @@ interface Post {
 const posts = ref<Post[]>([])
 const loading = ref(false)
 const errorMessage = ref('')
-const secondsOpen = ref(0)
 const visits = ref(0)
+const seconds = ref(0)
+const ticking = ref(true)
 
 let clockId: number | null = null
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, padding: 24, gap: 16 },
-  label: { fontSize: 15, color: '#8e8e93' },
-  post: { padding: 14, borderRadius: 12, backgroundColor: '#f2f2f7' },
-  postTitle: { fontSize: 15 },
-  error: { fontSize: 15, color: '#ff3b30' },
+  post: { padding: 14, borderRadius: radius.small, backgroundColor: colors.background },
+  postTitle: { fontSize: 15, color: colors.text },
+  error: { fontSize: 15, color: colors.red },
+  value: { fontSize: 17, fontWeight: '700', color: colors.green },
 })
 
 async function loadPosts() {
@@ -47,27 +52,66 @@ async function countVisit() {
   await AsyncStorage.setItem(VISITS_KEY, visits.value)
 }
 
+async function resetVisits() {
+  await AsyncStorage.removeItem(VISITS_KEY)
+  visits.value = 0
+}
+
+function startClock() {
+  clockId = setInterval(() => seconds.value++, 1000)
+}
+
+function stopClock() {
+  clearInterval(clockId)
+}
+
+function toggleClock() {
+  ticking.value = !ticking.value
+
+  if (ticking.value) startClock()
+  else stopClock()
+}
+
 onMounted(() => {
   countVisit()
-  clockId = setInterval(() => secondsOpen.value++, 1000)
+  startClock()
 })
 
-onUnmounted(() => clearInterval(clockId))
+onUnmounted(stopClock)
 </script>
 
 <template>
-  <View :style="styles.screen">
-    <Stack.Screen :options="{ title: 'Dados' }" />
+  <Page>
+    <Stack.Screen :options="{ title: 'Data' }" />
 
-    <Text :style="styles.label">Página aberta há {{ secondsOpen }} s (setInterval)</Text>
-    <Text :style="styles.label">Visitas a esta página: {{ visits }} (AsyncStorage)</Text>
+    <Section title="fetch" footer="The native networking stack under the hood, the web API on top.">
+      <PrimaryButton
+        :title="posts.length > 0 ? 'Reload posts' : 'Load posts'"
+        :tint="colors.teal"
+        @press="loadPosts"
+      />
+      <ActivityIndicator v-if="loading" />
+      <Text v-if="errorMessage" :style="styles.error">Error: {{ errorMessage }}</Text>
+      <View v-for="post in posts" :key="post.id" :style="styles.post">
+        <Text :style="styles.postTitle">{{ post.title }}</Text>
+      </View>
+    </Section>
 
-    <Button title="Carregar posts (fetch)" @press="loadPosts" />
-    <ActivityIndicator v-if="loading" />
-    <Text v-if="errorMessage" :style="styles.error">Erro: {{ errorMessage }}</Text>
+    <Section
+      title="AsyncStorage"
+      footer="Kept in memory natively and saved to disk in the background."
+    >
+      <FieldRow label="Visits to this page" detail="Leave and come back, or relaunch the app">
+        <Text :style="styles.value">{{ visits }}</Text>
+      </FieldRow>
+      <Button title="Reset" @press="resetVisits" />
+    </Section>
 
-    <View v-for="post in posts" :key="post.id" :style="styles.post">
-      <Text :style="styles.postTitle">{{ post.title }}</Text>
-    </View>
-  </View>
+    <Section title="Timers">
+      <FieldRow label="Open for" detail="setInterval">
+        <Text :style="styles.value">{{ seconds }} s</Text>
+      </FieldRow>
+      <Button :title="ticking ? 'Pause' : 'Resume'" @press="toggleClock" />
+    </Section>
+  </Page>
 </template>

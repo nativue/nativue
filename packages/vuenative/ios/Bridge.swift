@@ -47,10 +47,13 @@ final class Bridge {
     /// Modals and screens: their content is laid out as a separate Yoga root.
     // ponytail: controllers of removed modals stay here; drop them on remove if many modals come and go.
     private var contentRootsByNodeId: [Int: ContentRoot] = [:]
+    /// Read on the main thread at start, for Dimensions.get('window').
+    private var windowSize: CGSize = .zero
 
     func start(rootView: RootView) {
         self.rootView = rootView
         rootView.onLayoutSubviews = { [unowned self] in layout() }
+        windowSize = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds.size ?? .zero
 
         NotificationCenter.default.addObserver(forName: Self.openURLNotification, object: nil, queue: .main) {
             [unowned self] notification in
@@ -189,6 +192,11 @@ final class Bridge {
         }
 
         define("log", { message in print("[JS]", message) } as @convention(block) (String) -> Void)
+
+        // ponytail: the size at launch; report rotation and split view changes if the app supports them.
+        define("windowSize", { [unowned self] in
+            ["width": windowSize.width, "height": windowSize.height]
+        } as @convention(block) () -> [String: Double])
 
         define("create", { [unowned self] id, type in
             enqueue { [unowned self] in nodesById[id] = makeNode(type: type, id: id) }
@@ -357,6 +365,9 @@ final class Bridge {
 
         case "SwipeableView":
             return NativeNode(view: SwipeableView(frame: .zero), measuresContent: false)
+
+        case "Svg":
+            return NativeNode(view: SvgView(frame: .zero), measuresContent: false)
 
         case "PressableView":
             let pressableView = PressableView()
@@ -632,6 +643,15 @@ final class Bridge {
         case "horizontal":
             setScrollDirection(of: node, horizontal: isTruthyAttribute(value))
 
+        case "pagingEnabled":
+            (node.view as? UIScrollView)?.isPagingEnabled = isTruthyAttribute(value)
+
+        case "showsHorizontalScrollIndicator":
+            (node.view as? UIScrollView)?.showsHorizontalScrollIndicator = isTruthyAttribute(value)
+
+        case "showsVerticalScrollIndicator":
+            (node.view as? UIScrollView)?.showsVerticalScrollIndicator = isTruthyAttribute(value)
+
         case "value":
             (node.view as? TextInputView)?.setTextFromJavaScript(value as? String ?? "")
             (node.view as? UISwitch)?.setOn(isTruthyAttribute(value), animated: true)
@@ -649,6 +669,19 @@ final class Bridge {
 
         case "color":
             (node.view as? UIActivityIndicatorView)?.color = UIColor(rgba: value as Any)
+            (node.view as? SvgView)?.color = UIColor(rgba: value as Any) ?? .black
+
+        case "viewBox":
+            let numbers = (value as? [NSNumber])?.map { CGFloat($0.doubleValue) } ?? []
+            if numbers.count == 4 {
+                (node.view as? SvgView)?.viewBox = CGRect(x: numbers[0], y: numbers[1], width: numbers[2], height: numbers[3])
+            }
+
+        case "elements":
+            (node.view as? SvgView)?.elements = value as? [[Any]] ?? []
+
+        case "strokeWidth":
+            (node.view as? SvgView)?.strokeWidth = CGFloat((value as? NSNumber)?.doubleValue ?? 2)
 
         case "visible":
             modalController(id)?.setVisible(isTruthyAttribute(value))

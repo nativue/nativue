@@ -52,6 +52,10 @@ export type Style = {
   borderRadius?: number
   opacity?: number | AnimatedNode
   transform?: TransformStep[]
+  shadowColor?: ColorValue
+  shadowOpacity?: number
+  shadowRadius?: number
+  shadowOffset?: { width: number; height: number }
 
   color?: ColorValue
   fontSize?: number
@@ -98,6 +102,7 @@ export interface LayoutAnimationConfig {
 /** Functions the native side exposes as globalThis.__native (see Bridge.swift). */
 export interface NativeModule {
   log(message: string): void
+  windowSize(): { width: number; height: number }
   create(id: number, type: string): void
   insert(parentId: number, childId: number, index: number): void
   remove(id: number): void

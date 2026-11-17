@@ -1,4 +1,4 @@
-// List state shared by the screens in src/app, saved with AsyncStorage.
+// State of the Lists demo, shared with the item screen and saved with AsyncStorage.
 import { AsyncStorage, computed, ref, watch } from 'vue'
 
 const ITEMS_KEY = 'items'
@@ -50,8 +50,4 @@ export function findItem(id: number | string): Item | undefined {
 
 export function removeItem(item: Item) {
   items.value.splice(items.value.indexOf(item), 1)
-}
-
-export function removeLastItem() {
-  items.value.pop()
 }

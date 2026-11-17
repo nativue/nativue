@@ -9,11 +9,11 @@ extension NativeNode {
         for (property, value) in changes {
             if isDrivenByNativeView(property) { continue }
 
-            if let applyLayoutProperty = layoutPropertySetters[property] {
-                if !(value is NSNull) { applyLayoutProperty(yogaNode, value) }
-            } else {
-                applyVisualProperty(property, value)
+            if let applyLayoutProperty = layoutPropertySetters[property], !(value is NSNull) {
+                applyLayoutProperty(yogaNode, value)
             }
+            // Some properties are both: overflow also clips the view.
+            applyVisualProperty(property, value)
         }
 
         if changes["fontSize"] != nil || changes["fontWeight"] != nil {
@@ -51,6 +51,23 @@ extension NativeNode {
 
         case "overflow":
             view.clipsToBounds = (value as? String) == "hidden"
+
+        // Like React Native's iOS shadows; overflow: 'hidden' clips them.
+        case "shadowColor":
+            view.layer.shadowColor = UIColor(rgba: value)?.cgColor
+
+        case "shadowOpacity":
+            view.layer.shadowOpacity = Float(number(value) ?? 0)
+
+        case "shadowRadius":
+            view.layer.shadowRadius = CGFloat(number(value) ?? 3)
+
+        case "shadowOffset":
+            let offset = value as? [String: Any]
+            view.layer.shadowOffset = CGSize(
+                width: CGFloat(number(offset?["width"] as Any) ?? 0),
+                height: CGFloat(number(offset?["height"] as Any) ?? -3)
+            )
 
         case "color":
             let color = UIColor(rgba: value)

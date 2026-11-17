@@ -18,7 +18,7 @@ export const Pressable = defineComponent({
   name: 'Pressable',
   inheritAttrs: false,
   props: { style: Object as PropType<Style>, pressedStyle: Object as PropType<Style> },
-  slots: Object as SlotsType<{ default?: { pressed: boolean } }>,
+  slots: Object as SlotsType<{ default: { pressed: boolean } }>,
 
   setup(props, { attrs, slots }) {
     const pressed = ref(false)

@@ -11,6 +11,7 @@ export * from '@vue/runtime-core'
 export { Animated } from './animated'
 export { AsyncStorage } from './storage'
 export type * from './types'
+export type { SvgElement } from './native-components'
 
 interface Node {
   id: number
@@ -41,10 +42,14 @@ function isEventProp(key: string): boolean {
 }
 
 // Raw text inside <Text> becomes the text of the parent label (like RCTRawText in React Native).
+// Text is trimmed like HTML does, so it can wrap onto its own lines in the template.
 function syncTextContent(parent: Node | null) {
   if (parent?.type !== 'Text') return
 
-  const text = parent.children.map((child) => child.text).join('')
+  const text = parent.children
+    .map((child) => child.text)
+    .join('')
+    .trim()
   native.setText(parent.id, text)
 }
 
@@ -175,7 +180,7 @@ const { createApp: createBaseApp } = createRenderer<Node, Node>({
 
   setElementText(element, text) {
     element.children = []
-    if (element.type === 'Text') native.setText(element.id, text)
+    if (element.type === 'Text') native.setText(element.id, text.trim())
   },
 
   insert(child, parent, anchor) {
@@ -253,6 +258,13 @@ export const LayoutAnimation = {
 export const StyleSheet = {
   create<Styles extends Record<string, Style>>(styles: Styles): Styles {
     return styles
+  },
+}
+
+// Like React Native's: Dimensions.get('window') -> { width, height } in points.
+export const Dimensions = {
+  get(_dimension: 'window'): { width: number; height: number } {
+    return native.windowSize()
   },
 }
 

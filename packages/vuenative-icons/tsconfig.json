@@ -1,0 +1,4 @@
+{
+  "extends": "vuenative/tsconfig.base.json",
+  "include": ["src"]
+}

@@ -7,6 +7,9 @@ import type { PanEvent, PinchEvent, RotateEvent, ScrollEvent, Style } from './ty
 
 type NativeComponent<Props = {}> = DefineComponent<Props & { style?: Style }>
 type EventHandler<Payload> = ((payload: Payload) => void) | AnimatedEvent<Payload>
+// [tag, attributes], e.g. ['circle', { cx: 12, cy: 12, r: 10 }]: path, circle, ellipse, rect, line,
+// polyline and polygon. Stroked with `color`; filled too when `fill` isn't 'none'.
+export type SvgElement = [tag: string, attributes: Record<string, string | number>]
 type ModelProps<Value> = { modelValue?: Value; 'onUpdate:modelValue'?: (value: Value) => void }
 
 declare module '@vue/runtime-core' {
@@ -22,6 +25,9 @@ declare module '@vue/runtime-core' {
     Button: NativeComponent<{ title: string; disabled?: boolean; onPress?: () => void }>
     ScrollView: NativeComponent<{
       horizontal?: boolean
+      pagingEnabled?: boolean
+      showsHorizontalScrollIndicator?: boolean
+      showsVerticalScrollIndicator?: boolean
       refreshing?: boolean
       keyboardDismissMode?: 'none' | 'on-drag' | 'interactive'
       keyboardShouldPersistTaps?: 'never' | 'always' | 'handled'
@@ -50,6 +56,13 @@ declare module '@vue/runtime-core' {
       animating?: boolean
       color?: string
       size?: 'small' | 'large'
+    }>
+    // Low level: draws SVG elements, e.g. an icon set's nodes (see vuenative-icons).
+    Svg: NativeComponent<{
+      viewBox?: [number, number, number, number]
+      elements: SvgElement[]
+      color?: string
+      strokeWidth?: number
     }>
     Modal: NativeComponent<{
       visible?: boolean
