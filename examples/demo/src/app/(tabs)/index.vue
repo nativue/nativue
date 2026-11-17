@@ -16,7 +16,7 @@ import {
   ZapIcon,
 } from 'vuenative-icons/lucide'
 import { useRouter } from 'vuenative/router'
-import logo from '@/assets/vue-logo.png'
+import logo from '@/assets/logo-mark.png'
 import IconTile from '@/components/IconTile.vue'
 import PrimaryButton from '@/components/PrimaryButton.vue'
 import { cardShadow, colors, radius, spacing } from '@/lib/theme'
@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     ...cardShadow,
   },
-  logo: { width: 72, height: 72 },
+  logo: { width: 84, height: 84 },
   featureCard: {
     padding: spacing.medium,
     gap: spacing.medium,

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { StyleSheet } from 'vue'
 import { Stack } from 'vuenative/router'
-import logo from '@/assets/vue-logo.png'
+import logo from '@/assets/logo-horizontal.png'
 import DemoRow from '@/components/DemoRow.vue'
 import Page from '@/components/Page.vue'
 import Section from '@/components/Section.vue'
@@ -12,9 +12,8 @@ const demoCount = demoSections.reduce((count, section) => count + section.demos.
 const HIGHLIGHTS = [`${demoCount} demos`, '100% native', 'TypeScript']
 
 const styles = StyleSheet.create({
-  brand: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  logo: { width: 28, height: 28 },
-  brandName: { flex: 1, fontSize: 20, fontWeight: '800', color: colors.navy },
+  brand: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  logo: { width: 101, height: 32 },
   platforms: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -71,7 +70,6 @@ const styles = StyleSheet.create({
 
     <View :style="styles.brand">
       <Image :source="logo" resize-mode="contain" :style="styles.logo" />
-      <Text :style="styles.brandName">Vue Native</Text>
       <View :style="styles.platforms">
         <Text :style="styles.platformsText">iOS · Android</Text>
       </View>

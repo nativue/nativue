@@ -10,7 +10,7 @@ import {
   StarIcon,
 } from 'vuenative-icons/lucide'
 import { Stack } from 'vuenative/router'
-import logo from '@/assets/vue-logo.png'
+import logo from '@/assets/logo-mark.png'
 import FieldRow from '@/components/FieldRow.vue'
 import Page from '@/components/Page.vue'
 import PrimaryButton from '@/components/PrimaryButton.vue'

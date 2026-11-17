@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/logo-horizontal-dark.svg" />
+    <img src=".github/logo-horizontal.svg" width="360" alt="vue-native" />
+  </picture>
+</p>
+
 # Vue Native
 
 Vue rendering real iOS views: a custom Vue renderer runs in JavaScriptCore and drives UIKit through
