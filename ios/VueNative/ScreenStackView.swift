@@ -33,18 +33,33 @@ extension UIView {
 }
 
 /// View behind <ScreenStack>: a UINavigationController whose view controllers mirror the <Screen> children
-/// JS renders. JS owns the stack; a pop started natively (back button, edge swipe) is reported back so JS
-/// drops the screen too (like react-native-screens).
-final class ScreenStackView: UIView, ScreenContainer, UINavigationControllerDelegate {
+/// JS renders. JS owns the stack; a pop started natively (back button, edge swipe, sheet swiped down) is
+/// reported back so JS drops the screen too (like react-native-screens).
+///
+/// A modal screen (`stackPresentation`) starts a group: it and the screens pushed after it live in their own
+/// navigation controller, presented over the previous group's.
+final class ScreenStackView: UIView, ScreenContainer, UINavigationControllerDelegate,
+    UIAdaptivePresentationControllerDelegate
+{
+    static let modalPresentationStyles: [String: UIModalPresentationStyle] = [
+        "modal": .automatic,
+        "formSheet": .formSheet,
+        "fullScreenModal": .fullScreen,
+    ]
+
     private let navigationController = UINavigationController()
+    private var modalNavigationControllers: [UINavigationController] = []
     private var screens: [ScreenController] = []
     private var isSyncScheduled = false
+    /// Presenting or dismissing: UIKit refuses another until it completes, which syncs again.
+    private var isPresentationChanging = false
+
+    private var navigationControllers: [UINavigationController] { [navigationController] + modalNavigationControllers }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
 
-        navigationController.delegate = self
-        navigationController.navigationBar.prefersLargeTitles = true // screens opt in per navigationItem
+        configure(navigationController)
         navigationController.view.frame = bounds
         navigationController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         addSubview(navigationController.view)
@@ -60,6 +75,11 @@ final class ScreenStackView: UIView, ScreenContainer, UINavigationControllerDele
         embedInNearestViewController(navigationController)
     }
 
+    private func configure(_ navigationController: UINavigationController) {
+        navigationController.delegate = self
+        navigationController.navigationBar.prefersLargeTitles = true // screens opt in per navigationItem
+    }
+
     /// Also called when JS moves a screen, so it drops the old position first.
     func insertScreen(_ screen: ScreenController, at index: Int) {
         screens.removeAll { $0 === screen }
@@ -73,16 +93,25 @@ final class ScreenStackView: UIView, ScreenContainer, UINavigationControllerDele
         scheduleSync()
     }
 
-    var navigationBarBottom: CGFloat { navigationController.navigationBar.frame.maxY }
+    /// Read through the stack, since a screen being swiped away has already left its navigation controller.
+    func navigationBarBottom(for screen: ScreenController) -> CGFloat {
+        let groupIndex = screenGroups().firstIndex { group in group.contains { $0 === screen } } ?? 0
+        let navigationController = navigationControllers.indices.contains(groupIndex)
+            ? navigationControllers[groupIndex]
+            : navigationController
+
+        return navigationController.navigationBar.frame.maxY
+    }
 
     func screenDidChangeHeaderVisibility(_ screen: ScreenController) {
-        guard navigationController.topViewController === screen else { return }
+        guard let navigationController = screen.navigationController,
+              navigationController.topViewController === screen else { return }
 
         navigationController.setNavigationBarHidden(!screen.headerShown, animated: true)
     }
 
     /// One sync per batch: a push and a pop in the same update become a single animated transition.
-    private func scheduleSync() {
+    func scheduleSync() {
         guard !isSyncScheduled else { return }
 
         isSyncScheduled = true
@@ -92,13 +121,84 @@ final class ScreenStackView: UIView, ScreenContainer, UINavigationControllerDele
         }
     }
 
+    private func screenGroups() -> [[ScreenController]] {
+        var groups: [[ScreenController]] = [[]]
+
+        for screen in screens {
+            if screen.isModal && !groups[groups.count - 1].isEmpty { groups.append([]) }
+            groups[groups.count - 1].append(screen)
+        }
+
+        return groups
+    }
+
     private func syncViewControllers() {
         updateBackButtonTitles()
 
-        guard !navigationController.viewControllers.elementsEqual(screens, by: ===) else { return }
+        let groups = screenGroups()
+        setScreens(groups[0], in: navigationController)
+
+        guard !isPresentationChanging else { return }
+
+        syncModals(Array(groups.dropFirst()))
+    }
+
+    private func setScreens(_ group: [ScreenController], in navigationController: UINavigationController) {
+        guard !navigationController.viewControllers.elementsEqual(group, by: ===) else { return }
 
         let animated = !navigationController.viewControllers.isEmpty && window != nil
-        navigationController.setViewControllers(screens, animated: animated)
+        navigationController.setViewControllers(group, animated: animated)
+    }
+
+    /// Modals whose first screen is gone are dismissed (with everything above them); then the remaining
+    /// groups are updated and new ones presented, one at a time.
+    private func syncModals(_ groups: [[ScreenController]]) {
+        let keptCount = zip(modalNavigationControllers, groups)
+            .prefix { navigationController, group in navigationController.viewControllers.first === group.first }
+            .count
+
+        if keptCount < modalNavigationControllers.count {
+            return dismissModals(from: keptCount)
+        }
+
+        for (navigationController, group) in zip(modalNavigationControllers, groups) {
+            setScreens(group, in: navigationController)
+        }
+
+        if groups.count > modalNavigationControllers.count {
+            presentModal(groups[modalNavigationControllers.count])
+        }
+    }
+
+    private func dismissModals(from index: Int) {
+        let presenter = modalNavigationControllers[index].presentingViewController
+        modalNavigationControllers.removeSubrange(index...)
+
+        changePresentation { completion in presenter?.dismiss(animated: true, completion: completion) }
+    }
+
+    private func presentModal(_ group: [ScreenController]) {
+        let modalNavigationController = UINavigationController()
+        let presenter = modalNavigationControllers.last ?? navigationController
+
+        configure(modalNavigationController)
+        modalNavigationController.setViewControllers(group, animated: false)
+        modalNavigationController.modalPresentationStyle =
+            Self.modalPresentationStyles[group[0].stackPresentation] ?? .automatic
+        modalNavigationController.presentationController?.delegate = self
+        modalNavigationControllers.append(modalNavigationController)
+
+        changePresentation { completion in
+            presenter.present(modalNavigationController, animated: true, completion: completion)
+        }
+    }
+
+    private func changePresentation(_ change: (@escaping () -> Void) -> Void) {
+        isPresentationChanging = true
+        change { [weak self] in
+            self?.isPresentationChanging = false
+            self?.scheduleSync()
+        }
     }
 
     /// iOS reads the back button title from the previous screen; expo-router sets it on the current one.
@@ -106,6 +206,26 @@ final class ScreenStackView: UIView, ScreenContainer, UINavigationControllerDele
         for (index, screen) in screens.enumerated().dropFirst() {
             screens[index - 1].navigationItem.backButtonTitle = screen.headerBackTitle
         }
+    }
+
+    private func reportDismissed(_ dismissedScreens: [ScreenController]) {
+        guard !dismissedScreens.isEmpty else { return }
+
+        screens.removeAll { screen in dismissedScreens.contains { $0 === screen } }
+        dismissedScreens.forEach { $0.onEvent?("dismissed", nil) }
+    }
+
+    // MARK: - UIAdaptivePresentationControllerDelegate
+
+    /// A sheet swiped down took its group, and any modal above it, with it.
+    func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        guard let index = modalNavigationControllers.firstIndex(where: {
+            $0 === presentationController.presentedViewController
+        }) else { return }
+
+        let dismissedScreens = modalNavigationControllers[index...].flatMap(\.viewControllers)
+        modalNavigationControllers.removeSubrange(index...)
+        reportDismissed(dismissedScreens.compactMap { $0 as? ScreenController })
     }
 
     // MARK: - UINavigationControllerDelegate
@@ -122,7 +242,7 @@ final class ScreenStackView: UIView, ScreenContainer, UINavigationControllerDele
         // previous screen's large title would jump in as soon as the swipe starts: only change what changes.
         if navigationController.isNavigationBarHidden != hidesHeader {
             if hidesHeader, let coordinator = navigationController.transitionCoordinator, coordinator.isInteractive {
-                hideHeaderWhenSwipeCompletes(coordinator: coordinator)
+                hideHeaderWhenSwipeCompletes(in: navigationController, coordinator: coordinator)
             } else {
                 navigationController.setNavigationBarHidden(hidesHeader, animated: animated)
             }
@@ -148,28 +268,32 @@ final class ScreenStackView: UIView, ScreenContainer, UINavigationControllerDele
     /// Hiding the bar during an edge swipe makes UIKit re-layout its buttons, and a cancelled swipe then
     /// jumps them back. Instead the bar fades out with the swipe and is hidden only once it completes (the
     /// revealed screen ignores the bar anyway, see ScreenController.ignoreHeaderInSafeArea).
-    private func hideHeaderWhenSwipeCompletes(coordinator: UIViewControllerTransitionCoordinator) {
+    private func hideHeaderWhenSwipeCompletes(
+        in navigationController: UINavigationController,
+        coordinator: UIViewControllerTransitionCoordinator
+    ) {
         let navigationBar = navigationController.navigationBar
 
         coordinator.animate(alongsideTransition: { _ in
             navigationBar.alpha = 0
-        }, completion: { [navigationController] context in
+        }, completion: { context in
             navigationBar.alpha = 1
             if !context.isCancelled { navigationController.setNavigationBarHidden(true, animated: false) }
         })
     }
 
-    /// Screens that left the navigation controller without JS asking were popped natively.
+    /// Screens of this navigation controller's group that left it without JS asking were popped natively.
     func navigationController(
         _ navigationController: UINavigationController,
         didShow viewController: UIViewController,
         animated: Bool
     ) {
-        let shownScreens = navigationController.viewControllers
-        let poppedScreens = screens.filter { screen in !shownScreens.contains { $0 === screen } }
-        guard !poppedScreens.isEmpty else { return }
+        guard let groupIndex = navigationControllers.firstIndex(where: { $0 === navigationController }) else { return }
 
-        screens.removeAll { screen in poppedScreens.contains { $0 === screen } }
-        poppedScreens.forEach { $0.onEvent?("dismissed", nil) }
+        let groups = screenGroups()
+        guard groups.indices.contains(groupIndex) else { return }
+
+        let shownScreens = navigationController.viewControllers
+        reportDismissed(groups[groupIndex].filter { screen in !shownScreens.contains { $0 === screen } })
     }
 }

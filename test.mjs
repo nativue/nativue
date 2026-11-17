@@ -290,6 +290,30 @@ globalThis.__dispatch(
 await settle()
 assert.equal(modal.props.visible, false)
 
+// ---------- Modal route ----------
+
+press(pressableShowing('Abrir rota modal ›', settingsTabId)) // <Link href="/about">
+await settle()
+assert.equal(rootScreenIds().length, 2)
+assert.equal(viewsById[topRootScreenId()].props.stackPresentation, 'modal') // from the root layout
+assert.equal(viewsById[topRootScreenId()].props.title, 'Sobre')
+
+press(descendantOfType(topRootScreenId(), 'PressableView')) // pushed after the modal: opens inside it
+await settle()
+assert.equal(rootScreenIds().length, 3)
+assert.equal(viewsById[topRootScreenId()].props.stackPresentation, 'push')
+
+globalThis.__dispatch(rootScreenIds()[1], 'dismissed') // sheet swiped down takes both
+globalThis.__dispatch(topRootScreenId(), 'dismissed')
+await settle()
+assert.equal(rootScreenIds().length, 1)
+
+press(pressableShowing('Abrir rota modal ›', settingsTabId))
+await settle()
+globalThis.__dispatch(topRootScreenId(), 'headeritempress', { side: 'right', index: 0 }) // Fechar
+await settle()
+assert.equal(rootScreenIds().length, 1)
+
 // ---------- Deep links and not found ----------
 
 globalThis.__openURL('vuenative://items/3')

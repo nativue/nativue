@@ -365,7 +365,9 @@ globalThis.__openURL = (url) => router.navigate(hrefFromURL(url))
 // ---------- Components ----------
 
 // Screen options, as in expo-router: title, headerShown, headerLargeTitle, headerBackTitle,
-// headerTintColor, headerRight / headerLeft: [{ title?, systemImage?, onPress }].
+// headerTintColor, headerRight / headerLeft: [{ title?, systemImage?, onPress }], and presentation:
+// 'card' (pushed, the default), 'modal', 'formSheet' or 'fullScreenModal'. A modal brings its own
+// header, and screens pushed after it open inside it.
 function nativeScreenProps(entry, options, onDismissed) {
   const headerItems = (items = []) =>
     items.map(({ title, systemImage }) => ({ title, systemImage }))
@@ -381,6 +383,8 @@ function nativeScreenProps(entry, options, onDismissed) {
     // A nested layout brings its own headers.
     headerShown: options.headerShown ?? entry.node.type === 'page',
     headerLargeTitle: options.headerLargeTitle ?? false,
+    stackPresentation:
+      !options.presentation || options.presentation === 'card' ? 'push' : options.presentation,
     headerBackTitle: options.headerBackTitle,
     headerTintColor: options.headerTintColor && processColor(options.headerTintColor),
     headerRightItems: headerItems(options.headerRight),

@@ -19,6 +19,13 @@ final class ScreenController: UIViewController, ContentRoot {
         }
     }
 
+    /// "push", or one of ScreenStackView.modalPresentationStyles.
+    var stackPresentation = "push" {
+        didSet { (container as? ScreenStackView)?.scheduleSync() }
+    }
+
+    var isModal: Bool { stackPresentation != "push" }
+
     init() {
         super.init(nibName: nil, bundle: nil)
 
@@ -56,7 +63,7 @@ final class ScreenController: UIViewController, ContentRoot {
     /// screen being swiped away has already left the navigation controller.
     private func updateTopPadding() {
         let stack = container as? ScreenStackView
-        let headerBottom = headerShown ? stack?.navigationBarBottom ?? 0 : 0
+        let headerBottom = headerShown ? stack?.navigationBarBottom(for: self) ?? 0 : 0
 
         YGNodeStyleSetPadding(contentNode.yogaNode, .top, Float(headerBottom))
     }

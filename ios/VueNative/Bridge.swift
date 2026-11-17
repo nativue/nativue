@@ -418,6 +418,9 @@ final class Bridge {
             screenController(id)?.navigationItem.title = value as? String
             node.markContentChanged()
 
+        case "stackPresentation":
+            screenController(id)?.stackPresentation = value as? String ?? "push"
+
         case "headerShown":
             screenController(id)?.headerShown = isTruthyAttribute(value)
 
