@@ -1,6 +1,7 @@
 // Runs the bundle against a fake __native and checks the resulting view tree.
 import { readFileSync } from 'node:fs'
 import assert from 'node:assert'
+import { processColor } from './src/colors.js'
 
 const viewsById = { 0: { type: 'root', children: [], props: {} } }
 
@@ -60,5 +61,14 @@ await Promise.resolve()
 
 assert.equal(scrollView.children.length, 18)
 assert.ok(!renderedTexts().includes('Item 19'))
+
+assert.equal(processColor('red'), 0xff0000ff)
+assert.equal(processColor('#42b883'), 0x42b883ff)
+assert.equal(processColor('#f80'), 0xff8800ff)
+assert.equal(processColor('#ff000080'), 0xff000080)
+assert.equal(processColor('rgba(255, 0, 0, 0.5)'), 0xff000080)
+assert.equal(processColor('rgb(0, 128, 255)'), 0x0080ffff)
+assert.equal(processColor('transparent'), 0x00000000)
+assert.equal(processColor('not-a-color'), null)
 
 console.log('ok')

@@ -1,5 +1,6 @@
 // Custom renderer: instead of the DOM, operations are sent to the native side (globalThis.__native).
 import { createRenderer } from '@vue/runtime-core'
+import { COLOR_PROPERTIES, processColor } from './colors.js'
 export * from '@vue/runtime-core'
 
 const native = globalThis.__native
@@ -42,12 +43,18 @@ function nativeIndexBefore(parent, childIndex) {
   return parent.children.slice(0, childIndex).filter(isNativeNode).length
 }
 
+function nativeStyleValue(property, value) {
+  return COLOR_PROPERTIES.has(property) ? processColor(value) : value
+}
+
 // Only changed properties cross the bridge; removed ones are sent as null.
 function styleChanges(previousStyle = {}, nextStyle = {}) {
   const changes = {}
 
   for (const property in nextStyle) {
-    if (previousStyle[property] !== nextStyle[property]) changes[property] = nextStyle[property]
+    if (previousStyle[property] !== nextStyle[property]) {
+      changes[property] = nativeStyleValue(property, nextStyle[property])
+    }
   }
 
   for (const property in previousStyle) {

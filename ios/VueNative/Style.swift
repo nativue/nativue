@@ -25,7 +25,7 @@ extension NativeNode {
     private func applyVisualProperty(_ property: String, _ value: Any) {
         switch property {
         case "backgroundColor":
-            view.backgroundColor = UIColor(cssHex: value)
+            view.backgroundColor = UIColor(rgba: value)
 
         case "borderRadius":
             view.layer.cornerRadius = CGFloat(number(value) ?? 0)
@@ -34,7 +34,7 @@ extension NativeNode {
             view.layer.borderWidth = CGFloat(number(value) ?? 0)
 
         case "borderColor":
-            view.layer.borderColor = UIColor(cssHex: value)?.cgColor
+            view.layer.borderColor = UIColor(rgba: value)?.cgColor
 
         case "opacity":
             view.alpha = CGFloat(number(value) ?? 1)
@@ -43,7 +43,7 @@ extension NativeNode {
             view.clipsToBounds = (value as? String) == "hidden"
 
         case "color":
-            let color = UIColor(cssHex: value)
+            let color = UIColor(rgba: value)
             (view as? UILabel)?.textColor = color
             (view as? UIButton)?.setTitleColor(color, for: .normal)
 
@@ -276,18 +276,15 @@ private let fontWeights: [String: UIFont.Weight] = [
 ]
 
 extension UIColor {
-    /// Parses `#rrggbb`.
-    convenience init?(cssHex value: Any) {
-        guard let hexString = value as? String, hexString.hasPrefix("#") else { return nil }
-
-        let digits = hexString.dropFirst()
-        guard digits.count == 6, let rgb = Int(digits, radix: 16) else { return nil }
+    /// Colors arrive as 0xRRGGBBAA numbers: the JS side (src/colors.js) parses every CSS format.
+    convenience init?(rgba value: Any) {
+        guard let rgba = (value as? NSNumber)?.uint32Value else { return nil }
 
         self.init(
-            red: CGFloat(rgb >> 16 & 0xFF) / 255,
-            green: CGFloat(rgb >> 8 & 0xFF) / 255,
-            blue: CGFloat(rgb & 0xFF) / 255,
-            alpha: 1
+            red: CGFloat(rgba >> 24 & 0xFF) / 255,
+            green: CGFloat(rgba >> 16 & 0xFF) / 255,
+            blue: CGFloat(rgba >> 8 & 0xFF) / 255,
+            alpha: CGFloat(rgba & 0xFF) / 255
         )
     }
 }
