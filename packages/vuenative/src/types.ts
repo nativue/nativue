@@ -102,6 +102,7 @@ export interface LayoutAnimationConfig {
 /** Functions the native side exposes as globalThis.__native (see Bridge.swift). */
 export interface NativeModule {
   log(message: string): void
+  reportError(message: string, details: string): void
   windowSize(): { width: number; height: number }
   create(id: number, type: string): void
   insert(parentId: number, childId: number, index: number): void

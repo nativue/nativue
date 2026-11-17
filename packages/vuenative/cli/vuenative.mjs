@@ -33,6 +33,9 @@ function frameworkPath(relativePath) {
 }
 
 function viteConfig({ mode, entry, plugins = [], watch = null }) {
+  // Vite reads the mode from NODE_ENV: development builds keep each component's file (for errors).
+  process.env.NODE_ENV = mode
+
   return {
     configFile: false,
     root: process.cwd(),

@@ -22,8 +22,12 @@ function detachEverywhere(childId) {
   }
 }
 
+const reportedErrors = []
+
 globalThis.__native = {
   windowSize: () => WINDOW,
+
+  reportError: (message, details) => reportedErrors.push({ message, details }),
 
   create: (id, type) => (viewsById[id] = { type, children: [], props: {}, style: {} }),
 
@@ -215,7 +219,15 @@ assert.equal(viewsById[exploreScreenIds()[0]].props.headerShown, false) // its o
 // ---------- Explore catalog ----------
 
 const catalogId = exploreScreenIds()[0]
-for (const title of ['Components', 'Lists', 'Animations', 'Gestures', 'Navigation', 'Data']) {
+for (const title of [
+  'Components',
+  'Lists',
+  'Animations',
+  'Gestures',
+  'Navigation',
+  'Data',
+  'Errors',
+]) {
   assert.ok(renderedTexts(catalogId).includes(title), title)
 }
 
@@ -261,6 +273,22 @@ assert.ok(renderedTexts(componentsId).includes('Off'))
 
 press(buttonTitled('Dismiss keyboard', componentsId))
 assert.equal(keyboardDismissCount, 1)
+
+// An error in a handler reaches the native error screen, with the file and the step it happened in.
+const dismissKeyboard = globalThis.__native.dismissKeyboard
+globalThis.__native.dismissKeyboard = () => {
+  throw new TypeError('keyboard is gone')
+}
+press(buttonTitled('Dismiss keyboard', componentsId))
+globalThis.__native.dismissKeyboard = dismissKeyboard
+assert.equal(reportedErrors.length, 1)
+assert.equal(reportedErrors[0].message, 'TypeError: keyboard is gone')
+assert.ok(
+  reportedErrors[0].details.startsWith(
+    'native event handler\n  in src/components/Section.vue\n  in src/components/Page.vue\n' +
+      '  in src/app/(tabs)/explore/components.vue\n',
+  ),
+)
 
 const [localImage, remoteImage] = renderedViewIds(componentsId)
   .map((id) => viewsById[id])
@@ -647,5 +675,18 @@ assert.equal(processColor('not-a-color'), null)
 
 assert.deepEqual(JSON.parse(storage.get('items')), []) // the list was emptied above
 assert.equal(storage.get('hideDoneItems'), 'false')
+
+// ---------- Errors ----------
+
+const errorsId = await open('explore/errors')
+press(pressableContaining('Throw in a press handler', errorsId))
+assert.equal(reportedErrors.at(-1).message, 'Error: Something went wrong in a press handler')
+
+press(pressableContaining('Break the render', errorsId))
+await settle()
+const renderError = reportedErrors.at(-1)
+assert.match(renderError.message, /^TypeError/)
+assert.ok(renderError.details.startsWith('render function\n'))
+assert.ok(renderError.details.includes('  in src/app/(tabs)/explore/errors.vue\n'))
 
 console.log('ok')

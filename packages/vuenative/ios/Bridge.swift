@@ -49,6 +49,9 @@ final class Bridge {
     private var contentRootsByNodeId: [Int: ContentRoot] = [:]
     /// Read on the main thread at start, for Dimensions.get('window').
     private var windowSize: CGSize = .zero
+    /// The bundle running now, for the error overlay's Reload.
+    private var source = ""
+    private let errorOverlay = ErrorOverlay()
 
     func start(rootView: RootView) {
         self.rootView = rootView
@@ -74,6 +77,9 @@ final class Bridge {
 
     /// Discards the current node tree and JSContext, then runs the bundle from scratch.
     func run(_ source: String, completion: ((EvaluationTimings) -> Void)? = nil) {
+        self.source = source
+        errorOverlay.hide()
+
         evaluate({ [unowned self] in
             enqueue { [unowned self] in resetNodeTree() }
 
@@ -180,10 +186,12 @@ final class Bridge {
 
     private func makeContext() -> JSContext {
         let context = JSContext()!
-        context.exceptionHandler = { _, exception in
-            let message = exception?.toString() ?? ""
-            let stack = exception?.objectForKeyedSubscript("stack")?.toString() ?? ""
-            print("JS error:", message, stack)
+        // Errors outside Vue: timers, native callbacks, the bundle itself. Vue's go through reportError.
+        context.exceptionHandler = { [unowned self] _, exception in
+            reportError(
+                message: exception?.toString() ?? "",
+                details: exception?.objectForKeyedSubscript("stack")?.toString() ?? ""
+            )
         }
 
         let nativeModule = JSValue(newObjectIn: context)!
@@ -192,6 +200,10 @@ final class Bridge {
         }
 
         define("log", { message in print("[JS]", message) } as @convention(block) (String) -> Void)
+
+        define("reportError", { [unowned self] message, details in
+            reportError(message: message, details: details)
+        } as @convention(block) (String, String) -> Void)
 
         // ponytail: the size at launch; report rotation and split view changes if the app supports them.
         define("windowSize", { [unowned self] in
@@ -290,6 +302,17 @@ final class Bridge {
             """)
 
         return context
+    }
+
+    /// Logged always; shown over the app in development builds.
+    private func reportError(message: String, details: String) {
+        print("[VueNative] JS error:", message, "\n" + details)
+
+        #if DEBUG
+        DispatchQueue.main.async { [unowned self] in
+            errorOverlay.show(message: message, details: details) { [unowned self] in run(source) }
+        }
+        #endif
     }
 
     // MARK: - Main thread

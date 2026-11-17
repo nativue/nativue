@@ -2,7 +2,16 @@
 import './globals'
 import './fetch'
 import './native-components'
-import { camelize, createRenderer, type Component, type Directive } from '@vue/runtime-core'
+import {
+  callWithAsyncErrorHandling,
+  camelize,
+  createRenderer,
+  ErrorCodes,
+  type Component,
+  type ComponentInternalInstance,
+  type ComponentPublicInstance,
+  type Directive,
+} from '@vue/runtime-core'
 import { animatedEventMapping, animatedStyleBinding, isAnimatedEvent } from './animated'
 import { COLOR_PROPERTIES, processColor } from './colors'
 import { FlatList, Pressable, Swipeable } from './components'
@@ -138,13 +147,22 @@ function reportsToJavaScript(eventName: string, handler: unknown): boolean {
   return eventName !== 'scroll' || handler.listener != null
 }
 
-// An Animated.event handler writes into values natively; JS keeps only its listener.
-function patchEventHandler(element: Node, key: string, previousHandler: unknown, handler: unknown) {
+// An Animated.event handler writes into values natively; JS keeps only its listener. Handlers run
+// through Vue's error handling, like on the web, so an error names the component it came from.
+function patchEventHandler(
+  element: Node,
+  key: string,
+  previousHandler: unknown,
+  handler: unknown,
+  component: ComponentInternalInstance | null,
+) {
   const eventName = key.slice(2).toLowerCase()
+  const listener = isAnimatedEvent(handler) ? handler.listener : (handler as Function | undefined)
   eventHandlersByNodeId[element.id] ??= {}
-  eventHandlersByNodeId[element.id][eventName] = isAnimatedEvent(handler)
-    ? handler.listener
-    : (handler as EventHandler | undefined)
+  eventHandlersByNodeId[element.id][eventName] =
+    listener &&
+    ((payload) =>
+      callWithAsyncErrorHandling(listener, component, ErrorCodes.NATIVE_EVENT_HANDLER, [payload]))
 
   native.setProp(element.id, key, reportsToJavaScript(eventName, handler))
 
@@ -211,11 +229,11 @@ const { createApp: createBaseApp } = createRenderer<Node, Node>({
     return siblings?.[siblings.indexOf(node) + 1] ?? null
   },
 
-  patchProp(element, key, previousValue, nextValue) {
+  patchProp(element, key, previousValue, nextValue, _namespace, component) {
     if (key === 'style') patchStyle(element, previousValue, nextValue)
     // :on-pan="..." (v-bind, used for Animated.event) arrives kebab-case.
     else if (isEventProp(camelize(key))) {
-      patchEventHandler(element, camelize(key), previousValue, nextValue)
+      patchEventHandler(element, camelize(key), previousValue, nextValue, component ?? null)
     } else native.setProp(element.id, camelize(key), nativePropValue(key, nextValue) ?? null) // keyboard-type -> keyboardType
   },
 })
@@ -289,9 +307,34 @@ export const vModelText: Directive<Node> = {
 
 const rootNode: Node = { id: 0, type: 'root', parent: null, children: [], text: '' }
 
+// Errors in templates, setup, hooks and handlers: shown natively, with where they happened (in
+// development, Vue's `info` reads like "native event handler").
+function reportVueError(error: unknown, instance: ComponentPublicInstance | null, info: string) {
+  const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+  const stack = error instanceof Error ? (error.stack ?? '') : ''
+  const trace = componentFiles(instance?.$ ?? null).map((file) => `  in ${file}`)
+
+  native.reportError(message, [info, ...trace, '', stack].join('\n'))
+}
+
+// The app's components from `instance` up to the root (development builds only: they keep each
+// component's file), e.g. a component, then the screen using it, then its layouts.
+function componentFiles(instance: ComponentInternalInstance | null): string[] {
+  const files: string[] = []
+
+  for (let current = instance; current; current = current.parent) {
+    const file = (current.type as { __file?: string }).__file
+    if (file) files.push(file.slice(file.lastIndexOf('/src/') + 1))
+  }
+
+  return files
+}
+
 export function createApp(rootComponent: Component) {
   const app = createBaseApp(rootComponent)
   const mountOnContainer = app.mount
+
+  app.config.errorHandler = reportVueError
 
   app.component('Pressable', Pressable)
   app.component('FlatList', FlatList)

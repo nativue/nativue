@@ -2,6 +2,7 @@
 import type { Component } from 'vue'
 import {
   BlocksIcon,
+  BugIcon,
   CompassIcon,
   DatabaseIcon,
   HandIcon,
@@ -78,6 +79,13 @@ export const demoSections: DemoSection[] = [
         subtitle: 'fetch, AsyncStorage and timers',
         icon: DatabaseIcon,
         tint: colors.teal,
+      },
+      {
+        href: '/explore/errors',
+        title: 'Errors',
+        subtitle: 'The error screen of development builds',
+        icon: BugIcon,
+        tint: colors.red,
       },
     ],
   },
