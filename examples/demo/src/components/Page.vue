@@ -1,7 +1,7 @@
 <!-- A scrolling screen on the grouped background. Attributes (e.g. :on-scroll) go to the ScrollView. -->
 <script setup lang="ts">
 import { StyleSheet } from 'vue'
-import { colors, spacing } from '../theme'
+import { colors, spacing } from '@/lib/theme'
 
 const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: colors.background },

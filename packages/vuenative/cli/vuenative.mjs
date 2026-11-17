@@ -50,6 +50,7 @@ function viteConfig({ mode, entry, plugins = [], watch = null }) {
       alias: [
         { find: /^vue$/, replacement: frameworkPath('src/renderer.ts') },
         { find: /^vuenative\/router$/, replacement: frameworkPath('src/router.ts') },
+        { find: /^@\//, replacement: `${process.cwd()}/src/` },
       ],
     },
     define: { 'process.env.NODE_ENV': JSON.stringify(mode) },

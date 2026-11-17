@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, LayoutAnimation, StyleSheet, watch, type Style } from 'vue'
 import { Link, Stack, useLocalSearchParams, useRouter } from 'vuenative/router'
-import FieldRow from '../../../../components/FieldRow.vue'
-import Page from '../../../../components/Page.vue'
-import Section from '../../../../components/Section.vue'
-import { findItem, items, removeItem } from '../../../../store'
-import { colors } from '../../../../theme'
+import FieldRow from '@/components/FieldRow.vue'
+import Page from '@/components/Page.vue'
+import Section from '@/components/Section.vue'
+import { findItem, items, removeItem } from '@/lib/store'
+import { colors } from '@/lib/theme'
 
 const router = useRouter()
 const { id } = useLocalSearchParams<{ id: string }>()

@@ -1,7 +1,7 @@
 <!-- A label on the left and a control (the slot) on the right. -->
 <script setup lang="ts">
 import { StyleSheet } from 'vue'
-import { colors } from '../theme'
+import { colors } from '@/lib/theme'
 
 defineProps<{ label: string; detail?: string }>()
 

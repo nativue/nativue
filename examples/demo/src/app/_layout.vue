@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Stack } from 'vuenative/router'
-import { colors } from '../theme'
+import { colors } from '@/lib/theme'
 </script>
 
 <template>

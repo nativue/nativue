@@ -10,10 +10,10 @@ import {
   type Style,
 } from 'vue'
 import { Stack } from 'vuenative/router'
-import Page from '../../../components/Page.vue'
-import PrimaryButton from '../../../components/PrimaryButton.vue'
-import Section from '../../../components/Section.vue'
-import { colors, radius, spacing } from '../../../theme'
+import Page from '@/components/Page.vue'
+import PrimaryButton from '@/components/PrimaryButton.vue'
+import Section from '@/components/Section.vue'
+import { colors, radius, spacing } from '@/lib/theme'
 
 type PresetName = keyof typeof LayoutAnimation.Presets
 

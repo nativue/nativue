@@ -3,8 +3,8 @@
 import { StyleSheet } from 'vue'
 import { ChevronRightIcon } from 'vuenative-icons/lucide'
 import { Link } from 'vuenative/router'
-import type { Demo } from '../demos'
-import { colors, spacing } from '../theme'
+import type { Demo } from '@/lib/demos'
+import { colors, spacing } from '@/lib/theme'
 import IconTile from './IconTile.vue'
 
 defineProps<{ demo: Demo }>()

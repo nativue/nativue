@@ -1,7 +1,7 @@
 <!-- A titled white card, like an inset grouped table section. `flush` drops the padding for rows. -->
 <script setup lang="ts">
 import { StyleSheet } from 'vue'
-import { colors, radius, spacing } from '../theme'
+import { colors, radius, spacing } from '@/lib/theme'
 
 defineProps<{ title?: string; footer?: string; flush?: boolean }>()
 

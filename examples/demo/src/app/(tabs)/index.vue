@@ -16,10 +16,10 @@ import {
   ZapIcon,
 } from 'vuenative-icons/lucide'
 import { useRouter } from 'vuenative/router'
-import logo from '../../assets/vue-logo.png'
-import IconTile from '../../components/IconTile.vue'
-import PrimaryButton from '../../components/PrimaryButton.vue'
-import { cardShadow, colors, radius, spacing } from '../../theme'
+import logo from '@/assets/vue-logo.png'
+import IconTile from '@/components/IconTile.vue'
+import PrimaryButton from '@/components/PrimaryButton.vue'
+import { cardShadow, colors, radius, spacing } from '@/lib/theme'
 
 const PAGE_COUNT = 3
 

@@ -13,7 +13,8 @@
     "verbatimModuleSyntax": true,
     "paths": {
       "vue": ["./src/renderer.ts"],
-      "vuenative/router": ["./src/router.ts"]
+      "vuenative/router": ["./src/router.ts"],
+      "@/*": ["${configDir}/src/*"]
     }
   }
 }

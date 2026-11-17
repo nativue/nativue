@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { AsyncStorage, onMounted, onUnmounted, ref, StyleSheet } from 'vue'
 import { Stack } from 'vuenative/router'
-import FieldRow from '../../../components/FieldRow.vue'
-import Page from '../../../components/Page.vue'
-import PrimaryButton from '../../../components/PrimaryButton.vue'
-import Section from '../../../components/Section.vue'
-import { colors, radius } from '../../../theme'
+import FieldRow from '@/components/FieldRow.vue'
+import Page from '@/components/Page.vue'
+import PrimaryButton from '@/components/PrimaryButton.vue'
+import Section from '@/components/Section.vue'
+import { colors, radius } from '@/lib/theme'
 
 const POSTS_URL = 'https://jsonplaceholder.typicode.com/posts?_limit=5'
 const VISITS_KEY = 'dataPageVisits'

@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, StyleSheet } from 'vue'
 import { Stack, useFocusEffect, useRouter } from 'vuenative/router'
-import Page from '../../../components/Page.vue'
-import PrimaryButton from '../../../components/PrimaryButton.vue'
-import Section from '../../../components/Section.vue'
-import { colors } from '../../../theme'
+import Page from '@/components/Page.vue'
+import PrimaryButton from '@/components/PrimaryButton.vue'
+import Section from '@/components/Section.vue'
+import { colors } from '@/lib/theme'
 
 const router = useRouter()
 const focusCount = ref(0)

@@ -1,7 +1,7 @@
 <!-- The main call to action of a screen. -->
 <script setup lang="ts">
 import { StyleSheet } from 'vue'
-import { colors, radius } from '../theme'
+import { colors, radius } from '@/lib/theme'
 
 withDefaults(defineProps<{ title: string; tint?: string }>(), { tint: colors.green })
 

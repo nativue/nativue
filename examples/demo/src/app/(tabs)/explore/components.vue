@@ -10,12 +10,12 @@ import {
   StarIcon,
 } from 'vuenative-icons/lucide'
 import { Stack } from 'vuenative/router'
-import logo from '../../../assets/vue-logo.png'
-import FieldRow from '../../../components/FieldRow.vue'
-import Page from '../../../components/Page.vue'
-import PrimaryButton from '../../../components/PrimaryButton.vue'
-import Section from '../../../components/Section.vue'
-import { colors, radius, spacing } from '../../../theme'
+import logo from '@/assets/vue-logo.png'
+import FieldRow from '@/components/FieldRow.vue'
+import Page from '@/components/Page.vue'
+import PrimaryButton from '@/components/PrimaryButton.vue'
+import Section from '@/components/Section.vue'
+import { colors, radius, spacing } from '@/lib/theme'
 
 const REMOTE_IMAGE_URL = 'https://picsum.photos/id/1018/800/400'
 

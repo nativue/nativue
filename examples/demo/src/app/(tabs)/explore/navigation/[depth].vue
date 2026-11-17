@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { StyleSheet } from 'vue'
 import { Stack, useLocalSearchParams, useRouter } from 'vuenative/router'
-import Page from '../../../../components/Page.vue'
-import PrimaryButton from '../../../../components/PrimaryButton.vue'
-import Section from '../../../../components/Section.vue'
-import { colors } from '../../../../theme'
+import Page from '@/components/Page.vue'
+import PrimaryButton from '@/components/PrimaryButton.vue'
+import Section from '@/components/Section.vue'
+import { colors } from '@/lib/theme'
 
 const router = useRouter()
 const depth = Number(useLocalSearchParams<{ depth: string }>().depth)

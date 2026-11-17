@@ -25,10 +25,13 @@ the bundle.
 ```
 src/
   app/          routes, file-based like expo-router (_layout.vue, [param].vue, (group)/)
-  assets/
-  ...           anything else: components/, stores, theme...
+  assets/       images and other files
+  components/   shared components (optional)
+  lib/          everything else: stores, theme, helpers (optional)
 ios/            thin host app: App.swift shows VueNativeView()
 ```
+
+`@/` points at `src/` from anywhere: `import { colors } from '@/lib/theme'`.
 
 Code imports the runtime from `vue` (`ref`, `Animated`, `StyleSheet`...) and the router from
 `vuenative/router`. TypeScript is the default: `tsconfig.json` extends `vuenative/tsconfig.base.json`.

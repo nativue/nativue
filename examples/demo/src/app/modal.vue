@@ -2,10 +2,10 @@
 import { StyleSheet } from 'vue'
 import { Stack, useRouter } from 'vuenative/router'
 import { AppWindowIcon } from 'vuenative-icons/lucide'
-import IconTile from '../components/IconTile.vue'
-import Page from '../components/Page.vue'
-import PrimaryButton from '../components/PrimaryButton.vue'
-import { colors } from '../theme'
+import IconTile from '@/components/IconTile.vue'
+import Page from '@/components/Page.vue'
+import PrimaryButton from '@/components/PrimaryButton.vue'
+import { colors } from '@/lib/theme'
 
 const router = useRouter()
 

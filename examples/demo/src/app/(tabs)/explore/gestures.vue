@@ -9,7 +9,7 @@ import {
 } from 'vue'
 import { MoveIcon, RotateCwIcon, ZoomInIcon } from 'vuenative-icons/lucide'
 import { Stack } from 'vuenative/router'
-import { cardShadow, colors, radius, spacing } from '../../../theme'
+import { cardShadow, colors, radius, spacing } from '@/lib/theme'
 
 // The gestures write these values natively, so the card follows the fingers without JS.
 const translationX = new Animated.Value(0)

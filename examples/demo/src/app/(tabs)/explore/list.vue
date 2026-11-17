@@ -10,8 +10,8 @@ import {
   items,
   removeItem,
   type Item,
-} from '../../../store'
-import { colors, radius, spacing } from '../../../theme'
+} from '@/lib/store'
+import { colors, radius, spacing } from '@/lib/theme'
 
 const ROW_HEIGHT = 64
 

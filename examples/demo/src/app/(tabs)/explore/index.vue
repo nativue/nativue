@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { StyleSheet } from 'vue'
 import { Stack } from 'vuenative/router'
-import logo from '../../../assets/vue-logo.png'
-import DemoRow from '../../../components/DemoRow.vue'
-import Page from '../../../components/Page.vue'
-import Section from '../../../components/Section.vue'
-import { demoSections } from '../../../demos'
-import { cardShadow, colors, radius, spacing } from '../../../theme'
+import logo from '@/assets/vue-logo.png'
+import DemoRow from '@/components/DemoRow.vue'
+import Page from '@/components/Page.vue'
+import Section from '@/components/Section.vue'
+import { demoSections } from '@/lib/demos'
+import { cardShadow, colors, radius, spacing } from '@/lib/theme'
 
 const demoCount = demoSections.reduce((count, section) => count + section.demos.length, 0)
 const HIGHLIGHTS = [`${demoCount} demos`, '100% native', 'TypeScript']
