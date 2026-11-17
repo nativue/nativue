@@ -10,7 +10,7 @@
     "dev": "npm run dev -w demo",
     "build": "npm run build -w demo",
     "test": "npm test -w vuenative",
-    "typecheck": "npm run typecheck --workspaces",
+    "typecheck": "npm run typecheck --workspaces --if-present",
     "format": "prettier --write packages examples"
   },
   "devDependencies": {
