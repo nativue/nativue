@@ -39,6 +39,7 @@ http
 setInterval(() => sendToApps(':\n\n'), KEEPALIVE_INTERVAL_MS)
 
 await build({
+  mode: 'development',
   build: { watch: {} },
   plugins: [
     {

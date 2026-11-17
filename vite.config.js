@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 const nativeComponentTags = ['View', 'Text', 'Button']
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [
     vue({
       template: {
@@ -18,7 +18,7 @@ export default defineConfig({
       { find: /^vue$/, replacement: fileURLToPath(new URL('./src/renderer.js', import.meta.url)) },
     ],
   },
-  define: { 'process.env.NODE_ENV': '"development"' },
+  define: { 'process.env.NODE_ENV': JSON.stringify(mode) },
   build: {
     lib: {
       entry: 'src/main.js',
@@ -28,6 +28,6 @@ export default defineConfig({
     },
     outDir: 'ios/VueNative',
     emptyOutDir: false,
-    minify: false,
+    minify: mode === 'production',
   },
-})
+}))
