@@ -11,9 +11,9 @@ const node = (type) => ({ id: nextId++, type, parent: null, children: [], text: 
 // '#text' e '#comment' só existem no JS (âncoras do Vue / texto cru); o nativo nunca os vê.
 const isNative = (n) => n.type[0] !== '#'
 
-// Texto cru dentro de <text> vira a propriedade text do UILabel pai (igual RCTRawText no RN).
+// Texto cru dentro de <Text> vira a propriedade text do UILabel pai (igual RCTRawText no RN).
 function syncText(parent) {
-  if (parent?.type === 'text') N.setText(parent.id, parent.children.map((c) => c.text).join(''))
+  if (parent?.type === 'Text') N.setText(parent.id, parent.children.map((c) => c.text).join(''))
 }
 
 function detach(child) {
@@ -42,7 +42,7 @@ const { createApp: baseCreateApp } = createRenderer({
   },
   setElementText(el, text) {
     el.children = []
-    if (el.type === 'text') N.setText(el.id, text)
+    if (el.type === 'Text') N.setText(el.id, text)
   },
   insert(child, parent, anchor) {
     detach(child) // move: o nativo reposiciona sozinho no insert

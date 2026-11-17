@@ -42,15 +42,15 @@ final class Bridge {
 
     func make(_ type: String, _ id: Int) -> UIView {
         switch type {
-        case "view":
+        case "View":
             let s = UIStackView()
             s.axis = .vertical
             return s
-        case "text":
+        case "Text":
             let l = UILabel()
             l.numberOfLines = 0
             return l
-        case "button":
+        case "Button":
             let b = UIButton(type: .system)
             b.addAction(UIAction { [unowned self] _ in
                 ctx.objectForKeyedSubscript("__dispatch").call(withArguments: [id, "press"])

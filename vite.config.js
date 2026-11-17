@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath } from 'node:url'
 
-const nativeTags = ['view', 'text', 'button']
+const nativeTags = ['View', 'Text', 'Button']
 
 export default defineConfig({
   plugins: [vue({ template: { compilerOptions: { isCustomElement: (t) => nativeTags.includes(t) } } })],

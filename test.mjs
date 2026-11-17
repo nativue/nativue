@@ -15,7 +15,7 @@ globalThis.__native = {
 }
 ;(0, eval)(readFileSync('ios/VueNative/main.bundle.js', 'utf8'))
 
-const texts = () => Object.values(views).filter((v) => v.type === 'text').map((v) => v.text)
+const texts = () => Object.values(views).filter((v) => v.type === 'Text').map((v) => v.text)
 const rootView = views[views[0].children[0]]
 assert.equal(rootView.children.length, 3)
 assert.ok(texts().includes('Contador: 0'))

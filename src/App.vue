@@ -4,13 +4,13 @@ const count = ref(0)
 </script>
 
 <template>
-  <view :style="{ padding: 24, gap: 12 }">
-    <text :style="{ fontSize: 28, color: '#42b883' }">Olá, Vue Native!</text>
-    <text>Contador: {{ count }}</text>
-    <view :style="{ flexDirection: 'row', gap: 8 }">
-      <button title="-1" @press="count--" />
-      <button title="+1" @press="count++" />
-    </view>
-    <text v-if="count > 2">Passou de 2 🎉</text>
-  </view>
+  <View :style="{ padding: 24, gap: 12 }">
+    <Text :style="{ fontSize: 28, color: '#42b883' }">Olá, Vue Native!</Text>
+    <Text>Contador: {{ count }}</Text>
+    <View :style="{ flexDirection: 'row', gap: 8 }">
+      <Button title="-1" @press="count--" />
+      <Button title="+1" @press="count++" />
+    </View>
+    <Text v-if="count > 2">Passou de 2 🎉</Text>
+  </View>
 </template>
