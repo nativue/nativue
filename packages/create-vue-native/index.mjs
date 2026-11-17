@@ -20,18 +20,18 @@ async function askProjectName() {
   return answer.trim() || 'my-app'
 }
 
-// "My Cool App" -> "my-cool-app"
+// "My.Cool_App" -> "my-cool_app"
 function slugify(name) {
   return name
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
+    .replace(/[^a-z0-9_]+/g, '-')
+    .replace(/^[-_]+|[-_]+$/g, '')
 }
 
-// "my-cool-app" -> "My Cool App"
+// "my-cool_app" -> "My Cool App"
 function displayNameOf(slug) {
   return slug
-    .split('-')
+    .split(/[-_]+/)
     .map((word) => word[0].toUpperCase() + word.slice(1))
     .join(' ')
 }
@@ -63,10 +63,16 @@ const { values: options, positionals } = parseArgs({
   options: { 'bundle-id': { type: 'string' } },
 })
 
-const projectDirectory = resolve(positionals[0] ?? (await askProjectName()))
+const projectName = positionals[0] ?? (await askProjectName())
+if (/\s/.test(projectName)) {
+  fail(`"${projectName}" has spaces: use dashes or underscores instead, e.g. my-app or my_app`)
+}
+
+const projectDirectory = resolve(projectName)
 const projectPath = relative(process.cwd(), projectDirectory) || '.'
 const slug = slugify(basename(projectDirectory))
-const urlScheme = slug.replaceAll('-', '')
+// Bundle ids and URL schemes allow neither dashes nor underscores here.
+const urlScheme = slug.replace(/[-_]/g, '')
 const bundleId = options['bundle-id'] ?? `com.example.${urlScheme}`
 
 if (!slug) fail('The project name needs at least one letter or digit.')
@@ -89,7 +95,7 @@ fillPlaceholders(projectDirectory, {
 console.log(`
 Created ${displayNameOf(slug)} in ${projectPath}
 
-  cd ${projectPath.includes(' ') ? `"${projectPath}"` : projectPath}
+  cd ${projectPath}
   npm install
   npm run dev                 keep it running: it rebuilds and reloads the app on save
   open ios/App.xcodeproj      then pick a simulator or your iPhone and press Run
