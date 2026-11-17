@@ -6,6 +6,10 @@ extension NativeNode {
     /// Receives only the properties that changed: the JS renderer diffs style objects before sending.
     func applyStyle(_ changes: [String: Any]) {
         for (property, value) in changes where !(value is NSNull) {
+            if view is SafeAreaView, property.hasPrefix("padding") {
+                continue // the safe area insets own the padding
+            }
+
             if let applyLayoutProperty = layoutPropertySetters[property] {
                 applyLayoutProperty(yogaNode, value)
             } else {

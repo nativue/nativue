@@ -3,7 +3,8 @@ import SwiftUI
 @main
 struct VueNativeApp: App {
     var body: some Scene {
-        WindowGroup { VueRoot() }
+        // Like React Native, the root fills the whole screen; <SafeAreaView> opts into the safe area.
+        WindowGroup { VueRoot().ignoresSafeArea() }
     }
 }
 

@@ -195,9 +195,17 @@ final class Bridge {
 
         case "ScrollView":
             let scrollView = UIScrollView()
-            scrollView.contentInsetAdjustmentBehavior = .never // the root view already sits in the safe area
+            scrollView.contentInsetAdjustmentBehavior = .never // like React Native: <SafeAreaView> handles it
             scrollView.alwaysBounceVertical = true
             return NativeNode(view: scrollView, measuresContent: false)
+
+        case "SafeAreaView":
+            let safeAreaView = SafeAreaView()
+            let node = NativeNode(view: safeAreaView, measuresContent: false)
+            safeAreaView.onSafeAreaInsetsChange = { [unowned self, unowned node] in
+                if node.applySafeAreaPadding() { requestLayout() }
+            }
+            return node
 
         default:
             return NativeNode(view: UIView(), measuresContent: false)

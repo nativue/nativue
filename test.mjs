@@ -35,7 +35,8 @@ function renderedTexts(viewId = 0) {
   return [...ownText, ...view.children.flatMap((childId) => renderedTexts(childId))]
 }
 
-const appRootView = viewsById[viewsById[0].children[0]]
+const safeAreaView = viewsById[viewsById[0].children[0]]
+const appRootView = viewsById[safeAreaView.children[0]]
 const scrollView = viewsById[appRootView.children[1]]
 
 function pressButton(title, times) {
@@ -43,6 +44,7 @@ function pressButton(title, times) {
   for (let press = 0; press < times; press++) globalThis.__dispatch(Number(buttonId), 'press')
 }
 
+assert.equal(safeAreaView.type, 'SafeAreaView')
 assert.equal(appRootView.children.length, 3)
 assert.equal(scrollView.type, 'ScrollView')
 assert.equal(scrollView.children.length, 20)
