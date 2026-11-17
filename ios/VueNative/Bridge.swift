@@ -1,17 +1,18 @@
 import UIKit
 import JavaScriptCore
 
-/// Receives the operations sent by the Vue renderer (src/renderer.js) and applies them to UIKit.
+/// Receives the operations sent by the Vue renderer (src/renderer.js) and applies them to UIKit + Yoga.
 final class Bridge {
     static let devServerURL = URL(string: "http://localhost:42883")!
 
     var context: JSContext!
-    var rootView: UIView!
-    // ponytail: children of a removed view stay in the dictionary; clean up recursively if memory leaks.
-    var viewsById: [Int: UIView] = [:]
+    var rootView: RootView!
+    // ponytail: children of a removed node stay in the dictionary; clean up recursively if memory leaks.
+    var nodesById: [Int: NativeNode] = [:]
 
-    func start(rootView: UIView) {
+    func start(rootView: RootView) {
         self.rootView = rootView
+        rootView.onLayoutSubviews = { [unowned self] in layout() }
 
         let bundleURL = Bundle.main.url(forResource: "main.bundle", withExtension: "js")!
         run(try! String(contentsOf: bundleURL, encoding: .utf8))
@@ -21,13 +22,22 @@ final class Bridge {
         #endif
     }
 
-    /// Discards the current view tree and JSContext, then runs the bundle from scratch.
+    /// Discards the current node tree and JSContext, then runs the bundle from scratch.
     func run(_ source: String) {
         rootView.subviews.forEach { $0.removeFromSuperview() }
-        viewsById = [0: rootView]
+        nodesById = [0: NativeNode(view: rootView, measuresContent: false)]
 
         context = makeContext()
         context.evaluateScript(source, withSourceURL: URL(string: "main.bundle.js"))
+    }
+
+    func layout() {
+        nodesById[0]?.calculateLayout(width: rootView.bounds.width, height: rootView.bounds.height)
+    }
+
+    /// UIKit coalesces these requests, so the layout pass runs once after a burst of JS mutations.
+    func requestLayout() {
+        rootView.setNeedsLayout()
     }
 
     #if DEBUG
@@ -68,24 +78,31 @@ final class Bridge {
         define("log", { message in print("[JS]", message) } as @convention(block) (String) -> Void)
 
         define("create", { [unowned self] id, type in
-            viewsById[id] = makeView(type: type, id: id)
+            nodesById[id] = makeNode(type: type, id: id)
         } as @convention(block) (Int, String) -> Void)
 
         define("insert", { [unowned self] parentId, childId, index in
-            insertView(childId: childId, parentId: parentId, at: index)
+            insertNode(childId: childId, parentId: parentId, at: index)
         } as @convention(block) (Int, Int, Int) -> Void)
 
         define("remove", { [unowned self] id in
-            viewsById.removeValue(forKey: id)?.removeFromSuperview()
+            nodesById.removeValue(forKey: id)?.removeFromParent()
+            requestLayout()
         } as @convention(block) (Int) -> Void)
 
         define("setText", { [unowned self] id, text in
-            (viewsById[id] as? UILabel)?.text = text
+            guard let node = nodesById[id] else { return }
+
+            (node.view as? UILabel)?.text = text
+            node.markContentChanged()
+            requestLayout()
         } as @convention(block) (Int, String) -> Void)
 
         define("setProp", { [unowned self] id, key, value in
-            guard let view = viewsById[id] else { return }
-            setProp(on: view, key: key, value: value)
+            guard let node = nodesById[id] else { return }
+
+            setProp(on: node, key: key, value: value)
+            requestLayout()
         } as @convention(block) (Int, String, JSValue) -> Void)
 
         context.setObject(nativeModule, forKeyedSubscript: "__native" as NSString)
@@ -97,37 +114,32 @@ final class Bridge {
         return context
     }
 
-    func insertView(childId: Int, parentId: Int, at index: Int) {
-        guard let parent = viewsById[parentId], let child = viewsById[childId] else { return }
+    func insertNode(childId: Int, parentId: Int, at index: Int) {
+        guard let parent = nodesById[parentId], let child = nodesById[childId] else { return }
 
-        child.removeFromSuperview()
-
-        if let stackView = parent as? UIStackView {
-            stackView.insertArrangedSubview(child, at: min(index, stackView.arrangedSubviews.count))
-        } else {
-            parent.insertSubview(child, at: index)
+        guard parent.canHaveChildren else {
+            print("[VueNative] <\(type(of: parent.view))> can't have native children; use <View>")
+            return
         }
+
+        parent.insertChild(child, at: index)
+        requestLayout()
     }
 
-    func makeView(type: String, id: Int) -> UIView {
+    func makeNode(type: String, id: Int) -> NativeNode {
         switch type {
-        case "View":
-            let stackView = UIStackView()
-            stackView.axis = .vertical
-            return stackView
-
         case "Text":
             let label = UILabel()
             label.numberOfLines = 0
-            return label
+            return NativeNode(view: label, measuresContent: true)
 
         case "Button":
             let button = UIButton(type: .system)
             button.addAction(UIAction { [unowned self] _ in dispatchEvent("press", toNodeId: id) }, for: .touchUpInside)
-            return button
+            return NativeNode(view: button, measuresContent: true)
 
         default:
-            return UIView()
+            return NativeNode(view: UIView(), measuresContent: false)
         }
     }
 
@@ -135,51 +147,17 @@ final class Bridge {
         context.objectForKeyedSubscript("__dispatch").call(withArguments: [id, eventName])
     }
 
-    func setProp(on view: UIView, key: String, value: JSValue) {
+    func setProp(on node: NativeNode, key: String, value: JSValue) {
         switch key {
-        case "title": (view as? UIButton)?.setTitle(value.toString(), for: .normal)
-        case "style": applyStyle(value.toDictionary() as? [String: Any] ?? [:], to: view)
-        default: break // event props (onPress...): the handler lives in JS
+        case "title":
+            (node.view as? UIButton)?.setTitle(value.toString(), for: .normal)
+            node.markContentChanged()
+
+        case "style":
+            node.applyStyle(value.toDictionary() as? [String: Any] ?? [:])
+
+        default:
+            break // event props (onPress...): the handler lives in JS
         }
-    }
-
-    // ponytail: a subset of styles on top of UIStackView; switch to Yoga when real flexbox is needed.
-    func applyStyle(_ style: [String: Any], to view: UIView) {
-        for (property, value) in style {
-            let number = (value as? NSNumber).map { CGFloat(truncating: $0) } ?? 0
-
-            switch (property, view) {
-            case ("backgroundColor", _):
-                view.backgroundColor = color(fromHex: value)
-            case ("borderRadius", _):
-                view.layer.cornerRadius = number
-            case ("padding", let stackView as UIStackView):
-                stackView.isLayoutMarginsRelativeArrangement = true
-                stackView.directionalLayoutMargins = .init(top: number, leading: number, bottom: number, trailing: number)
-            case ("gap", let stackView as UIStackView):
-                stackView.spacing = number
-            case ("flexDirection", let stackView as UIStackView):
-                stackView.axis = (value as? String) == "row" ? .horizontal : .vertical
-            case ("fontSize", let label as UILabel):
-                label.font = .systemFont(ofSize: number)
-            case ("color", let label as UILabel):
-                label.textColor = color(fromHex: value)
-            default:
-                break
-            }
-        }
-    }
-
-    func color(fromHex value: Any) -> UIColor? {
-        guard let hexString = value as? String, hexString.hasPrefix("#") else { return nil }
-
-        let digits = hexString.dropFirst()
-        guard digits.count == 6, let rgb = Int(digits, radix: 16) else { return nil }
-
-        let red = CGFloat(rgb >> 16 & 0xFF) / 255
-        let green = CGFloat(rgb >> 8 & 0xFF) / 255
-        let blue = CGFloat(rgb & 0xFF) / 255
-
-        return UIColor(red: red, green: green, blue: blue, alpha: 1)
     }
 }

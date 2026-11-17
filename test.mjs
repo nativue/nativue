@@ -33,15 +33,17 @@ const renderedTexts = () =>
     .map((view) => view.text)
 
 const appRootView = viewsById[viewsById[0].children[0]]
+const counterView = viewsById[appRootView.children[1]]
 
 assert.equal(appRootView.children.length, 3)
-assert.ok(renderedTexts().includes('Contador: 0'))
+assert.equal(counterView.children.length, 1)
+assert.ok(renderedTexts().includes('0'))
 
 const plusButtonId = Object.keys(viewsById).find((id) => viewsById[id].props.title === '+1')
 for (let press = 0; press < 3; press++) globalThis.__dispatch(Number(plusButtonId), 'press')
 await Promise.resolve()
 
-assert.ok(renderedTexts().includes('Contador: 3'))
-assert.equal(appRootView.children.length, 4) // v-if rendered its Text
+assert.ok(renderedTexts().includes('3'))
+assert.equal(counterView.children.length, 2) // v-if rendered its Text
 
 console.log('ok')

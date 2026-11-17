@@ -8,22 +8,26 @@ struct VueNativeApp: App {
 }
 
 struct VueRoot: UIViewRepresentable {
-    func makeCoordinator() -> Bridge { Bridge() }
-
-    func makeUIView(context: Context) -> UIView {
-        let container = UIView()
-        let rootView = UIStackView()
-        rootView.axis = .vertical
-        rootView.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(rootView)
-        NSLayoutConstraint.activate([
-            rootView.topAnchor.constraint(equalTo: container.topAnchor),
-            rootView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            rootView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-        ])
-        context.coordinator.start(rootView: rootView)
-        return container
+    func makeCoordinator() -> Bridge {
+        Bridge()
     }
 
-    func updateUIView(_ uiView: UIView, context: Context) {}
+    func makeUIView(context: Context) -> RootView {
+        let rootView = RootView()
+        context.coordinator.start(rootView: rootView)
+
+        return rootView
+    }
+
+    func updateUIView(_ rootView: RootView, context: Context) {}
+}
+
+/// Root of the native tree; runs the Yoga layout pass whenever UIKit lays it out.
+final class RootView: UIView {
+    var onLayoutSubviews: (() -> Void)?
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        onLayoutSubviews?()
+    }
 }
