@@ -5,7 +5,19 @@ import yoga
 /// Runs the JS bundle off the main thread and applies the operations sent by the Vue renderer
 /// (src/renderer.js) to UIKit + Yoga in batches on the main thread.
 final class Bridge {
-    static let devServerURL = URL(string: "http://localhost:42883")!
+    /// The simulator shares the Mac's network; a device uses the Mac's name, written into the app at build
+    /// time by the "Write Dev Server Host" build phase.
+    static let devServerURL: URL = {
+        #if targetEnvironment(simulator)
+        let host = "localhost"
+        #else
+        let hostFile = Bundle.main.url(forResource: "dev-server-host", withExtension: "txt")
+        let host = hostFile.flatMap { try? String(contentsOf: $0, encoding: .utf8) }?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? "localhost"
+        #endif
+
+        return URL(string: "http://\(host):42883")!
+    }()
 
     struct EvaluationTimings {
         let javaScript: Duration
@@ -91,7 +103,6 @@ final class Bridge {
         }
     }
 
-    // ponytail: localhost only reaches the Mac from the simulator; a physical device needs the Mac's IP.
     @MainActor func listenForReload() async {
         let eventsURL = Self.devServerURL.appending(path: "events")
         let bundleURL = Self.devServerURL.appending(path: "bundle.js")
