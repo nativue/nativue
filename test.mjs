@@ -4,6 +4,7 @@ import assert from 'node:assert'
 import { processColor } from './src/colors.js'
 
 const viewsById = { 0: { type: 'root', children: [], props: {} } }
+let keyboardDismissCount = 0
 
 function detachEverywhere(childId) {
   for (const view of Object.values(viewsById)) {
@@ -24,6 +25,8 @@ globalThis.__native = {
   setProp: (id, key, value) => (viewsById[id].props[key] = value),
 
   setText: (id, text) => (viewsById[id].text = text),
+
+  dismissKeyboard: () => keyboardDismissCount++,
 }
 
 ;(0, eval)(readFileSync('ios/VueNative/main.bundle.js', 'utf8'))
@@ -52,6 +55,7 @@ const textInputId = findViewId((view) => view.type === 'TextInput')
 assert.equal(safeAreaView.type, 'SafeAreaView')
 assert.equal(scrollView.children.length, 20)
 assert.equal(viewsById[textInputId].props.value, '')
+assert.equal(scrollView.props.keyboardDismissMode, 'interactive') // kebab-case attribute arrives camelized
 
 // Typing updates v-model; adding pushes the typed text and clears the input.
 globalThis.__dispatch(textInputId, 'changetext', 'Comprar pão')
@@ -74,6 +78,7 @@ await Promise.resolve()
 
 assert.equal(scrollView.children.length, 20)
 assert.ok(!renderedTexts().includes('Pagar contas'))
+assert.equal(keyboardDismissCount, 2)
 
 assert.equal(processColor('red'), 0xff0000ff)
 assert.equal(processColor('#42b883'), 0x42b883ff)

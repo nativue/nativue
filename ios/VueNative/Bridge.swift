@@ -154,6 +154,10 @@ final class Bridge {
             enqueue { [unowned self] in setProp(key, value: convertedValue, onNodeId: id) }
         } as @convention(block) (Int, String, JSValue) -> Void)
 
+        define("dismissKeyboard", { [unowned self] in
+            enqueue { [unowned self] in rootView.window?.endEditing(true) }
+        } as @convention(block) () -> Void)
+
         context.setObject(nativeModule, forKeyedSubscript: "__native" as NSString)
         context.evaluateScript("""
             var console = { log: (...args) => __native.log(args.map(String).join(' ')) }
@@ -194,10 +198,17 @@ final class Bridge {
             return NativeNode(view: button, measuresContent: true)
 
         case "ScrollView":
-            let scrollView = UIScrollView()
-            scrollView.contentInsetAdjustmentBehavior = .never // like React Native: <SafeAreaView> handles it
-            scrollView.alwaysBounceVertical = true
-            return NativeNode(view: scrollView, measuresContent: false)
+            return NativeNode(view: VueScrollView(), measuresContent: false)
+
+        case "KeyboardAvoidingView":
+            let keyboardAvoidingView = KeyboardAvoidingView()
+            let node = NativeNode(view: keyboardAvoidingView, measuresContent: false)
+            keyboardAvoidingView.onKeyboardOverlapChange = { [unowned self, unowned node] overlap in
+                YGNodeStyleSetPadding(node.yogaNode, .bottom, Float(overlap))
+                rootView.setNeedsLayout()
+                rootView.layoutIfNeeded() // runs inside the keyboard animation, so frames animate with it
+            }
+            return node
 
         case "SafeAreaView":
             let safeAreaView = SafeAreaView()
@@ -275,6 +286,12 @@ final class Bridge {
 
         case "keyboardType":
             (node.view as? TextInputView)?.keyboardType = TextInputView.keyboardTypes[value as? String ?? ""] ?? .default
+
+        case "keyboardDismissMode":
+            (node.view as? VueScrollView)?.keyboardDismissMode = VueScrollView.keyboardDismissModes[value as? String ?? ""] ?? .none
+
+        case "keyboardShouldPersistTaps":
+            (node.view as? VueScrollView)?.dismissesKeyboardOnTap = (value as? String ?? "never") == "never"
 
         default:
             break // event props (onPress...): the handler lives in JS

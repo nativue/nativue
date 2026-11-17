@@ -1,14 +1,16 @@
 <script setup>
-import { ref } from 'vue'
+import { Keyboard, ref } from 'vue'
 
 const items = ref(Array.from({ length: 20 }, (_, index) => `Item ${index + 1}`))
 const newItemText = ref('')
 
 const styles = {
   screen: { flex: 1, padding: 24, gap: 16 },
+  headerText: { gap: 4 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   title: { fontSize: 28, fontWeight: 'bold', color: '#42b883' },
-  counter: { fontSize: 28, fontWeight: '200' },
+  subtitle: { fontSize: 15, color: '#8e8e93' },
+  removeButton: { color: '#ff3b30', fontSize: 15 },
   form: { flexDirection: 'row', gap: 12 },
   input: {
     flex: 1,
@@ -41,34 +43,38 @@ function addItem() {
 
 function removeLastItem() {
   items.value.pop()
+  Keyboard.dismiss()
 }
 </script>
 
 <template>
   <SafeAreaView :style="{ flex: 1 }">
-    <View :style="styles.screen">
-      <View :style="styles.header">
-        <Text :style="styles.title">Olá, Vue Native!</Text>
-        <Text :style="styles.counter">{{ items.length }}</Text>
-      </View>
-
-      <View :style="styles.form">
-        <TextInput
-          v-model="newItemText"
-          placeholder="Novo item"
-          :style="styles.input"
-          @submit-editing="addItem"
-        />
-        <Button title="Adicionar" :style="styles.button" @press="addItem" />
-      </View>
-
-      <ScrollView :style="styles.list">
-        <View v-for="(item, index) in items" :key="index" :style="styles.item">
-          <Text>{{ item }}</Text>
+    <KeyboardAvoidingView behavior="padding" :style="{ flex: 1 }">
+      <View :style="styles.screen">
+        <View :style="styles.header">
+          <View :style="styles.headerText">
+            <Text :style="styles.title">Olá, Vue Native!</Text>
+            <Text :style="styles.subtitle">{{ items.length }} itens</Text>
+          </View>
+          <Button title="Remover último" :style="styles.removeButton" @press="removeLastItem" />
         </View>
-      </ScrollView>
 
-      <Button title="Remover último" :style="styles.button" @press="removeLastItem" />
-    </View>
+        <ScrollView :style="styles.list" keyboard-dismiss-mode="interactive">
+          <View v-for="(item, index) in items" :key="index" :style="styles.item">
+            <Text>{{ item }}</Text>
+          </View>
+        </ScrollView>
+
+        <View :style="styles.form">
+          <TextInput
+            v-model="newItemText"
+            placeholder="Novo item"
+            :style="styles.input"
+            @submit-editing="addItem"
+          />
+          <Button title="Adicionar" :style="styles.button" @press="addItem" />
+        </View>
+      </View>
+    </KeyboardAvoidingView>
   </SafeAreaView>
 </template>

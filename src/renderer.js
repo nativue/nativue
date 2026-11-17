@@ -1,5 +1,5 @@
 // Custom renderer: instead of the DOM, operations are sent to the native side (globalThis.__native).
-import { createRenderer } from '@vue/runtime-core'
+import { camelize, createRenderer } from '@vue/runtime-core'
 import { COLOR_PROPERTIES, processColor } from './colors.js'
 export * from '@vue/runtime-core'
 
@@ -139,7 +139,7 @@ const { createApp: createBaseApp } = createRenderer({
   patchProp(element, key, previousValue, nextValue) {
     if (key === 'style') patchStyle(element, previousValue, nextValue)
     else if (isEventProp(key)) patchEventHandler(element, key, nextValue)
-    else native.setProp(element.id, key, nextValue ?? null)
+    else native.setProp(element.id, camelize(key), nextValue ?? null) // keyboard-type -> keyboardType
   },
 })
 
@@ -152,6 +152,12 @@ globalThis.__dispatch = (nodeId, eventName, payload) => {
 
   handlers[eventName]?.(payload)
   handlers[MODEL_EVENT_BY_NATIVE_EVENT[eventName]]?.(payload)
+}
+
+export const Keyboard = {
+  dismiss() {
+    native.dismissKeyboard()
+  },
 }
 
 // Replaces Vue's DOM-only vModelText, which the template compiler emits for v-model on <TextInput>.

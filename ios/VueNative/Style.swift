@@ -6,9 +6,7 @@ extension NativeNode {
     /// Receives only the properties that changed: the JS renderer diffs style objects before sending.
     func applyStyle(_ changes: [String: Any]) {
         for (property, value) in changes where !(value is NSNull) {
-            if view is SafeAreaView, property.hasPrefix("padding") {
-                continue // the safe area insets own the padding
-            }
+            if isDrivenByNativeView(property) { continue }
 
             if let applyLayoutProperty = layoutPropertySetters[property] {
                 applyLayoutProperty(yogaNode, value)
@@ -20,6 +18,14 @@ extension NativeNode {
         if changes["fontSize"] != nil || changes["fontWeight"] != nil {
             applyFont(changes)
         }
+    }
+
+    /// Safe area insets and the keyboard drive these paddings, so style values would fight them.
+    private func isDrivenByNativeView(_ property: String) -> Bool {
+        if view is SafeAreaView { return property.hasPrefix("padding") }
+        if view is KeyboardAvoidingView { return property == "paddingBottom" }
+
+        return false
     }
 
     private func applyVisualProperty(_ property: String, _ value: Any) {
