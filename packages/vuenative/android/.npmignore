@@ -1,0 +1,3 @@
+# Build outputs from building the demo against this folder
+build
+.cxx

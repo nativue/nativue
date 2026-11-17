@@ -1,0 +1,4 @@
+<!-- Debug builds load the bundle from the dev server over plain http. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:usesCleartextTraffic="true" />
+</manifest>

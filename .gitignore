@@ -4,3 +4,8 @@ main.bundle.js
 .DS_Store
 xcuserdata/
 *.xcuserstate
+.gradle
+.cxx
+.kotlin
+.idea
+local.properties

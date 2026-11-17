@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 
 const TEMPLATE_DIRECTORY = fileURLToPath(new URL('./template', import.meta.url))
-const TEXT_FILE = /(\.(json|vue|ts|plist|pbxproj|resolved|swift)|gitignore)$/
+const TEXT_FILE = /(\.(json|vue|ts|plist|pbxproj|resolved|swift|kt|kts|xml)|gitignore)$/
 const BUNDLE_ID = /^[a-zA-Z][a-zA-Z0-9-]*(\.[a-zA-Z][a-zA-Z0-9-]*)+$/
 const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
 
@@ -98,7 +98,10 @@ Created ${displayNameOf(slug)} in ${projectPath}
   cd ${projectPath}
   npm install
   npm run dev                 keep it running: it rebuilds and reloads the app on save
-  open ios/App.xcodeproj      then pick a simulator or your iPhone and press Run
 
-Bundle id: ${bundleId} (set it with --bundle-id, or later in Xcode)
+  iOS:      open ios/App.xcodeproj, pick a simulator or your iPhone and press Run
+  Android:  open the android folder in Android Studio and press Run,
+            or start an emulator and run: cd android && ./gradlew installDebug
+
+Bundle id: ${bundleId} (set it with --bundle-id, or later in Xcode and android/app/build.gradle.kts)
 `)

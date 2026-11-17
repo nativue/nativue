@@ -1,11 +1,15 @@
-// Maps stack frames of the bundle (JavaScriptCore writes them as `name@main.bundle.js:8161:20`) back to
-// the app's files with the bundle's source map: `name@src/app/index.vue:22:9`. Consecutive frames from
-// outside src/ (Vue, vuenative) collapse into one line, so the app's own frames stand out. Other lines
-// are kept.
+// Maps stack frames of the bundle back to the app's files with the bundle's source map, in the
+// engine's format: JavaScriptCore's `name@main.bundle.js:8161:20` becomes `name@src/app/index.vue:22:9`,
+// Hermes' `at name (main.bundle.js:8161:20)` becomes `at name (src/app/index.vue:22:9)`. Consecutive
+// frames from outside src/ (Vue, vuenative, Hermes' native ones) collapse into one line, so the app's
+// own frames stand out. Other lines are kept.
 import { SourceMap } from 'node:module'
 import { relative, resolve } from 'node:path'
 
-const FRAME = /^(.*)@(.*main\.bundle\.js):(\d+):(\d+)$/
+// Groups: before the location, the location's line and column, after it.
+const JAVASCRIPTCORE_FRAME = /^(.*@)(?:.*main\.bundle\.js):(\d+):(\d+)()$/
+const HERMES_FRAME = /^(\s*at .* \()(?:.*main\.bundle\.js):(\d+):(\d+)(\))$/
+const HERMES_NATIVE_FRAME = /^\s*at .* \(native\)$/
 
 // sourceMapPayload: the map as JSON; its sources are relative to bundleDirectory.
 export function createSymbolicator(sourceMapPayload, bundleDirectory) {
@@ -22,15 +26,17 @@ export function createSymbolicator(sourceMapPayload, bundleDirectory) {
 
   // { text, isInternal }: internal frames are those mapped outside the app's src/.
   function symbolicateLine(line) {
-    const frame = FRAME.exec(line)
+    if (HERMES_NATIVE_FRAME.test(line)) return { text: line, isInternal: true }
+
+    const frame = JAVASCRIPTCORE_FRAME.exec(line) ?? HERMES_FRAME.exec(line)
     if (!frame) return { text: line, isInternal: false }
 
-    const [, name, , lineNumber, columnNumber] = frame
+    const [, before, lineNumber, columnNumber, after] = frame
     const entry = sourceMap.findEntry(Number(lineNumber) - 1, Number(columnNumber) - 1)
     if (!entry.originalSource) return { text: line, isInternal: false }
 
     const path = displayPath(entry.originalSource)
-    const text = `${name}@${path}:${entry.originalLine + 1}:${entry.originalColumn + 1}`
+    const text = `${before}${path}:${entry.originalLine + 1}:${entry.originalColumn + 1}${after}`
 
     return { text, isInternal: !path.startsWith('src/') }
   }

@@ -709,5 +709,12 @@ assert.equal(
   ),
   'native event handler\nthrowInHandler@src/app/index.vue:2:1\n… 1 framework frame(s)\n@[native code]',
 )
+// Hermes' format; its native frames count as framework frames.
+assert.equal(
+  symbolicate(
+    'Error: boom\n    at throwInHandler (main.bundle.js:2:1)\n    at apply (native)\n    at call (main.bundle.js:3:1)',
+  ),
+  'Error: boom\n    at throwInHandler (src/app/index.vue:2:1)\n… 2 framework frame(s)',
+)
 
 console.log('ok')

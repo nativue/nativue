@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // The vuenative CLI, run from the app's folder:
-//   vuenative build [--entry file]   bundles src/app/ into ios/App/main.bundle.js
+//   vuenative build                  bundles src/app/ into ios/App/main.bundle.js (and, with an android/
+//                                    folder, android/app/src/main/assets/main.bundle.js)
 //   vuenative dev                    rebuilds on save and tells the app (via SSE) to reload the bundle
 import { build } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import http from 'node:http'
-import { readFileSync, rmSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { createSymbolicator } from './symbolicate.mjs'
 
@@ -13,6 +14,7 @@ const PORT = 42883 // #42b883, Vue's green
 const BUNDLE_DIRECTORY = 'ios/App'
 const BUNDLE_PATH = `${BUNDLE_DIRECTORY}/main.bundle.js`
 const SOURCE_MAP_PATH = `${BUNDLE_PATH}.map`
+const ANDROID_ASSETS_DIRECTORY = 'android/app/src/main/assets'
 const KEEPALIVE_INTERVAL_MS = 15000
 
 const NATIVE_COMPONENT_TAGS = [
@@ -34,7 +36,18 @@ function frameworkPath(relativePath) {
   return fileURLToPath(new URL(`../${relativePath}`, import.meta.url))
 }
 
-function viteConfig({ mode, entry, plugins = [], watch = null, sourcemap = false }) {
+// The Android app packages its assets folder, so it gets a copy of the bundle.
+const copyBundleToAndroid = {
+  name: 'vuenative-android-bundle',
+  writeBundle() {
+    if (!existsSync('android')) return
+
+    mkdirSync(ANDROID_ASSETS_DIRECTORY, { recursive: true })
+    copyFileSync(BUNDLE_PATH, `${ANDROID_ASSETS_DIRECTORY}/main.bundle.js`)
+  },
+}
+
+function viteConfig({ mode, plugins = [], watch = null, sourcemap = false }) {
   // Vite reads the mode from NODE_ENV: development builds keep each component's file (for errors).
   process.env.NODE_ENV = mode
 
@@ -48,6 +61,7 @@ function viteConfig({ mode, entry, plugins = [], watch = null, sourcemap = false
           compilerOptions: { isCustomElement: (tag) => NATIVE_COMPONENT_TAGS.includes(tag) },
         },
       }),
+      copyBundleToAndroid,
       ...plugins,
     ],
     // Compiled templates and app code import from 'vue': point them to the native renderer.
@@ -61,7 +75,7 @@ function viteConfig({ mode, entry, plugins = [], watch = null, sourcemap = false
     define: { 'process.env.NODE_ENV': JSON.stringify(mode) },
     build: {
       lib: {
-        entry,
+        entry: frameworkPath('src/entry.ts'),
         formats: ['iife'],
         name: 'VueNativeApp',
         fileName: () => 'main.bundle.js',
@@ -73,12 +87,6 @@ function viteConfig({ mode, entry, plugins = [], watch = null, sourcemap = false
       watch,
     },
   }
-}
-
-function entryOption(args) {
-  const index = args.indexOf('--entry')
-
-  return index === -1 ? frameworkPath('src/entry.ts') : args[index + 1]
 }
 
 function startDevServer() {
@@ -141,7 +149,6 @@ if (command === 'dev') {
   await build(
     viteConfig({
       mode: 'development',
-      entry: entryOption(args),
       plugins: [reloadPlugin],
       watch: {},
       sourcemap: 'hidden', // no comment in the bundle: the dev server serves the map
@@ -151,10 +158,9 @@ if (command === 'dev') {
   await build(
     viteConfig({
       mode: args.includes('--production') ? 'production' : 'development',
-      entry: entryOption(args),
     }),
   )
 } else {
-  console.log('usage: vuenative <dev | build> [--entry file] [--production]')
+  console.log('usage: vuenative <dev | build> [--production]')
   process.exitCode = 1
 }
