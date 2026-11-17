@@ -8,10 +8,18 @@ final class GestureReporter: NSObject, UIGestureRecognizerDelegate {
     ]
 
     private let report: (String, [String: Any]) -> Void
+    private let setAnimatedValue: (Int, Double) -> Void
     private var recognizersByEvent: [String: UIGestureRecognizer] = [:]
+    /// From Animated.event: event field -> animated value id.
+    private var animatedMappingsByEvent: [String: [String: Int]] = [:]
 
-    init(report: @escaping (String, [String: Any]) -> Void) {
+    init(report: @escaping (String, [String: Any]) -> Void, setAnimatedValue: @escaping (Int, Double) -> Void) {
         self.report = report
+        self.setAnimatedValue = setAnimatedValue
+    }
+
+    func setAnimatedMapping(_ event: String, _ mapping: [String: Int]?) {
+        animatedMappingsByEvent[event] = mapping
     }
 
     func setReporting(_ event: String, _ isReporting: Bool, on view: UIView) {
@@ -55,8 +63,16 @@ final class GestureReporter: NSObject, UIGestureRecognizerDelegate {
         send("rotate", recognizer, ["rotation": recognizer.rotation, "velocity": recognizer.velocity])
     }
 
+    /// A mapped gesture moves its values here; JS only hears when it starts and ends.
     private func send(_ event: String, _ recognizer: UIGestureRecognizer, _ payload: [String: Any]) {
         guard let state = Self.stateNames[recognizer.state] else { return }
+
+        if let mapping = animatedMappingsByEvent[event] {
+            for (field, nodeId) in mapping {
+                if let value = payload[field] as? CGFloat { setAnimatedValue(nodeId, Double(value)) }
+            }
+            if state == "changed" { return }
+        }
 
         report(event, payload.merging(["state": state]) { current, _ in current })
     }

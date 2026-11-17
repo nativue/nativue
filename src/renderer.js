@@ -1,8 +1,10 @@
 // Custom renderer: instead of the DOM, operations are sent to the native side (globalThis.__native).
 import { camelize, createRenderer } from '@vue/runtime-core'
+import { animatedEventMapping, animatedStyleBinding, isAnimatedEvent } from './animated.js'
 import { COLOR_PROPERTIES, processColor } from './colors.js'
 import { FlatList, Pressable, Swipeable } from './components.js'
 export * from '@vue/runtime-core'
+export { Animated } from './animated.js'
 
 const native = globalThis.__native
 let nextNodeId = 1
@@ -65,11 +67,30 @@ function styleChanges(previousStyle = {}, nextStyle = {}) {
   return changes
 }
 
-function patchStyle(element, previousStyle, nextStyle) {
-  const changes = styleChanges(previousStyle ?? {}, nextStyle ?? {})
-  if (Object.keys(changes).length === 0) return
+// The animated part of a style (opacity / transform holding Animated values) is bound natively
+// instead of being sent as values.
+function withoutAnimatedProperties(style, binding) {
+  if (!style || !binding) return style ?? {}
 
-  native.setProp(element.id, 'style', changes)
+  const staticStyle = { ...style }
+  for (const property in binding) delete staticStyle[property]
+
+  return staticStyle
+}
+
+function patchStyle(element, previousStyle, nextStyle) {
+  const previousBinding = animatedStyleBinding(previousStyle)
+  const nextBinding = animatedStyleBinding(nextStyle)
+  const changes = styleChanges(
+    withoutAnimatedProperties(previousStyle, previousBinding),
+    withoutAnimatedProperties(nextStyle, nextBinding),
+  )
+
+  if (Object.keys(changes).length > 0) native.setProp(element.id, 'style', changes)
+
+  if (JSON.stringify(previousBinding) !== JSON.stringify(nextBinding)) {
+    native.setAnimatedStyle(element.id, nextBinding)
+  }
 }
 
 // <Image :source="logo" /> or :source="{ uri }", like React Native. Color props (<ActivityIndicator
@@ -82,12 +103,28 @@ function nativePropValue(key, value) {
   return value
 }
 
-function patchEventHandler(element, key, handler) {
+// A gesture needs its recognizer even when only Animated.event uses it; a mapped scroll without a
+// listener needs nothing from JS, so native doesn't report it every frame.
+function reportsToJavaScript(eventName, handler) {
+  if (!isAnimatedEvent(handler)) return handler != null
+
+  return eventName !== 'scroll' || handler.listener != null
+}
+
+// An Animated.event handler writes into values natively; JS keeps only its listener.
+function patchEventHandler(element, key, previousHandler, handler) {
   const eventName = key.slice(2).toLowerCase()
   eventHandlersByNodeId[element.id] ??= {}
-  eventHandlersByNodeId[element.id][eventName] = handler
+  eventHandlersByNodeId[element.id][eventName] = isAnimatedEvent(handler)
+    ? handler.listener
+    : handler
 
-  native.setProp(element.id, key, handler != null)
+  native.setProp(element.id, key, reportsToJavaScript(eventName, handler))
+
+  if (isAnimatedEvent(previousHandler) || isAnimatedEvent(handler)) {
+    const mapping = isAnimatedEvent(handler) ? animatedEventMapping(handler) : null
+    native.setAnimatedEvent(element.id, eventName, mapping)
+  }
 }
 
 const { createApp: createBaseApp } = createRenderer({
@@ -149,8 +186,10 @@ const { createApp: createBaseApp } = createRenderer({
 
   patchProp(element, key, previousValue, nextValue) {
     if (key === 'style') patchStyle(element, previousValue, nextValue)
-    else if (isEventProp(key)) patchEventHandler(element, key, nextValue)
-    else native.setProp(element.id, camelize(key), nativePropValue(key, nextValue) ?? null) // keyboard-type -> keyboardType
+    // :on-pan="..." (v-bind, used for Animated.event) arrives kebab-case.
+    else if (isEventProp(camelize(key))) {
+      patchEventHandler(element, camelize(key), previousValue, nextValue)
+    } else native.setProp(element.id, camelize(key), nativePropValue(key, nextValue) ?? null) // keyboard-type -> keyboardType
   },
 })
 

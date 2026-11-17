@@ -1,19 +1,19 @@
 <script setup>
-import { LayoutAnimation, computed, reactive } from 'vue'
+import { Animated } from 'vue'
 import { Stack } from 'vuenative/router'
 
-// The gesture's values while it lasts; released, the card springs back.
-const gesture = reactive({ translationX: 0, translationY: 0, scale: 1, rotation: 0 })
+// The gestures write these values natively, so the card follows the fingers without JS.
+const translationX = new Animated.Value(0)
+const translationY = new Animated.Value(0)
+const scale = new Animated.Value(1)
+const rotation = new Animated.Value(0)
 
-const cardStyle = computed(() => ({
-  ...styles.card,
-  transform: [
-    { translateX: gesture.translationX },
-    { translateY: gesture.translationY },
-    { scale: gesture.scale },
-    { rotate: `${gesture.rotation}rad` },
-  ],
-}))
+const cardTransform = [
+  { translateX: translationX },
+  { translateY: translationY },
+  { scale },
+  { rotate: rotation },
+]
 
 const styles = {
   screen: { flex: 1, padding: 24, gap: 24, alignItems: 'center' },
@@ -30,35 +30,24 @@ const styles = {
   cardText: { color: '#ffffff', fontSize: 22, fontWeight: 'bold' },
 }
 
-function isFinished(state) {
-  return state === 'ended' || state === 'cancelled'
+// Released, each value springs back to rest.
+function springBackWhenReleased(values, restingValue) {
+  return ({ state }) => {
+    if (state !== 'ended' && state !== 'cancelled') return
+
+    for (const value of values) Animated.spring(value, { toValue: restingValue }).start()
+  }
 }
 
-function springBack(...properties) {
-  const restingValues = { translationX: 0, translationY: 0, scale: 1, rotation: 0 }
-
-  LayoutAnimation.configureNext(LayoutAnimation.Presets.spring)
-  for (const property of properties) gesture[property] = restingValues[property]
-}
-
-function handlePan(event) {
-  if (isFinished(event.state)) return springBack('translationX', 'translationY')
-
-  gesture.translationX = event.translationX
-  gesture.translationY = event.translationY
-}
-
-function handlePinch(event) {
-  if (isFinished(event.state)) return springBack('scale')
-
-  gesture.scale = event.scale
-}
-
-function handleRotate(event) {
-  if (isFinished(event.state)) return springBack('rotation')
-
-  gesture.rotation = event.rotation
-}
+const handlePan = Animated.event(
+  { translationX, translationY },
+  { listener: springBackWhenReleased([translationX, translationY], 0) },
+)
+const handlePinch = Animated.event({ scale }, { listener: springBackWhenReleased([scale], 1) })
+const handleRotate = Animated.event(
+  { rotation },
+  { listener: springBackWhenReleased([rotation], 0) },
+)
 </script>
 
 <template>
@@ -66,7 +55,12 @@ function handleRotate(event) {
     <Stack.Screen :options="{ title: 'Gestos' }" />
     <Text :style="styles.hint">Arraste, faça pinça ou gire com dois dedos.</Text>
 
-    <View :style="cardStyle" @pan="handlePan" @pinch="handlePinch" @rotate="handleRotate">
+    <View
+      :style="{ ...styles.card, transform: cardTransform }"
+      :on-pan="handlePan"
+      :on-pinch="handlePinch"
+      :on-rotate="handleRotate"
+    >
       <Text :style="styles.cardText">Vue</Text>
     </View>
   </View>

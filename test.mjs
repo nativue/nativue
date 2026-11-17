@@ -7,6 +7,7 @@ const ITEM_HEIGHT = 60
 const viewsById = { 0: { type: 'root', children: [], props: {}, style: {} } }
 let keyboardDismissCount = 0
 const layoutAnimations = []
+const animated = { nodes: {}, started: [], stopped: [], styles: {}, events: {} }
 
 function detachEverywhere(childId) {
   for (const view of Object.values(viewsById)) {
@@ -34,6 +35,13 @@ globalThis.__native = {
 
   dismissKeyboard: () => keyboardDismissCount++,
   configureNextLayoutAnimation: (config) => layoutAnimations.push(config),
+
+  createAnimatedNode: (id, config) => (animated.nodes[id] = config),
+  setAnimatedValue: (id, value) => (animated.nodes[id].value = value),
+  startAnimation: (animationId, nodeId, config) => animated.started.push({ nodeId, ...config }),
+  stopAnimation: (nodeId) => animated.stopped.push(nodeId),
+  setAnimatedStyle: (viewId, binding) => (animated.styles[viewId] = binding),
+  setAnimatedEvent: (viewId, event, mapping) => ((animated.events[viewId] ??= {})[event] = mapping),
 }
 
 ;(0, eval)(readFileSync('ios/VueNative/main.bundle.js', 'utf8'))
@@ -259,34 +267,59 @@ globalThis.__openURL('vuenative://explore') // navigate: back to the tab's first
 await settle()
 assert.equal(childScreenIds(exploreStackId()).length, 1)
 
-// ---------- Gestures ----------
+// ---------- Gestures and Animated (native driver) ----------
 
 globalThis.__openURL('vuenative://explore/gestures')
 await settle()
 const gesturesScreenId = childScreenIds(exploreStackId()).at(-1)
 assert.equal(viewsById[gesturesScreenId].props.title, 'Gestos')
 
-const cardId = findViewId((view) => view.props.onPan === true, gesturesScreenId) // @pan tells native
-const cardTransform = () => viewsById[cardId].style.transform
+// The card's transform follows animated values natively; the gestures write into them.
+const cardId = findViewId((view) => view.props.onPan === true, gesturesScreenId)
+const cardBinding = animated.styles[cardId]
+assert.deepEqual(
+  cardBinding.transform.map((step) => step.name),
+  ['translateX', 'translateY', 'scale', 'rotate'],
+)
+assert.equal(viewsById[cardId].style.transform, undefined) // not sent as a static style
 
-globalThis.__dispatch(cardId, 'pan', { state: 'changed', translationX: 40, translationY: -10 })
-globalThis.__dispatch(cardId, 'pinch', { state: 'changed', scale: 1.5 })
-await settle()
-assert.deepEqual(cardTransform().slice(0, 3), [
-  { translateX: 40 },
-  { translateY: -10 },
-  { scale: 1.5 },
-])
+const [translationXId, translationYId] = cardBinding.transform.map((step) => step.node)
+assert.deepEqual(animated.events[cardId].pan, {
+  translationX: translationXId,
+  translationY: translationYId,
+})
 
-const animationsBeforeRelease = layoutAnimations.length
 globalThis.__dispatch(cardId, 'pan', { state: 'ended', translationX: 40, translationY: -10 })
 await settle()
-assert.deepEqual(cardTransform()[0], { translateX: 0 }) // springs back
-assert.equal(layoutAnimations.at(-1).type, 'spring')
-assert.equal(layoutAnimations.length, animationsBeforeRelease + 1)
+assert.deepEqual(
+  animated.started.slice(-2).map(({ nodeId, type, toValue }) => [nodeId, type, toValue]),
+  [
+    [translationXId, 'spring', 0],
+    [translationYId, 'spring', 0],
+  ],
+)
+
+globalThis.__openURL('vuenative://explore/animations')
+await settle()
+const animationsScreenId = childScreenIds(exploreStackId()).at(-1)
+assert.equal(viewsById[animationsScreenId].props.title, 'Animações')
+
+const loops = animated.started.filter((animation) => animation.iterations === -1)
+assert.equal(loops.length, 2)
+
+const spinnerId = renderedViewIds(animationsScreenId).find(
+  (id) => animated.styles[id]?.transform?.[0]?.name === 'rotate',
+)
+const spinInterpolation = animated.nodes[animated.styles[spinnerId].transform[0].node]
+assert.deepEqual(spinInterpolation.outputRange, [0, 2 * Math.PI]) // '360deg' in radians
+
+const animatedScrollViewId = descendantOfType(animationsScreenId, 'ScrollView')
+assert.deepEqual(Object.keys(animated.events[animatedScrollViewId].scroll), ['y'])
+assert.equal(viewsById[animatedScrollViewId].props.onScroll, false) // no JS per scroll frame
 
 globalThis.__openURL('vuenative://explore')
 await settle()
+assert.deepEqual(animated.stopped.slice(-2).sort(), loops.map((loop) => loop.nodeId).sort()) // leaving the page stops its loops
 
 // ---------- List editing ----------
 

@@ -57,9 +57,14 @@ final class VueScrollView: UIScrollView {
         fatalError("init(coder:) is not supported")
     }
 
+    /// Set by Animated.event on @scroll: the offset goes straight into animated values, without JS.
+    var onOffsetChange: ((CGPoint) -> Void)?
+
     // UIKit lays out a scroll view on every scroll step, so this sees both scrolling and resizing.
     override func layoutSubviews() {
         super.layoutSubviews()
+
+        onOffsetChange?(contentOffset)
 
         guard let onScroll, bounds != lastReportedBounds else { return }
 

@@ -35,6 +35,7 @@ final class Bridge {
     private(set) var context: JSContext!
     private var pendingOperations: [() -> Void] = []
     private var gestureReportersByNodeId: [Int: GestureReporter] = [:]
+    private let animatedGraph = AnimatedGraph()
     /// Set by LayoutAnimation.configureNext in JS; animates the batch it's sent with.
     private var nextLayoutAnimation: LayoutAnimation?
 
@@ -209,6 +210,8 @@ final class Bridge {
             enqueue { [unowned self] in setProp(key, value: convertedValue, onNodeId: id) }
         } as @convention(block) (Int, String, JSValue) -> Void)
 
+        defineAnimatedFunctions(define)
+
         define("setTimer", { [unowned self, weak context] timerId, delayInMilliseconds in
             // Weak: after a hot reload, the old context's timers die with it instead of firing in the new
             // context, where timer ids start over.
@@ -266,6 +269,12 @@ final class Bridge {
         contentRootsByNodeId.values.forEach { ($0 as? ModalController)?.setVisible(false) }
         contentRootsByNodeId = [:]
         gestureReportersByNodeId = [:] // node ids start over
+        animatedGraph.reset()
+        animatedGraph.onAnimationEnd = { [unowned self] animationId, finished in
+            evaluate { [unowned self] in
+                context.objectForKeyedSubscript("__animationFinished")?.call(withArguments: [animationId, finished])
+            }
+        }
         nodesById = [0: NativeNode(view: rootView, measuresContent: false)]
     }
 
@@ -420,12 +429,62 @@ final class Bridge {
         return textInput
     }
 
+    /// Animated's native driver (see AnimatedGraph); queued like the view operations, so a value bound in
+    /// a batch exists when that batch is applied.
+    private func defineAnimatedFunctions(_ define: (String, Any) -> Void) {
+        define("createAnimatedNode", { [unowned self] id, config in
+            enqueue { [unowned self] in animatedGraph.createNode(id: id, config: config) }
+        } as @convention(block) (Int, [String: Any]) -> Void)
+
+        define("setAnimatedValue", { [unowned self] id, value in
+            enqueue { [unowned self] in animatedGraph.setValue(value, ofNode: id) }
+        } as @convention(block) (Int, Double) -> Void)
+
+        define("startAnimation", { [unowned self] animationId, nodeId, config in
+            enqueue { [unowned self] in animatedGraph.startAnimation(id: animationId, nodeId: nodeId, config: config) }
+        } as @convention(block) (Int, Int, [String: Any]) -> Void)
+
+        define("stopAnimation", { [unowned self] nodeId in
+            enqueue { [unowned self] in animatedGraph.stopAnimation(ofNode: nodeId) }
+        } as @convention(block) (Int) -> Void)
+
+        define("setAnimatedStyle", { [unowned self] viewId, binding in
+            let binding = binding.toObject() as? [String: Any] // JSValue must not leave the JS queue
+            enqueue { [unowned self] in
+                guard let view = nodesById[viewId]?.view else { return }
+
+                animatedGraph.bind(view: view, viewId: viewId, binding: binding)
+            }
+        } as @convention(block) (Int, JSValue) -> Void)
+
+        define("setAnimatedEvent", { [unowned self] viewId, event, mapping in
+            let mapping = mapping.toObject() as? [String: Int]
+            enqueue { [unowned self] in setAnimatedEvent(event, mapping: mapping, onNodeId: viewId) }
+        } as @convention(block) (Int, String, JSValue) -> Void)
+    }
+
+    private func setAnimatedEvent(_ event: String, mapping: [String: Int]?, onNodeId id: Int) {
+        guard let node = nodesById[id] else { return }
+
+        guard let scrollView = node.view as? VueScrollView, event == "scroll" else {
+            return gestureReporter(forNodeId: id).setAnimatedMapping(event, mapping)
+        }
+
+        scrollView.onOffsetChange = mapping.map { mapping in
+            { [unowned self] offset in
+                if let nodeId = mapping["x"] { animatedGraph.setValue(Double(offset.x), ofNode: nodeId) }
+                if let nodeId = mapping["y"] { animatedGraph.setValue(Double(offset.y), ofNode: nodeId) }
+            }
+        }
+    }
+
     private func gestureReporter(forNodeId id: Int) -> GestureReporter {
         if let reporter = gestureReportersByNodeId[id] { return reporter }
 
-        let reporter = GestureReporter { [unowned self] event, payload in
-            dispatchEvent(event, toNodeId: id, payload: payload)
-        }
+        let reporter = GestureReporter(
+            report: { [unowned self] event, payload in dispatchEvent(event, toNodeId: id, payload: payload) },
+            setAnimatedValue: { [unowned self] nodeId, value in animatedGraph.setValue(value, ofNode: nodeId) }
+        )
         gestureReportersByNodeId[id] = reporter
 
         return reporter

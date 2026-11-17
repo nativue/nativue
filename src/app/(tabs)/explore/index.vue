@@ -16,6 +16,10 @@ const styles = {
       <Text :style="styles.linkText">Gestos ›</Text>
     </Link>
 
+    <Link href="/explore/animations" :style="styles.link">
+      <Text :style="styles.linkText">Animações ›</Text>
+    </Link>
+
     <Link v-for="topic in TOPICS" :key="topic" :href="`/explore/${topic}`" :style="styles.link">
       <Text :style="styles.linkText">{{ topic }} ›</Text>
     </Link>
