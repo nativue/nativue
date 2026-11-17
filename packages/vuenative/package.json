@@ -12,7 +12,6 @@
   },
   "scripts": {
     "test": "(cd ../../examples/demo && vuenative build) && node test/test.mjs",
-    "benchmark": "(cd ../../examples/demo && vuenative build --production --entry ../../packages/vuenative/benchmark/main.ts)",
     "typecheck": "vue-tsc"
   },
   "dependencies": {

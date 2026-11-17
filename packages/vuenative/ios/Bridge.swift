@@ -22,11 +22,6 @@ final class Bridge {
         return URL(string: "http://\(host):42883")!
     }()
 
-    struct EvaluationTimings {
-        let javaScript: Duration
-        let apply: Duration
-    }
-
     // ponytail: GCD threads have a 512 KB stack; move to a Thread with a bigger stack if deep trees hit
     // "RangeError: Maximum call stack size exceeded".
     private let javaScriptQueue = DispatchQueue(label: "dev.vuenative.javascript", qos: .userInteractive)
@@ -70,42 +65,39 @@ final class Bridge {
         }
         let source = try! String(contentsOf: bundleURL, encoding: .utf8)
 
-        #if DEBUG
-        startBenchmarkOrDevelopment(source: source)
-        #else
         run(source)
+        #if DEBUG
+        Task { await listenForReload() }
         #endif
     }
 
     /// Discards the current node tree and JSContext, then runs the bundle from scratch.
-    func run(_ source: String, completion: ((EvaluationTimings) -> Void)? = nil) {
+    func run(_ source: String) {
         self.source = source
         errorOverlay.hide()
 
-        evaluate({ [unowned self] in
+        evaluate { [unowned self] in
             enqueue { [unowned self] in resetNodeTree() }
 
             context = makeContext()
             context.evaluateScript(source, withSourceURL: URL(string: "main.bundle.js"))
-        }, completion: completion)
+        }
     }
 
     /// Runs `work` on the JS queue, then applies every native operation it produced, in one batch, on the
     /// main thread. JavaScriptCore drains microtasks when `work` returns, so Vue's updates are included.
-    func evaluate(_ work: @escaping () -> Void, completion: ((EvaluationTimings) -> Void)? = nil) {
+    func evaluate(_ work: @escaping () -> Void) {
         javaScriptQueue.async { [unowned self] in
-            let javaScriptDuration = ContinuousClock().measure(work)
+            work()
+
             let operations = pendingOperations
             let layoutAnimation = nextLayoutAnimation
             pendingOperations = []
             nextLayoutAnimation = nil
 
             DispatchQueue.main.async { [unowned self] in
-                let applyDuration = ContinuousClock().measure {
-                    apply(operations, animatedWith: layoutAnimation)
-                }
+                apply(operations, animatedWith: layoutAnimation)
                 requestLayout()
-                completion?(EvaluationTimings(javaScript: javaScriptDuration, apply: applyDuration))
             }
         }
     }
@@ -144,22 +136,6 @@ final class Bridge {
     }
 
     #if DEBUG
-    private func startBenchmarkOrDevelopment(source: String) {
-        run(source) { [unowned self] _ in
-            evaluate { [unowned self] in
-                let isBenchmark = isBenchmarkBundle
-
-                DispatchQueue.main.async { [unowned self] in
-                    if isBenchmark {
-                        runBenchmark(source: source)
-                    } else {
-                        Task { await listenForReload() }
-                    }
-                }
-            }
-        }
-    }
-
     @MainActor func listenForReload() async {
         let eventsURL = Self.devServerURL.appending(path: "events")
         let bundleURL = Self.devServerURL.appending(path: "bundle.js")

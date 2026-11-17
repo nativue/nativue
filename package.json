@@ -10,7 +10,6 @@
     "dev": "npm run dev -w demo",
     "build": "npm run build -w demo",
     "test": "npm test -w vuenative",
-    "benchmark": "npm run benchmark -w vuenative",
     "typecheck": "npm run typecheck --workspaces",
     "format": "prettier --write packages examples"
   },
