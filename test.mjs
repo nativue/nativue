@@ -90,7 +90,7 @@ const tabBarId = findViewId((view) => view.type === 'TabBar')
 const tabBar = viewsById[tabBarId]
 const tabScreenIds = () => childScreenIds(tabBarId)
 const [listTabId, exploreTabId, settingsTabId] = tabScreenIds()
-const exploreStackId = descendantOfType(exploreTabId, 'ScreenStack')
+const exploreStackId = () => descendantOfType(exploreTabId, 'ScreenStack') // lazy tab
 
 const scrollViewId = findViewId((view) => view.type === 'ScrollView')
 const scrollView = viewsById[scrollViewId]
@@ -219,19 +219,32 @@ assert.equal(viewsById[listTabId].props.tabBarItem.badge, undefined)
 
 // ---------- Tabs with a nested stack ----------
 
+// Lazy tab: nothing mounted until opened; a deep link before that still stacks on its first screen.
+assert.equal(viewsById[exploreTabId].children.length, 0)
+
+globalThis.__openURL('vuenative://explore/navegacao')
+await settle()
+assert.equal(tabBar.props.selectedIndex, 1)
+assert.deepEqual(
+  childScreenIds(exploreStackId()).map((id) => viewsById[id].props.title),
+  ['Explorar', 'navegacao'],
+)
+
+globalThis.__openURL('vuenative://explore')
+await settle()
 selectTab(1)
 await settle()
 assert.equal(tabBar.props.selectedIndex, 1)
-assert.equal(childScreenIds(exploreStackId).length, 1)
-assert.equal(viewsById[childScreenIds(exploreStackId)[0]].props.title, 'Explorar')
+assert.equal(childScreenIds(exploreStackId()).length, 1)
+assert.equal(viewsById[childScreenIds(exploreStackId())[0]].props.title, 'Explorar')
 
 press(pressableShowing('componentes ›', exploreTabId))
 await settle()
-assert.equal(childScreenIds(exploreStackId).length, 2) // pushed inside the tab
-assert.equal(viewsById[childScreenIds(exploreStackId)[1]].props.title, 'componentes')
+assert.equal(childScreenIds(exploreStackId()).length, 2) // pushed inside the tab
+assert.equal(viewsById[childScreenIds(exploreStackId())[1]].props.title, 'componentes')
 assert.equal(rootScreenIds().length, 1)
 
-press(descendantOfType(childScreenIds(exploreStackId)[1], 'PressableView')) // <Link href="/items/1" push>
+press(descendantOfType(childScreenIds(exploreStackId())[1], 'PressableView')) // <Link href="/items/1" push>
 await settle()
 assert.equal(rootScreenIds().length, 2) // over the tabs
 globalThis.__dispatch(topRootScreenId(), 'dismissed')
@@ -239,7 +252,7 @@ await settle()
 
 globalThis.__openURL('vuenative://explore') // navigate: back to the tab's first screen
 await settle()
-assert.equal(childScreenIds(exploreStackId).length, 1)
+assert.equal(childScreenIds(exploreStackId()).length, 1)
 
 // ---------- List editing ----------
 

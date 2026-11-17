@@ -209,7 +209,8 @@ let nextEntryKey = 1
 let rootEntry = null
 
 // Shallow: the route's component must not become reactive; pageOptions is replaced as a whole.
-// `pendingRoute` is where a nested layout's navigator starts once its component creates it.
+// `pendingRoutes` are opened, in order, once a nested layout's component creates its navigator: where
+// it starts, then anything opened before it mounted (a lazy tab).
 function createEntry(node, pendingChain, target) {
   return shallowReactive({
     key: nextEntryKey++,
@@ -218,13 +219,20 @@ function createEntry(node, pendingChain, target) {
     params: target.params,
     pageOptions: {},
     navigator: null,
-    pendingRoute: { chain: pendingChain, target },
+    pendingRoutes: [{ chain: pendingChain, target, mode: 'push' }],
   })
 }
 
 function openBelow(entry, chain, target, mode) {
   if (entry.navigator) entry.navigator.open(chain, target, mode)
-  else entry.pendingRoute = { chain, target }
+  else entry.pendingRoutes.push({ chain, target, mode })
+}
+
+function openPendingRoutes(layoutEntry, navigator) {
+  for (const { chain, target, mode } of layoutEntry.pendingRoutes)
+    navigator.open(chain, target, mode)
+
+  layoutEntry.pendingRoutes = []
 }
 
 function createStackNavigator(layoutEntry) {
@@ -282,12 +290,11 @@ function createStackNavigator(layoutEntry) {
     },
   }
 
-  navigator.open(layoutEntry.pendingRoute.chain, layoutEntry.pendingRoute.target, 'push')
+  openPendingRoutes(layoutEntry, navigator)
 
   return navigator
 }
 
-// ponytail: every tab is mounted up front (expo-router mounts lazily); add `lazy` if startup suffers.
 function createTabsNavigator(layoutEntry) {
   const tabs = childNodesOf(layoutEntry.node).map((node) => {
     if (node.type === 'page') return createEntry(node, [], { href: hrefOf(node), params: {} })
@@ -326,7 +333,7 @@ function createTabsNavigator(layoutEntry) {
     },
   }
 
-  navigator.open(layoutEntry.pendingRoute.chain, layoutEntry.pendingRoute.target, 'push')
+  openPendingRoutes(layoutEntry, navigator)
 
   return navigator
 }
@@ -542,12 +549,24 @@ export const Stack = defineComponent({
 })
 
 // A page tab gets a single-screen stack, for its header; a layout tab brings its own navigator.
-// Tab options: title / tabBarLabel, tabBarIcon (SF Symbol name), tabBarBadge, plus the header ones.
+// Tab options: title / tabBarLabel, tabBarIcon (SF Symbol name), tabBarBadge, plus the header ones, and
+// lazy: mount the tab's content only when it's first opened (faster startup, a short build on first open).
+function tabContent(tab, options) {
+  if (tab.node.type !== 'page') return screenContent(tab)
+
+  return h('ScreenStack', { style: { flex: 1 } }, [
+    h('Screen', nativeScreenProps(tab, options), [screenContent(tab)]),
+  ])
+}
+
 const TabScreen = defineComponent({
   props: { tab: Object, navigator: Object, screenOptions: Object, optionsByRouteName: Object },
 
   setup(props) {
-    provideFocus(() => props.navigator.tabs[props.navigator.state.activeIndex] === props.tab)
+    const isActive = () => props.navigator.tabs[props.navigator.state.activeIndex] === props.tab
+    let hasBeenActive = false // once mounted, a lazy tab stays mounted
+
+    provideFocus(isActive)
 
     return () => {
       const { tab } = props
@@ -558,12 +577,8 @@ const TabScreen = defineComponent({
         badge: options.tabBarBadge,
       }
 
-      const content =
-        tab.node.type === 'page'
-          ? h('ScreenStack', { style: { flex: 1 } }, [
-              h('Screen', nativeScreenProps(tab, options), [screenContent(tab)]),
-            ])
-          : screenContent(tab)
+      hasBeenActive ||= isActive()
+      const content = !options.lazy || hasBeenActive ? tabContent(tab, options) : null
 
       return h('Screen', { headerShown: false, tabBarItem }, [content])
     }

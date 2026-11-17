@@ -14,7 +14,10 @@ import { doneCount } from '../../store.js'
         tabBarBadge: doneCount || undefined,
       }"
     />
-    <Tabs.Screen name="explore" :options="{ title: 'Explorar', tabBarIcon: 'safari' }" />
+    <Tabs.Screen
+      name="explore"
+      :options="{ title: 'Explorar', tabBarIcon: 'safari', lazy: true }"
+    />
     <Tabs.Screen name="settings" :options="{ title: 'Ajustes', tabBarIcon: 'gearshape' }" />
   </Tabs>
 </template>
