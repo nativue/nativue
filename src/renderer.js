@@ -1,81 +1,127 @@
-// Custom renderer: em vez do DOM, manda operações para o lado nativo (globalThis.__native).
+// Custom renderer: instead of the DOM, operations are sent to the native side (globalThis.__native).
 import { createRenderer } from '@vue/runtime-core'
 export * from '@vue/runtime-core'
 
-const N = globalThis.__native
-let nextId = 1
-// ponytail: handlers de nós removidos nunca são limpos; limpar no remove quando importar.
-const handlers = {}
+const native = globalThis.__native
+let nextNodeId = 1
+// ponytail: handlers of removed nodes are never cleaned up; clean them on remove when it matters.
+const eventHandlersByNodeId = {}
 
-const node = (type) => ({ id: nextId++, type, parent: null, children: [], text: '' })
-// '#text' e '#comment' só existem no JS (âncoras do Vue / texto cru); o nativo nunca os vê.
-const isNative = (n) => n.type[0] !== '#'
-
-// Texto cru dentro de <Text> vira a propriedade text do UILabel pai (igual RCTRawText no RN).
-function syncText(parent) {
-  if (parent?.type === 'Text') N.setText(parent.id, parent.children.map((c) => c.text).join(''))
+function createNode(type) {
+  return { id: nextNodeId++, type, parent: null, children: [], text: '' }
 }
 
-function detach(child) {
-  const p = child.parent
-  if (!p) return null
-  p.children.splice(p.children.indexOf(child), 1)
-  child.parent = null
-  return p
+// '#text' and '#comment' nodes only exist in JS (Vue anchors / raw text); native never sees them.
+function isNativeNode(node) {
+  return !node.type.startsWith('#')
 }
 
-const { createApp: baseCreateApp } = createRenderer({
+function isEventProp(key) {
+  return /^on[A-Z]/.test(key)
+}
+
+// Raw text inside <Text> becomes the text of the parent label (like RCTRawText in React Native).
+function syncTextContent(parent) {
+  if (parent?.type !== 'Text') return
+
+  const text = parent.children.map((child) => child.text).join('')
+  native.setText(parent.id, text)
+}
+
+function detachFromParent(node) {
+  const parent = node.parent
+  if (!parent) return null
+
+  parent.children.splice(parent.children.indexOf(node), 1)
+  node.parent = null
+
+  return parent
+}
+
+function nativeIndexBefore(parent, childIndex) {
+  return parent.children.slice(0, childIndex).filter(isNativeNode).length
+}
+
+const { createApp: createBaseApp } = createRenderer({
   createElement(type) {
-    const n = node(type)
-    N.create(n.id, type)
-    return n
+    const element = createNode(type)
+    native.create(element.id, type)
+
+    return element
   },
+
   createText(text) {
-    const n = node('#text')
-    n.text = text
-    return n
+    const textNode = createNode('#text')
+    textNode.text = text
+
+    return textNode
   },
-  createComment: () => node('#comment'),
-  setText(n, text) {
-    n.text = text
-    syncText(n.parent)
+
+  createComment() {
+    return createNode('#comment')
   },
-  setElementText(el, text) {
-    el.children = []
-    if (el.type === 'Text') N.setText(el.id, text)
+
+  setText(textNode, text) {
+    textNode.text = text
+    syncTextContent(textNode.parent)
   },
+
+  setElementText(element, text) {
+    element.children = []
+    if (element.type === 'Text') native.setText(element.id, text)
+  },
+
   insert(child, parent, anchor) {
-    detach(child) // move: o nativo reposiciona sozinho no insert
-    const i = anchor ? parent.children.indexOf(anchor) : parent.children.length
-    parent.children.splice(i, 0, child)
+    detachFromParent(child) // moving: native repositions the view on insert
+
+    const index = anchor ? parent.children.indexOf(anchor) : parent.children.length
+    parent.children.splice(index, 0, child)
     child.parent = parent
-    if (isNative(child)) N.insert(parent.id, child.id, parent.children.slice(0, i).filter(isNative).length)
-    else syncText(parent)
+
+    if (isNativeNode(child)) native.insert(parent.id, child.id, nativeIndexBefore(parent, index))
+    else syncTextContent(parent)
   },
+
   remove(child) {
-    const p = detach(child)
-    if (isNative(child)) N.remove(child.id)
-    else syncText(p)
+    const parent = detachFromParent(child)
+
+    if (isNativeNode(child)) native.remove(child.id)
+    else syncTextContent(parent)
   },
-  parentNode: (n) => n.parent,
-  nextSibling: (n) => n.parent?.children[n.parent.children.indexOf(n) + 1] ?? null,
-  patchProp(el, key, prev, next) {
-    if (/^on[A-Z]/.test(key)) {
-      ;(handlers[el.id] ||= {})[key.slice(2).toLowerCase()] = next
-      N.setProp(el.id, key, next != null)
-    } else {
-      N.setProp(el.id, key, next ?? null)
+
+  parentNode(node) {
+    return node.parent
+  },
+
+  nextSibling(node) {
+    const siblings = node.parent?.children
+
+    return siblings?.[siblings.indexOf(node) + 1] ?? null
+  },
+
+  patchProp(element, key, _previousValue, nextValue) {
+    if (!isEventProp(key)) {
+      native.setProp(element.id, key, nextValue ?? null)
+      return
     }
+
+    const eventName = key.slice(2).toLowerCase()
+    eventHandlersByNodeId[element.id] ??= {}
+    eventHandlersByNodeId[element.id][eventName] = nextValue
+
+    native.setProp(element.id, key, nextValue != null)
   },
 })
 
-globalThis.__dispatch = (id, event, payload) => handlers[id]?.[event]?.(payload)
+globalThis.__dispatch = (nodeId, eventName, payload) =>
+  eventHandlersByNodeId[nodeId]?.[eventName]?.(payload)
 
-const root = { id: 0, type: 'root', parent: null, children: [] }
+const rootNode = { id: 0, type: 'root', parent: null, children: [] }
 
 export function createApp(...args) {
-  const app = baseCreateApp(...args)
-  const mount = app.mount
-  app.mount = () => mount(root)
+  const app = createBaseApp(...args)
+  const mountOnContainer = app.mount
+  app.mount = () => mountOnContainer(rootNode)
+
   return app
 }

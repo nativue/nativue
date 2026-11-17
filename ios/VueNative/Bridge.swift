@@ -1,132 +1,185 @@
 import UIKit
 import JavaScriptCore
 
-/// Recebe as operações do renderer Vue (src/renderer.js) e as aplica em UIKit.
+/// Receives the operations sent by the Vue renderer (src/renderer.js) and applies them to UIKit.
 final class Bridge {
-    static let devServer = URL(string: "http://localhost:42883")!
+    static let devServerURL = URL(string: "http://localhost:42883")!
 
-    var ctx: JSContext!
-    var root: UIView!
-    // ponytail: filhos de uma view removida continuam no dicionário; limpar recursivamente se vazar memória.
-    var views: [Int: UIView] = [:]
+    var context: JSContext!
+    var rootView: UIView!
+    // ponytail: children of a removed view stay in the dictionary; clean up recursively if memory leaks.
+    var viewsById: [Int: UIView] = [:]
 
-    func start(root: UIView) {
-        self.root = root
-        let url = Bundle.main.url(forResource: "main.bundle", withExtension: "js")!
-        run(try! String(contentsOf: url, encoding: .utf8))
+    func start(rootView: UIView) {
+        self.rootView = rootView
+
+        let bundleURL = Bundle.main.url(forResource: "main.bundle", withExtension: "js")!
+        run(try! String(contentsOf: bundleURL, encoding: .utf8))
+
         #if DEBUG
         Task { await listenForReload() }
         #endif
     }
 
-    /// Descarta a árvore e o JSContext atuais e roda o bundle do zero.
+    /// Discards the current view tree and JSContext, then runs the bundle from scratch.
     func run(_ source: String) {
-        root.subviews.forEach { $0.removeFromSuperview() }
-        views = [0: root]
-        ctx = makeContext()
-        ctx.evaluateScript(source, withSourceURL: URL(string: "main.bundle.js"))
+        rootView.subviews.forEach { $0.removeFromSuperview() }
+        viewsById = [0: rootView]
+
+        context = makeContext()
+        context.evaluateScript(source, withSourceURL: URL(string: "main.bundle.js"))
     }
 
     #if DEBUG
-    // ponytail: localhost só alcança o Mac a partir do simulador; device físico precisa do IP do Mac.
+    // ponytail: localhost only reaches the Mac from the simulator; a physical device needs the Mac's IP.
     @MainActor func listenForReload() async {
+        let eventsURL = Self.devServerURL.appending(path: "events")
+        let bundleURL = Self.devServerURL.appending(path: "bundle.js")
+
         while true {
             do {
-                let (events, _) = try await URLSession.shared.bytes(from: Self.devServer.appending(path: "events"))
+                let (events, _) = try await URLSession.shared.bytes(from: eventsURL)
+
                 for try await line in events.lines where line == "data: reload" {
-                    let (data, _) = try await URLSession.shared.data(from: Self.devServer.appending(path: "bundle.js"))
+                    let (data, _) = try await URLSession.shared.data(from: bundleURL)
                     print("[VueNative] reload")
                     run(String(decoding: data, as: UTF8.self))
                 }
             } catch {}
-            try? await Task.sleep(for: .seconds(2)) // dev server fora do ar: tenta de novo
+
+            try? await Task.sleep(for: .seconds(2)) // dev server is down: retry
         }
     }
     #endif
 
     func makeContext() -> JSContext {
-        let ctx = JSContext()!
-        ctx.exceptionHandler = { _, e in
-            print("JS error:", e?.toString() ?? "", e?.objectForKeyedSubscript("stack")?.toString() ?? "")
+        let context = JSContext()!
+        context.exceptionHandler = { _, exception in
+            let message = exception?.toString() ?? ""
+            let stack = exception?.objectForKeyedSubscript("stack")?.toString() ?? ""
+            print("JS error:", message, stack)
         }
 
-        let native = JSValue(newObjectIn: ctx)!
-        func def(_ name: String, _ block: Any) { native.setObject(block, forKeyedSubscript: name as NSString) }
+        let nativeModule = JSValue(newObjectIn: context)!
+        func define(_ name: String, _ block: Any) {
+            nativeModule.setObject(block, forKeyedSubscript: name as NSString)
+        }
 
-        def("log", { print("[JS]", $0) } as @convention(block) (String) -> Void)
-        def("create", { [unowned self] id, type in views[id] = make(type, id) } as @convention(block) (Int, String) -> Void)
-        def("insert", { [unowned self] p, c, i in
-            guard let parent = views[p], let child = views[c] else { return }
-            child.removeFromSuperview()
-            if let stack = parent as? UIStackView {
-                stack.insertArrangedSubview(child, at: min(i, stack.arrangedSubviews.count))
-            } else {
-                parent.insertSubview(child, at: i)
-            }
+        define("log", { message in print("[JS]", message) } as @convention(block) (String) -> Void)
+
+        define("create", { [unowned self] id, type in
+            viewsById[id] = makeView(type: type, id: id)
+        } as @convention(block) (Int, String) -> Void)
+
+        define("insert", { [unowned self] parentId, childId, index in
+            insertView(childId: childId, parentId: parentId, at: index)
         } as @convention(block) (Int, Int, Int) -> Void)
-        def("remove", { [unowned self] id in views.removeValue(forKey: id)?.removeFromSuperview() } as @convention(block) (Int) -> Void)
-        def("setText", { [unowned self] id, text in (views[id] as? UILabel)?.text = text } as @convention(block) (Int, String) -> Void)
-        def("setProp", { [unowned self] id, key, value in
-            if let v = views[id] { setProp(v, key, value) }
+
+        define("remove", { [unowned self] id in
+            viewsById.removeValue(forKey: id)?.removeFromSuperview()
+        } as @convention(block) (Int) -> Void)
+
+        define("setText", { [unowned self] id, text in
+            (viewsById[id] as? UILabel)?.text = text
+        } as @convention(block) (Int, String) -> Void)
+
+        define("setProp", { [unowned self] id, key, value in
+            guard let view = viewsById[id] else { return }
+            setProp(on: view, key: key, value: value)
         } as @convention(block) (Int, String, JSValue) -> Void)
 
-        ctx.setObject(native, forKeyedSubscript: "__native" as NSString)
-        ctx.evaluateScript("var console = { log: (...a) => __native.log(a.map(String).join(' ')) }; console.warn = console.error = console.info = console.log")
-        return ctx
+        context.setObject(nativeModule, forKeyedSubscript: "__native" as NSString)
+        context.evaluateScript("""
+            var console = { log: (...args) => __native.log(args.map(String).join(' ')) }
+            console.warn = console.error = console.info = console.log
+            """)
+
+        return context
     }
 
-    func make(_ type: String, _ id: Int) -> UIView {
+    func insertView(childId: Int, parentId: Int, at index: Int) {
+        guard let parent = viewsById[parentId], let child = viewsById[childId] else { return }
+
+        child.removeFromSuperview()
+
+        if let stackView = parent as? UIStackView {
+            stackView.insertArrangedSubview(child, at: min(index, stackView.arrangedSubviews.count))
+        } else {
+            parent.insertSubview(child, at: index)
+        }
+    }
+
+    func makeView(type: String, id: Int) -> UIView {
         switch type {
         case "View":
-            let s = UIStackView()
-            s.axis = .vertical
-            return s
+            let stackView = UIStackView()
+            stackView.axis = .vertical
+            return stackView
+
         case "Text":
-            let l = UILabel()
-            l.numberOfLines = 0
-            return l
+            let label = UILabel()
+            label.numberOfLines = 0
+            return label
+
         case "Button":
-            let b = UIButton(type: .system)
-            b.addAction(UIAction { [unowned self] _ in
-                ctx.objectForKeyedSubscript("__dispatch").call(withArguments: [id, "press"])
-            }, for: .touchUpInside)
-            return b
+            let button = UIButton(type: .system)
+            button.addAction(UIAction { [unowned self] _ in dispatchEvent("press", toNodeId: id) }, for: .touchUpInside)
+            return button
+
         default:
             return UIView()
         }
     }
 
-    func setProp(_ v: UIView, _ key: String, _ value: JSValue) {
+    func dispatchEvent(_ eventName: String, toNodeId id: Int) {
+        context.objectForKeyedSubscript("__dispatch").call(withArguments: [id, eventName])
+    }
+
+    func setProp(on view: UIView, key: String, value: JSValue) {
         switch key {
-        case "title": (v as? UIButton)?.setTitle(value.toString(), for: .normal)
-        case "style": applyStyle(v, value.toDictionary() as? [String: Any] ?? [:])
-        default: break // onPress etc.: o handler fica no JS
+        case "title": (view as? UIButton)?.setTitle(value.toString(), for: .normal)
+        case "style": applyStyle(value.toDictionary() as? [String: Any] ?? [:], to: view)
+        default: break // event props (onPress...): the handler lives in JS
         }
     }
 
-    // ponytail: subset de estilos sobre UIStackView; trocar por Yoga quando precisar de flexbox de verdade.
-    func applyStyle(_ v: UIView, _ s: [String: Any]) {
-        for (k, val) in s {
-            let n = (val as? NSNumber).map { CGFloat(truncating: $0) } ?? 0
-            switch (k, v) {
-            case ("backgroundColor", _): v.backgroundColor = color(val)
-            case ("borderRadius", _): v.layer.cornerRadius = n
-            case ("padding", let st as UIStackView):
-                st.isLayoutMarginsRelativeArrangement = true
-                st.directionalLayoutMargins = .init(top: n, leading: n, bottom: n, trailing: n)
-            case ("gap", let st as UIStackView): st.spacing = n
-            case ("flexDirection", let st as UIStackView): st.axis = (val as? String) == "row" ? .horizontal : .vertical
-            case ("fontSize", let l as UILabel): l.font = .systemFont(ofSize: n)
-            case ("color", let l as UILabel): l.textColor = color(val)
-            default: break
+    // ponytail: a subset of styles on top of UIStackView; switch to Yoga when real flexbox is needed.
+    func applyStyle(_ style: [String: Any], to view: UIView) {
+        for (property, value) in style {
+            let number = (value as? NSNumber).map { CGFloat(truncating: $0) } ?? 0
+
+            switch (property, view) {
+            case ("backgroundColor", _):
+                view.backgroundColor = color(fromHex: value)
+            case ("borderRadius", _):
+                view.layer.cornerRadius = number
+            case ("padding", let stackView as UIStackView):
+                stackView.isLayoutMarginsRelativeArrangement = true
+                stackView.directionalLayoutMargins = .init(top: number, leading: number, bottom: number, trailing: number)
+            case ("gap", let stackView as UIStackView):
+                stackView.spacing = number
+            case ("flexDirection", let stackView as UIStackView):
+                stackView.axis = (value as? String) == "row" ? .horizontal : .vertical
+            case ("fontSize", let label as UILabel):
+                label.font = .systemFont(ofSize: number)
+            case ("color", let label as UILabel):
+                label.textColor = color(fromHex: value)
+            default:
+                break
             }
         }
     }
 
-    func color(_ val: Any) -> UIColor? {
-        guard var hex = val as? String, hex.hasPrefix("#") else { return nil }
-        hex.removeFirst()
-        guard hex.count == 6, let rgb = Int(hex, radix: 16) else { return nil }
-        return UIColor(red: CGFloat(rgb >> 16 & 0xFF) / 255, green: CGFloat(rgb >> 8 & 0xFF) / 255, blue: CGFloat(rgb & 0xFF) / 255, alpha: 1)
+    func color(fromHex value: Any) -> UIColor? {
+        guard let hexString = value as? String, hexString.hasPrefix("#") else { return nil }
+
+        let digits = hexString.dropFirst()
+        guard digits.count == 6, let rgb = Int(digits, radix: 16) else { return nil }
+
+        let red = CGFloat(rgb >> 16 & 0xFF) / 255
+        let green = CGFloat(rgb >> 8 & 0xFF) / 255
+        let blue = CGFloat(rgb & 0xFF) / 255
+
+        return UIColor(red: red, green: green, blue: blue, alpha: 1)
     }
 }

@@ -1,28 +1,47 @@
-// Roda o bundle com um __native falso e confere a árvore resultante.
+// Runs the bundle against a fake __native and checks the resulting view tree.
 import { readFileSync } from 'node:fs'
 import assert from 'node:assert'
 
-const views = { 0: { type: 'root', children: [] } }
-globalThis.__native = {
-  create: (id, type) => (views[id] = { type, children: [], props: {} }),
-  insert: (p, c, i) => {
-    for (const v of Object.values(views)) v.children = v.children.filter((x) => x !== c)
-    views[p].children.splice(i, 0, c)
-  },
-  remove: (id) => { for (const v of Object.values(views)) v.children = v.children.filter((x) => x !== id) },
-  setProp: (id, k, v) => (views[id].props[k] = v),
-  setText: (id, t) => (views[id].text = t),
+const viewsById = { 0: { type: 'root', children: [], props: {} } }
+
+function detachEverywhere(childId) {
+  for (const view of Object.values(viewsById)) {
+    view.children = view.children.filter((id) => id !== childId)
+  }
 }
+
+globalThis.__native = {
+  create: (id, type) => (viewsById[id] = { type, children: [], props: {} }),
+
+  insert: (parentId, childId, index) => {
+    detachEverywhere(childId)
+    viewsById[parentId].children.splice(index, 0, childId)
+  },
+
+  remove: (id) => detachEverywhere(id),
+
+  setProp: (id, key, value) => (viewsById[id].props[key] = value),
+
+  setText: (id, text) => (viewsById[id].text = text),
+}
+
 ;(0, eval)(readFileSync('ios/VueNative/main.bundle.js', 'utf8'))
 
-const texts = () => Object.values(views).filter((v) => v.type === 'Text').map((v) => v.text)
-const rootView = views[views[0].children[0]]
-assert.equal(rootView.children.length, 3)
-assert.ok(texts().includes('Contador: 0'))
+const renderedTexts = () =>
+  Object.values(viewsById)
+    .filter((view) => view.type === 'Text')
+    .map((view) => view.text)
 
-const plus = Object.keys(views).find((id) => views[id].props?.title === '+1')
-for (let i = 0; i < 3; i++) globalThis.__dispatch(+plus, 'press')
+const appRootView = viewsById[viewsById[0].children[0]]
+
+assert.equal(appRootView.children.length, 3)
+assert.ok(renderedTexts().includes('Contador: 0'))
+
+const plusButtonId = Object.keys(viewsById).find((id) => viewsById[id].props.title === '+1')
+for (let press = 0; press < 3; press++) globalThis.__dispatch(Number(plusButtonId), 'press')
 await Promise.resolve()
-assert.ok(texts().includes('Contador: 3'))
-assert.equal(rootView.children.length, 4) // v-if apareceu
+
+assert.ok(renderedTexts().includes('Contador: 3'))
+assert.equal(appRootView.children.length, 4) // v-if rendered its Text
+
 console.log('ok')

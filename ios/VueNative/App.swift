@@ -12,16 +12,16 @@ struct VueRoot: UIViewRepresentable {
 
     func makeUIView(context: Context) -> UIView {
         let container = UIView()
-        let root = UIStackView()
-        root.axis = .vertical
-        root.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(root)
+        let rootView = UIStackView()
+        rootView.axis = .vertical
+        rootView.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(rootView)
         NSLayoutConstraint.activate([
-            root.topAnchor.constraint(equalTo: container.topAnchor),
-            root.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            root.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            rootView.topAnchor.constraint(equalTo: container.topAnchor),
+            rootView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            rootView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
         ])
-        context.coordinator.start(root: root)
+        context.coordinator.start(rootView: rootView)
         return container
     }
 
