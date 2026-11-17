@@ -61,8 +61,13 @@ function scrollList(y, height = 600) {
   globalThis.__dispatch(scrollViewId, 'scroll', { x: 0, y, width: 300, height })
 }
 
+// The rows container is the ScrollView child carrying the windowing padding.
+function listWindow() {
+  return viewsById[scrollView.children.find((id) => 'paddingTop' in viewsById[id].style)]
+}
+
 function renderedRows() {
-  return viewsById[scrollView.children[0]].children.length
+  return listWindow().children.length
 }
 
 function pressableShowing(text) {
@@ -93,10 +98,9 @@ assert.equal(renderedRows(), 10)
 scrollList(6000)
 await settle()
 
-const listWindow = viewsById[scrollView.children[0]].style
 assert.equal(renderedRows(), 30)
-assert.equal(listWindow.paddingTop, 90 * ITEM_HEIGHT)
-assert.equal(listWindow.paddingBottom, (1000 - 120) * ITEM_HEIGHT)
+assert.equal(listWindow().style.paddingTop, 90 * ITEM_HEIGHT)
+assert.equal(listWindow().style.paddingBottom, (1000 - 120) * ITEM_HEIGHT)
 assert.ok(renderedTexts().includes('Item 101'))
 assert.ok(!renderedTexts().includes('Item 1'))
 
@@ -152,6 +156,24 @@ await settle()
 assert.ok(renderedTexts().includes('999 itens'))
 assert.ok(!renderedTexts().includes('Pagar contas'))
 assert.equal(keyboardDismissCount, 2)
+
+// Header and footer slots render around the rows.
+assert.ok(renderedTexts().includes('Puxe para atualizar'))
+assert.ok(renderedTexts().includes('Fim da lista'))
+
+// Pull to refresh: refreshing turns on, then the timer reloads the list and turns it off.
+globalThis.__dispatch(scrollViewId, 'refresh')
+await settle()
+assert.equal(scrollView.props.refreshing, true)
+
+await new Promise((resolve) => setTimeout(resolve, 900))
+assert.equal(scrollView.props.refreshing, false)
+assert.ok(renderedTexts().includes('1000 itens'))
+
+// Empty slot shows once every item is gone.
+pressButton('Remover último', 1000)
+await settle()
+assert.ok(renderedTexts().includes('Nenhum item'))
 
 assert.equal(processColor('red'), 0xff0000ff)
 assert.equal(processColor('#42b883'), 0x42b883ff)

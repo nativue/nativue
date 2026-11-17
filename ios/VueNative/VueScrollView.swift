@@ -20,6 +20,21 @@ final class VueScrollView: UIScrollView {
 
     private var lastReportedBounds: CGRect?
 
+    /// Set when JS listens to @refresh: shows a pull-to-refresh spinner. JS owns `refreshing`.
+    var onRefresh: (() -> Void)? {
+        didSet { refreshControl = onRefresh == nil ? nil : makeRefreshControl() }
+    }
+
+    func setRefreshing(_ refreshing: Bool) {
+        guard let refreshControl, refreshing != refreshControl.isRefreshing else { return }
+
+        if refreshing { refreshControl.beginRefreshing() } else { refreshControl.endRefreshing() }
+    }
+
+    private func makeRefreshControl() -> UIRefreshControl {
+        UIRefreshControl(frame: .zero, primaryAction: UIAction { [unowned self] _ in onRefresh?() })
+    }
+
     override init(frame: CGRect) {
         super.init(frame: frame)
 

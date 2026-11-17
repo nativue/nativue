@@ -154,6 +154,16 @@ final class Bridge {
             enqueue { [unowned self] in setProp(key, value: convertedValue, onNodeId: id) }
         } as @convention(block) (Int, String, JSValue) -> Void)
 
+        define("setTimer", { [unowned self, weak context] timerId, delayInMilliseconds in
+            // Weak: after a hot reload, the old context's timers die with it instead of firing in the new
+            // context, where timer ids start over.
+            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(delayInMilliseconds)) { [unowned self, weak context] in
+                evaluate {
+                    _ = context?.objectForKeyedSubscript("__fireTimer").call(withArguments: [timerId])
+                }
+            }
+        } as @convention(block) (Int, Int) -> Void)
+
         define("dismissKeyboard", { [unowned self] in
             enqueue { [unowned self] in rootView.window?.endEditing(true) }
         } as @convention(block) () -> Void)
@@ -162,6 +172,29 @@ final class Bridge {
         context.evaluateScript("""
             var console = { log: (...args) => __native.log(args.map(String).join(' ')) }
             console.warn = console.error = console.info = console.log
+
+            // JavaScriptCore has no timers; native schedules them (like React Native's Timing module).
+            // ponytail: no setInterval yet; chain setTimeout or add it when something needs it.
+            var timerCallbacks = new Map()
+            var nextTimerId = 1
+
+            function setTimeout(callback, delay = 0, ...args) {
+              const timerId = nextTimerId++
+              timerCallbacks.set(timerId, () => callback(...args))
+              __native.setTimer(timerId, Math.max(0, Math.round(delay)))
+
+              return timerId
+            }
+
+            function clearTimeout(timerId) {
+              timerCallbacks.delete(timerId)
+            }
+
+            function __fireTimer(timerId) {
+              const callback = timerCallbacks.get(timerId)
+              timerCallbacks.delete(timerId)
+              callback?.()
+            }
             """)
 
         return context
@@ -309,6 +342,14 @@ final class Bridge {
 
         case "onScroll":
             (node.view as? VueScrollView)?.onScroll = isTruthyAttribute(value) ? reportScroll(toNodeId: id) : nil
+
+        case "onRefresh":
+            (node.view as? VueScrollView)?.onRefresh = isTruthyAttribute(value) ? { [unowned self] in
+                dispatchEvent("refresh", toNodeId: id)
+            } : nil
+
+        case "refreshing":
+            (node.view as? VueScrollView)?.setRefreshing(isTruthyAttribute(value))
 
         case "onLongPress":
             (node.view as? PressableView)?.reportsLongPress = isTruthyAttribute(value)

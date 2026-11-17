@@ -38,8 +38,10 @@ export const Pressable = defineComponent({
 const OFFSCREEN_ROWS_RENDERED = 10
 
 // Renders only the rows near the visible area; the rest is empty padding of the same height.
+// Slots: #item="{ item, index }", plus #header, #footer and #empty (React Native's List*Component).
 // ponytail: rows have a fixed `itemHeight` (React Native's getItemLayout); measure rows natively if
-// variable heights are ever needed. Vertical only.
+// variable heights are ever needed. Vertical only. The window ignores the header's height, which the
+// offscreen rows absorb while the header is shorter than them; measure it if tall headers show gaps.
 export const FlatList = defineComponent({
   name: 'FlatList',
   props: {
@@ -91,8 +93,12 @@ export const FlatList = defineComponent({
         paddingBottom: (props.data.length - end) * props.itemHeight,
       }
 
+      // Other attributes (refreshing, @refresh...) fall through to the ScrollView.
       return h('ScrollView', { style: props.style, onScroll: handleScroll }, [
+        slots.header?.(),
         h('View', { style: window }, props.data.slice(start, end).map(renderRow)),
+        props.data.length === 0 ? slots.empty?.() : null,
+        slots.footer?.(),
       ])
     }
   },

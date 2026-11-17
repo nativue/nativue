@@ -5,8 +5,9 @@ import logo from './assets/vue-logo.png'
 const ITEM_HEIGHT = 60
 
 let nextItemId = 1
-const items = ref(Array.from({ length: 1000 }, (_, index) => createItem(`Item ${index + 1}`)))
+const items = ref(createItems())
 const newItemText = ref('')
+const refreshing = ref(false)
 
 const styles = {
   screen: { flex: 1, padding: 24, gap: 16 },
@@ -27,6 +28,7 @@ const styles = {
     fontSize: 17,
   },
   list: { flex: 1 },
+  listNote: { paddingVertical: 12, textAlign: 'center', color: '#8e8e93', fontSize: 13 },
   button: {
     height: 52,
     paddingHorizontal: 20,
@@ -36,6 +38,10 @@ const styles = {
     fontSize: 17,
     fontWeight: '600',
   },
+}
+
+function createItems() {
+  return Array.from({ length: 1000 }, (_, index) => createItem(`Item ${index + 1}`))
 }
 
 function createItem(text) {
@@ -58,6 +64,16 @@ function addItem() {
 
   items.value.push(createItem(text))
   newItemText.value = ''
+}
+
+// Simulates a reload from a server.
+function refresh() {
+  refreshing.value = true
+
+  setTimeout(() => {
+    items.value = createItems()
+    refreshing.value = false
+  }, 800)
 }
 
 function removeItem(item) {
@@ -88,7 +104,13 @@ function removeLastItem() {
           :item-height="ITEM_HEIGHT"
           :key-extractor="(item) => item.id"
           :style="styles.list"
+          :refreshing="refreshing"
+          @refresh="refresh"
         >
+          <template #header>
+            <Text :style="styles.listNote">Puxe para atualizar</Text>
+          </template>
+
           <template #item="{ item }">
             <Pressable
               :style="itemStyle(item)"
@@ -98,6 +120,14 @@ function removeLastItem() {
             >
               <Text>{{ item.done ? '✓ ' : '' }}{{ item.text }}</Text>
             </Pressable>
+          </template>
+
+          <template #empty>
+            <Text :style="styles.listNote">Nenhum item</Text>
+          </template>
+
+          <template #footer>
+            <Text :style="styles.listNote">Fim da lista</Text>
           </template>
         </FlatList>
 
