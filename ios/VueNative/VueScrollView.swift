@@ -2,6 +2,13 @@ import UIKit
 
 /// Scroll view behind <ScrollView>.
 final class VueScrollView: UIScrollView {
+    static let contentInsetAdjustmentBehaviors: [String: UIScrollView.ContentInsetAdjustmentBehavior] = [
+        "automatic": .automatic,
+        "scrollableAxes": .scrollableAxes,
+        "never": .never,
+        "always": .always,
+    ]
+
     static let keyboardDismissModes: [String: UIScrollView.KeyboardDismissMode] = [
         "none": .none,
         "on-drag": .onDrag,
@@ -38,7 +45,7 @@ final class VueScrollView: UIScrollView {
     override init(frame: CGRect) {
         super.init(frame: frame)
 
-        contentInsetAdjustmentBehavior = .never // like React Native: <SafeAreaView> handles it
+        contentInsetAdjustmentBehavior = .never // like React Native: <SafeAreaView> handles it, or the prop
         alwaysBounceVertical = true
 
         let tapRecognizer = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))

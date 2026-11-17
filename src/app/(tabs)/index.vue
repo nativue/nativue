@@ -15,7 +15,7 @@ const visibleItems = computed(() =>
 )
 
 const styles = {
-  screen: { flex: 1, paddingHorizontal: 24, paddingBottom: 24, gap: 16 },
+  screen: { flex: 1, paddingHorizontal: 24, paddingTop: 8, gap: 16 },
   subtitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   subtitle: { fontSize: 15, color: '#8e8e93' },
   logo: { width: 32, height: 32, alignSelf: 'center', marginTop: 12 },
@@ -72,57 +72,55 @@ function refresh() {
 </script>
 
 <template>
-  <SafeAreaView :style="{ flex: 1 }">
-    <KeyboardAvoidingView behavior="padding" :style="{ flex: 1 }">
-      <View :style="styles.screen">
-        <View :style="styles.subtitleRow">
-          <Text :style="styles.subtitle">{{ items.length }} itens</Text>
-          <ActivityIndicator v-if="refreshing" color="#8e8e93" />
-        </View>
+  <View :style="styles.screen">
+    <View :style="styles.subtitleRow">
+      <Text :style="styles.subtitle">{{ items.length }} itens</Text>
+      <ActivityIndicator v-if="refreshing" color="#8e8e93" />
+    </View>
 
-        <FlatList
-          :data="visibleItems"
-          :item-height="ITEM_HEIGHT"
-          :key-extractor="(item) => item.id"
-          :style="styles.list"
-          :refreshing="refreshing"
-          @refresh="refresh"
+    <View :style="styles.form">
+      <TextInput
+        v-model="newItemText"
+        placeholder="Novo item"
+        :style="styles.input"
+        @submit-editing="addItem"
+      />
+      <Button title="Adicionar" :style="styles.button" @press="addItem" />
+    </View>
+
+    <!-- Reaches the bottom edge and scrolls under the tab bar; the inset keeps the last rows reachable. -->
+    <FlatList
+      :data="visibleItems"
+      :item-height="ITEM_HEIGHT"
+      :key-extractor="(item) => item.id"
+      :style="styles.list"
+      :refreshing="refreshing"
+      content-inset-adjustment-behavior="automatic"
+      @refresh="refresh"
+    >
+      <template #header>
+        <Text :style="styles.listNote">Puxe para atualizar</Text>
+      </template>
+
+      <template #item="{ item }">
+        <Pressable
+          :style="itemStyle(item)"
+          :pressed-style="{ opacity: 0.5 }"
+          @press="router.push(`/items/${item.id}`)"
+          @long-press="removeItem(item)"
         >
-          <template #header>
-            <Text :style="styles.listNote">Puxe para atualizar</Text>
-          </template>
+          <Text>{{ item.done ? '✓ ' : '' }}{{ item.text }}</Text>
+        </Pressable>
+      </template>
 
-          <template #item="{ item }">
-            <Pressable
-              :style="itemStyle(item)"
-              :pressed-style="{ opacity: 0.5 }"
-              @press="router.push(`/items/${item.id}`)"
-              @long-press="removeItem(item)"
-            >
-              <Text>{{ item.done ? '✓ ' : '' }}{{ item.text }}</Text>
-            </Pressable>
-          </template>
+      <template #empty>
+        <Text :style="styles.listNote">Nenhum item</Text>
+      </template>
 
-          <template #empty>
-            <Text :style="styles.listNote">Nenhum item</Text>
-          </template>
-
-          <template #footer>
-            <Image :source="logo" resize-mode="contain" :style="styles.logo" />
-            <Text :style="styles.listNote">Fim da lista</Text>
-          </template>
-        </FlatList>
-
-        <View :style="styles.form">
-          <TextInput
-            v-model="newItemText"
-            placeholder="Novo item"
-            :style="styles.input"
-            @submit-editing="addItem"
-          />
-          <Button title="Adicionar" :style="styles.button" @press="addItem" />
-        </View>
-      </View>
-    </KeyboardAvoidingView>
-  </SafeAreaView>
+      <template #footer>
+        <Image :source="logo" resize-mode="contain" :style="styles.logo" />
+        <Text :style="styles.listNote">Fim da lista</Text>
+      </template>
+    </FlatList>
+  </View>
 </template>

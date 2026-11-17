@@ -495,6 +495,10 @@ final class Bridge {
         case "keyboardDismissMode":
             (node.view as? VueScrollView)?.keyboardDismissMode = VueScrollView.keyboardDismissModes[value as? String ?? ""] ?? .none
 
+        case "contentInsetAdjustmentBehavior":
+            (node.view as? VueScrollView)?.contentInsetAdjustmentBehavior =
+                VueScrollView.contentInsetAdjustmentBehaviors[value as? String ?? ""] ?? .never
+
         case "keyboardShouldPersistTaps":
             (node.view as? VueScrollView)?.dismissesKeyboardOnTap = (value as? String ?? "never") == "never"
 
