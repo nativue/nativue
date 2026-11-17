@@ -27,23 +27,36 @@ globalThis.__native = {
 
 ;(0, eval)(readFileSync('ios/VueNative/main.bundle.js', 'utf8'))
 
-const renderedTexts = () =>
-  Object.values(viewsById)
-    .filter((view) => view.type === 'Text')
-    .map((view) => view.text)
+// Walks the tree from the root, so removed views don't count.
+function renderedTexts(viewId = 0) {
+  const view = viewsById[viewId]
+  const ownText = view.type === 'Text' ? [view.text] : []
+
+  return [...ownText, ...view.children.flatMap((childId) => renderedTexts(childId))]
+}
 
 const appRootView = viewsById[viewsById[0].children[0]]
-const counterView = viewsById[appRootView.children[1]]
+const scrollView = viewsById[appRootView.children[1]]
+
+function pressButton(title, times) {
+  const buttonId = Object.keys(viewsById).find((id) => viewsById[id].props.title === title)
+  for (let press = 0; press < times; press++) globalThis.__dispatch(Number(buttonId), 'press')
+}
 
 assert.equal(appRootView.children.length, 3)
-assert.equal(counterView.children.length, 1)
-assert.ok(renderedTexts().includes('0'))
+assert.equal(scrollView.type, 'ScrollView')
+assert.equal(scrollView.children.length, 20)
 
-const plusButtonId = Object.keys(viewsById).find((id) => viewsById[id].props.title === '+1')
-for (let press = 0; press < 3; press++) globalThis.__dispatch(Number(plusButtonId), 'press')
+pressButton('+1', 3)
 await Promise.resolve()
 
-assert.ok(renderedTexts().includes('3'))
-assert.equal(counterView.children.length, 2) // v-if rendered its Text
+assert.equal(scrollView.children.length, 23)
+assert.ok(renderedTexts().includes('Item 23'))
+
+pressButton('-1', 5)
+await Promise.resolve()
+
+assert.equal(scrollView.children.length, 18)
+assert.ok(!renderedTexts().includes('Item 19'))
 
 console.log('ok')

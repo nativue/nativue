@@ -1,5 +1,6 @@
 import UIKit
 import JavaScriptCore
+import yoga
 
 /// Runs the JS bundle off the main thread and applies the operations sent by the Vue renderer
 /// (src/renderer.js) to UIKit + Yoga in batches on the main thread.
@@ -192,6 +193,12 @@ final class Bridge {
             button.addAction(UIAction { [unowned self] _ in dispatchEvent("press", toNodeId: id) }, for: .touchUpInside)
             return NativeNode(view: button, measuresContent: true)
 
+        case "ScrollView":
+            let scrollView = UIScrollView()
+            scrollView.contentInsetAdjustmentBehavior = .never // the root view already sits in the safe area
+            scrollView.alwaysBounceVertical = true
+            return NativeNode(view: scrollView, measuresContent: false)
+
         default:
             return NativeNode(view: UIView(), measuresContent: false)
         }
@@ -221,8 +228,27 @@ final class Bridge {
         case "style":
             node.applyStyle(value as? [String: Any] ?? [:])
 
+        case "horizontal":
+            setScrollDirection(of: node, horizontal: isTruthyAttribute(value))
+
         default:
             break // event props (onPress...): the handler lives in JS
         }
+    }
+
+    private func setScrollDirection(of node: NativeNode, horizontal: Bool) {
+        guard let scrollView = node.view as? UIScrollView else { return }
+
+        YGNodeStyleSetFlexDirection(node.yogaNode, horizontal ? .row : .column)
+        scrollView.alwaysBounceHorizontal = horizontal
+        scrollView.alwaysBounceVertical = !horizontal
+    }
+
+    /// `<ScrollView horizontal>` arrives as an empty string, `:horizontal="true"` as a boolean.
+    private func isTruthyAttribute(_ value: Any?) -> Bool {
+        if let flag = value as? Bool { return flag }
+        if let text = value as? String { return text != "false" }
+
+        return false
     }
 }

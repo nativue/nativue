@@ -51,7 +51,16 @@ final class NativeNode {
         child.removeFromParent()
 
         YGNodeInsertChild(yogaNode, child.yogaNode, index)
-        view.insertSubview(child.view, at: index)
+
+        // Insert relative to the next sibling instead of by index: some views (UIScrollView) keep
+        // private subviews such as scroll indicators, so subview indexes don't match ours.
+        let nextIndex = index + 1
+        if nextIndex < YGNodeGetChildCount(yogaNode) {
+            let nextSibling = Self.view(of: YGNodeGetChild(yogaNode, nextIndex)!)
+            view.insertSubview(child.view, belowSubview: nextSibling)
+        } else {
+            view.addSubview(child.view)
+        }
     }
 
     func removeFromParent() {
@@ -76,7 +85,8 @@ final class NativeNode {
 
             YGNodeSetHasNewLayout(child, false)
 
-            view(of: child).frame = CGRect(
+            let childView = view(of: child)
+            childView.frame = CGRect(
                 x: CGFloat(YGNodeLayoutGetLeft(child)),
                 y: CGFloat(YGNodeLayoutGetTop(child)),
                 width: CGFloat(YGNodeLayoutGetWidth(child)),
@@ -84,7 +94,32 @@ final class NativeNode {
             )
 
             applyFrames(of: child)
+
+            if let scrollView = childView as? UIScrollView {
+                scrollView.contentSize = contentSize(of: child)
+            }
         }
+    }
+
+    /// Children of a scroll view don't shrink (flexShrink defaults to 0), so they overflow its bounds;
+    /// the scrollable area is how far they reach, plus the trailing padding.
+    private static func contentSize(of yogaNode: YGNodeRef) -> CGSize {
+        var contentWidth: Float = 0
+        var contentHeight: Float = 0
+
+        for index in 0..<YGNodeGetChildCount(yogaNode) {
+            let child = YGNodeGetChild(yogaNode, index)!
+            let right = YGNodeLayoutGetLeft(child) + YGNodeLayoutGetWidth(child) + YGNodeLayoutGetMargin(child, .right)
+            let bottom = YGNodeLayoutGetTop(child) + YGNodeLayoutGetHeight(child) + YGNodeLayoutGetMargin(child, .bottom)
+
+            contentWidth = max(contentWidth, right)
+            contentHeight = max(contentHeight, bottom)
+        }
+
+        return CGSize(
+            width: CGFloat(contentWidth + YGNodeLayoutGetPadding(yogaNode, .right)),
+            height: CGFloat(contentHeight + YGNodeLayoutGetPadding(yogaNode, .bottom))
+        )
     }
 }
 

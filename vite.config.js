@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath } from 'node:url'
 
-const nativeComponentTags = ['View', 'Text', 'Button']
+const nativeComponentTags = ['View', 'Text', 'Button', 'ScrollView']
 
 export default defineConfig(({ mode }) => ({
   plugins: [
