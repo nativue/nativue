@@ -255,8 +255,8 @@ final class Bridge {
             return
         }
 
-        if let stack = parent.view as? ScreenStackView, let screen = screenController(childId) {
-            stack.insertScreen(screen, at: index)
+        if let container = parent.view as? ScreenContainer, let screen = screenController(childId) {
+            container.insertScreen(screen, at: index)
             return
         }
 
@@ -273,7 +273,7 @@ final class Bridge {
         }
 
         contentRootsByNodeId[id] = nil
-        screen.stack?.removeScreen(screen)
+        screen.container?.removeScreen(screen)
     }
 
     private func modalController(_ id: Int) -> ModalController? {
@@ -330,6 +330,13 @@ final class Bridge {
 
         case "ScreenStack":
             return NativeNode(view: ScreenStackView(), measuresContent: false)
+
+        case "TabBar":
+            let tabBar = TabBarView()
+            tabBar.onTabChange = { [unowned self] index in
+                dispatchEvent("tabchange", toNodeId: id, payload: ["index": index])
+            }
+            return NativeNode(view: tabBar, measuresContent: false)
 
         case "Screen":
             let screen = ScreenController()
@@ -422,6 +429,17 @@ final class Bridge {
 
         case "headerTintColor":
             screenController(id)?.headerTintColor = UIColor(rgba: value as Any)
+
+        case "tabBarItem":
+            let item = value as? [String: Any] ?? [:]
+            screenController(id)?.setTabBarItem(
+                label: item["label"] as? String,
+                systemImage: item["systemImage"] as? String,
+                badge: (item["badge"] as? CustomStringConvertible)?.description
+            )
+
+        case "selectedIndex":
+            (node.view as? TabBarView)?.select(index: value as? Int ?? 0)
 
         case "headerRightItems":
             screenController(id)?.setHeaderItems(value, side: "right")

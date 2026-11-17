@@ -5,14 +5,18 @@ import yoga
 /// navigationItem is the native header.
 final class ScreenController: UIViewController, ContentRoot {
     let contentNode = NativeNode(view: UIView(), measuresContent: false)
-    weak var stack: ScreenStackView?
+    /// The <ScreenStack> or <TabBar> showing this screen.
+    weak var container: ScreenContainer?
 
     var onEvent: ((String, Any?) -> Void)?
     var headerTintColor: UIColor?
     var headerBackTitle: String?
 
     var headerShown = true {
-        didSet { stack?.screenDidChangeHeaderVisibility(self) }
+        didSet {
+            (container as? ScreenStackView)?.screenDidChangeHeaderVisibility(self)
+            layoutContent()
+        }
     }
 
     init() {
@@ -37,18 +41,47 @@ final class ScreenController: UIViewController, ContentRoot {
     }
 
     /// The view extends under the header, so its background is there during transitions; the content
-    /// starts below it (only the top: the bottom inset is <SafeAreaView>'s job, like everywhere else).
+    /// starts below a visible header. Without one (header hidden, a tab, a nested navigator) the content
+    /// fills the screen and <SafeAreaView> opts into the insets, like React Native.
     func layoutContent() {
         guard isViewLoaded else { return }
 
-        YGNodeStyleSetPadding(contentNode.yogaNode, .top, Float(view.safeAreaInsets.top))
+        updateTopPadding()
         contentNode.calculateLayout(width: view.bounds.width, height: view.bounds.height)
+    }
+
+    /// From this screen's own `headerShown`, never from the bar's current state: the bar belongs to the
+    /// screen on top and is shown or hidden mid-transition, which would move the screens below it. The
+    /// bar keeps its frame while hidden, so its bottom edge is stable.
+    private func updateTopPadding() {
+        let headerBottom = headerShown ? navigationController?.navigationBar.frame.maxY ?? 0 : 0
+
+        YGNodeStyleSetPadding(contentNode.yogaNode, .top, Float(headerBottom))
+    }
+
+    /// Only used when the screen is a tab: `systemImage` is an SF Symbol name.
+    func setTabBarItem(label: String?, systemImage: String?, badge: String?) {
+        tabBarItem.title = label ?? tabBarItem.title
+        tabBarItem.image = systemImage.flatMap { UIImage(systemName: $0) } ?? tabBarItem.image
+        tabBarItem.badgeValue = badge
     }
 
     override func viewSafeAreaInsetsDidChange() {
         super.viewSafeAreaInsetsDidChange()
 
+        ignoreHeaderInSafeArea()
         layoutContent()
+    }
+
+    /// A screen without a header must not move while the stack's bar is still visible over it (an edge
+    /// swipe back to it): its safe area excludes whatever the bar adds over the window's.
+    private func ignoreHeaderInSafeArea() {
+        guard let window = view.window else { return }
+
+        let insetWithoutAdjustment = view.safeAreaInsets.top - additionalSafeAreaInsets.top
+        let headerOverlap = headerShown ? 0 : max(0, insetWithoutAdjustment - window.safeAreaInsets.top)
+
+        if additionalSafeAreaInsets.top != -headerOverlap { additionalSafeAreaInsets.top = -headerOverlap }
     }
 
     /// `items` are [{ title?, systemImage? }]; presses are reported with the side and index, since the

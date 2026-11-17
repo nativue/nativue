@@ -1,36 +1,24 @@
 <script setup>
-import { computed, Keyboard, ref } from 'vue'
-import { Stack, useRouter } from 'vuenative/router'
-import logo from '../assets/vue-logo.png'
-import { createItem, createItems, items, removeItem } from '../store.js'
+import { computed, ref } from 'vue'
+import { useRouter } from 'vuenative/router'
+import logo from '../../assets/vue-logo.png'
+import { createItem, createItems, hideDoneItems, items, removeItem } from '../../store.js'
 
 const ITEM_HEIGHT = 60
 
 const router = useRouter()
 const newItemText = ref('')
 const refreshing = ref(false)
-const settingsVisible = ref(false)
-const hideDoneItems = ref(false)
 
 const visibleItems = computed(() =>
   hideDoneItems.value ? items.value.filter((item) => !item.done) : items.value,
 )
-
-const screenOptions = {
-  headerRight: [{ systemImage: 'gearshape', onPress: () => (settingsVisible.value = true) }],
-}
 
 const styles = {
   screen: { flex: 1, paddingHorizontal: 24, paddingBottom: 24, gap: 16 },
   subtitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   subtitle: { fontSize: 15, color: '#8e8e93' },
   logo: { width: 32, height: 32, alignSelf: 'center', marginTop: 12 },
-  settings: { flex: 1, padding: 24, gap: 24 },
-  settingsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  settingsTitle: { fontSize: 22, fontWeight: 'bold' },
-  settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  settingLabel: { fontSize: 17 },
-  removeButton: { color: '#ff3b30', fontSize: 17 },
   form: { flexDirection: 'row', gap: 12 },
   input: {
     flex: 1,
@@ -81,17 +69,10 @@ function refresh() {
     refreshing.value = false
   }, 800)
 }
-
-function removeLastItem() {
-  items.value.pop()
-  Keyboard.dismiss()
-}
 </script>
 
 <template>
   <SafeAreaView :style="{ flex: 1 }">
-    <Stack.Screen :options="screenOptions" />
-
     <KeyboardAvoidingView behavior="padding" :style="{ flex: 1 }">
       <View :style="styles.screen">
         <View :style="styles.subtitleRow">
@@ -143,26 +124,5 @@ function removeLastItem() {
         </View>
       </View>
     </KeyboardAvoidingView>
-
-    <Modal
-      :visible="settingsVisible"
-      animation-type="slide"
-      presentation-style="pageSheet"
-      @request-close="settingsVisible = false"
-    >
-      <View :style="styles.settings">
-        <View :style="styles.settingsHeader">
-          <Text :style="styles.settingsTitle">Ajustes</Text>
-          <Button title="Fechar" @press="settingsVisible = false" />
-        </View>
-
-        <View :style="styles.settingRow">
-          <Text :style="styles.settingLabel">Ocultar concluídos</Text>
-          <Switch v-model="hideDoneItems" />
-        </View>
-
-        <Button title="Remover último" :style="styles.removeButton" @press="removeLastItem" />
-      </View>
-    </Modal>
   </SafeAreaView>
 </template>

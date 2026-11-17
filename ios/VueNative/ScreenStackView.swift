@@ -5,10 +5,37 @@ protocol ContentRoot: AnyObject {
     func layoutContent()
 }
 
+/// Native views whose <Screen> children are view controllers (<ScreenStack>, <TabBar>), not subviews.
+protocol ScreenContainer: AnyObject {
+    func insertScreen(_ screen: ScreenController, at index: Int)
+    func removeScreen(_ screen: ScreenController)
+}
+
+extension UIView {
+    /// View controller containment, so an embedded controller gets appearance and trait updates.
+    /// Call from didMoveToWindow.
+    func embedInNearestViewController(_ controller: UIViewController) {
+        guard window != nil else {
+            controller.willMove(toParent: nil)
+            controller.removeFromParent()
+            return
+        }
+
+        let nearestViewController = sequence(first: next, next: { $0?.next })
+            .lazy
+            .compactMap { $0 as? UIViewController }
+            .first
+        guard controller.parent == nil, let parent = nearestViewController else { return }
+
+        parent.addChild(controller)
+        controller.didMove(toParent: parent)
+    }
+}
+
 /// View behind <ScreenStack>: a UINavigationController whose view controllers mirror the <Screen> children
 /// JS renders. JS owns the stack; a pop started natively (back button, edge swipe) is reported back so JS
 /// drops the screen too (like react-native-screens).
-final class ScreenStackView: UIView, UINavigationControllerDelegate {
+final class ScreenStackView: UIView, ScreenContainer, UINavigationControllerDelegate {
     private let navigationController = UINavigationController()
     private var screens: [ScreenController] = []
     private var isSyncScheduled = false
@@ -27,24 +54,16 @@ final class ScreenStackView: UIView, UINavigationControllerDelegate {
         fatalError("init(coder:) is not supported")
     }
 
-    /// View controller containment, so the navigation controller gets appearance and trait updates.
     override func didMoveToWindow() {
         super.didMoveToWindow()
 
-        guard window != nil else {
-            navigationController.willMove(toParent: nil)
-            navigationController.removeFromParent()
-            return
-        }
-
-        guard navigationController.parent == nil, let parent = nearestViewController() else { return }
-
-        parent.addChild(navigationController)
-        navigationController.didMove(toParent: parent)
+        embedInNearestViewController(navigationController)
     }
 
+    /// Also called when JS moves a screen, so it drops the old position first.
     func insertScreen(_ screen: ScreenController, at index: Int) {
-        screen.stack = self
+        screens.removeAll { $0 === screen }
+        screen.container = self
         screens.insert(screen, at: min(index, screens.count))
         scheduleSync()
     }
@@ -87,10 +106,6 @@ final class ScreenStackView: UIView, UINavigationControllerDelegate {
         }
     }
 
-    private func nearestViewController() -> UIViewController? {
-        sequence(first: next, next: { $0?.next }).lazy.compactMap { $0 as? UIViewController }.first
-    }
-
     // MARK: - UINavigationControllerDelegate
 
     func navigationController(
@@ -104,7 +119,11 @@ final class ScreenStackView: UIView, UINavigationControllerDelegate {
         // Touching the bar during an interactive pop (edge swipe) commits its transition at once, so the
         // previous screen's large title would jump in as soon as the swipe starts: only change what changes.
         if navigationController.isNavigationBarHidden != hidesHeader {
-            navigationController.setNavigationBarHidden(hidesHeader, animated: animated)
+            if hidesHeader, let coordinator = navigationController.transitionCoordinator, coordinator.isInteractive {
+                hideHeaderWhenSwipeCompletes(coordinator: coordinator)
+            } else {
+                navigationController.setNavigationBarHidden(hidesHeader, animated: animated)
+            }
         }
 
         let navigationBar = navigationController.navigationBar
@@ -121,6 +140,20 @@ final class ScreenStackView: UIView, UINavigationControllerDelegate {
             navigationBar.tintColor = screen?.headerTintColor
         }, completion: { context in
             if context.isCancelled { navigationBar.tintColor = previousTintColor }
+        })
+    }
+
+    /// Hiding the bar during an edge swipe makes UIKit re-layout its buttons, and a cancelled swipe then
+    /// jumps them back. Instead the bar fades out with the swipe and is hidden only once it completes (the
+    /// revealed screen ignores the bar anyway, see ScreenController.ignoreHeaderInSafeArea).
+    private func hideHeaderWhenSwipeCompletes(coordinator: UIViewControllerTransitionCoordinator) {
+        let navigationBar = navigationController.navigationBar
+
+        coordinator.animate(alongsideTransition: { _ in
+            navigationBar.alpha = 0
+        }, completion: { [navigationController] context in
+            navigationBar.alpha = 1
+            if !context.isCancelled { navigationController.setNavigationBarHidden(true, animated: false) }
         })
     }
 

@@ -36,6 +36,10 @@ globalThis.__native = {
 
 ;(0, eval)(readFileSync('ios/VueNative/main.bundle.js', 'utf8'))
 
+// Page options and the <Tabs.Screen> order apply on the next tick (JavaScriptCore drains it before
+// handing the batch to native).
+await new Promise((resolve) => setTimeout(resolve))
+
 // ---------- Helpers ----------
 
 // Walks the tree from a view, so removed views don't count.
@@ -71,11 +75,23 @@ function pressButton(title, times = 1, rootId = 0) {
 
 const settle = () => new Promise((resolve) => setTimeout(resolve))
 
-const screenStack = viewsById[viewsById[0].children[0]]
-const screenIds = () => screenStack.children.filter((id) => viewsById[id].type === 'Screen')
-const topScreenId = () => screenIds().at(-1)
+const childScreenIds = (containerId) =>
+  viewsById[containerId].children.filter((id) => viewsById[id].type === 'Screen')
+// Excludes the root itself: a tab's own <Screen> is not the screen inside it.
+function descendantOfType(rootId, type) {
+  return findViewId((view) => view.type === type && view !== viewsById[rootId], rootId)
+}
 
-const indexScreenId = topScreenId()
+const rootStackId = viewsById[0].children[0]
+const rootScreenIds = () => childScreenIds(rootStackId)
+const topRootScreenId = () => rootScreenIds().at(-1)
+
+const tabBarId = findViewId((view) => view.type === 'TabBar')
+const tabBar = viewsById[tabBarId]
+const tabScreenIds = () => childScreenIds(tabBarId)
+const [listTabId, exploreTabId, settingsTabId] = tabScreenIds()
+const exploreStackId = descendantOfType(exploreTabId, 'ScreenStack')
+
 const scrollViewId = findViewId((view) => view.type === 'ScrollView')
 const scrollView = viewsById[scrollViewId]
 const textInputId = findViewId((view) => view.type === 'TextInput')
@@ -93,30 +109,41 @@ function renderedRows() {
   return listWindow().children.length
 }
 
-function pressableShowing(text) {
+function pressableShowing(text, rootId = 0) {
   return findViewId(
     (view) =>
       view.type === 'PressableView' &&
       view.children.some((childId) => viewsById[childId].text?.endsWith(text)),
+    rootId,
   )
 }
 
-// ---------- Router: root stack and header options ----------
+function selectTab(index) {
+  globalThis.__dispatch(tabBarId, 'tabchange', { index })
+}
 
-await settle() // options set by a page apply on the next tick
+// ---------- Router: layouts, tabs and headers ----------
 
-assert.equal(screenStack.type, 'ScreenStack')
-assert.equal(screenIds().length, 1)
+assert.equal(viewsById[rootStackId].type, 'ScreenStack')
+assert.equal(rootScreenIds().length, 1)
+assert.equal(viewsById[rootScreenIds()[0]].props.headerShown, false) // (tabs) brings its own headers
 
-const indexScreen = viewsById[indexScreenId]
-assert.equal(indexScreen.props.title, 'Vue Native') // <Stack.Screen name="index"> in _layout
-assert.equal(indexScreen.props.headerLargeTitle, false)
-assert.equal(indexScreen.props.headerTintColor, processColor('#42b883')) // screenOptions
-assert.deepEqual(indexScreen.props.headerRightItems, [
-  { title: undefined, systemImage: 'gearshape' },
-])
+assert.deepEqual(
+  tabScreenIds().map((id) => viewsById[id].props.tabBarItem),
+  [
+    { label: 'Lista', systemImage: 'list.bullet', badge: undefined },
+    { label: 'Explorar', systemImage: 'safari', badge: undefined },
+    { label: 'Ajustes', systemImage: 'gearshape', badge: undefined },
+  ],
+)
+assert.equal(tabBar.props.selectedIndex, 0)
 
-// ---------- Components on the index screen ----------
+// A page tab gets a single-screen stack for its header.
+const listScreen = viewsById[descendantOfType(listTabId, 'Screen')]
+assert.equal(listScreen.props.title, 'Vue Native') // title from <Tabs.Screen>
+assert.equal(listScreen.props.headerShown, true)
+
+// ---------- Components on the list tab ----------
 
 const image = viewsById[findViewId((view) => view.type === 'Image')]
 assert.match(image.props.source, /^data:image\/png;base64,/) // imported asset is inlined
@@ -147,7 +174,7 @@ assert.equal(renderedRows(), rowsAtTop)
 assert.ok(renderedTexts().includes('Puxe para atualizar')) // #header slot
 assert.ok(renderedTexts().includes('Fim da lista')) // #footer slot
 
-// ---------- Navigation: push, params, Link, native pop, back ----------
+// ---------- Root stack: push over the tabs, params, Link, native pop, back ----------
 
 const firstRowId = pressableShowing('Item 1')
 press(firstRowId, 'pressin')
@@ -159,38 +186,64 @@ press(firstRowId)
 await settle()
 assert.equal(viewsById[firstRowId].style.opacity, null) // removed: native resets it
 
-assert.equal(screenIds().length, 2)
-const detailScreen = viewsById[topScreenId()]
+assert.equal(rootScreenIds().length, 2)
+const detailScreen = viewsById[topRootScreenId()]
 assert.equal(detailScreen.props.title, 'Item 1') // set by the page from useLocalSearchParams().id
 assert.equal(detailScreen.props.headerBackTitle, 'Lista')
+assert.equal(detailScreen.props.headerTintColor, processColor('#42b883')) // root screenOptions
 
-// Switch v-model on the detail page marks the item done on the list too.
-const doneSwitchId = findViewId((view) => view.type === 'Switch', topScreenId())
-assert.equal(viewsById[doneSwitchId].props.value, false)
-globalThis.__dispatch(doneSwitchId, 'valuechange', true)
+// Switch v-model on the detail page marks the item done; the list tab shows a badge.
+globalThis.__dispatch(descendantOfType(topRootScreenId(), 'Switch'), 'valuechange', true)
 await settle()
-assert.ok(renderedTexts(indexScreenId).includes('✓ Item 1'))
+assert.ok(renderedTexts(listTabId).includes('✓ Item 1'))
+assert.equal(viewsById[listTabId].props.tabBarItem.badge, 1)
 
 // <Link> pushes the next item.
-press(findViewId((view) => view.type === 'PressableView', topScreenId()))
+press(descendantOfType(topRootScreenId(), 'PressableView'))
 await settle()
-assert.equal(screenIds().length, 3)
-assert.equal(viewsById[topScreenId()].props.title, 'Item 2')
+assert.equal(rootScreenIds().length, 3)
+assert.equal(viewsById[topRootScreenId()].props.title, 'Item 2')
 
 // Back button / edge swipe: native pops and reports it.
-globalThis.__dispatch(topScreenId(), 'dismissed')
+globalThis.__dispatch(topRootScreenId(), 'dismissed')
 await settle()
-assert.equal(screenIds().length, 2)
+assert.equal(rootScreenIds().length, 2)
 
 // Deleting goes back (router.back()).
-pressButton('Excluir item', 1, topScreenId())
+pressButton('Excluir item', 1, topRootScreenId())
 await settle()
-assert.equal(screenIds().length, 1)
+assert.equal(rootScreenIds().length, 1)
 assert.ok(!renderedTexts().includes('✓ Item 1'))
 assert.ok(renderedTexts().includes('999 itens'))
+assert.equal(viewsById[listTabId].props.tabBarItem.badge, undefined)
+
+// ---------- Tabs with a nested stack ----------
+
+selectTab(1)
+await settle()
+assert.equal(tabBar.props.selectedIndex, 1)
+assert.equal(childScreenIds(exploreStackId).length, 1)
+assert.equal(viewsById[childScreenIds(exploreStackId)[0]].props.title, 'Explorar')
+
+press(pressableShowing('componentes ›', exploreTabId))
+await settle()
+assert.equal(childScreenIds(exploreStackId).length, 2) // pushed inside the tab
+assert.equal(viewsById[childScreenIds(exploreStackId)[1]].props.title, 'componentes')
+assert.equal(rootScreenIds().length, 1)
+
+press(descendantOfType(childScreenIds(exploreStackId)[1], 'PressableView')) // <Link href="/items/1" push>
+await settle()
+assert.equal(rootScreenIds().length, 2) // over the tabs
+globalThis.__dispatch(topRootScreenId(), 'dismissed')
+await settle()
+
+globalThis.__openURL('vuenative://explore') // navigate: back to the tab's first screen
+await settle()
+assert.equal(childScreenIds(exploreStackId).length, 1)
 
 // ---------- List editing ----------
 
+selectTab(0)
 press(pressableShowing('Item 2'), 'longpress')
 await settle()
 assert.ok(!renderedTexts().includes('Item 2'))
@@ -213,18 +266,22 @@ globalThis.__dispatch(textInputId, 'submitediting', 'Pagar contas')
 await settle()
 assert.ok(renderedTexts().includes('Pagar contas'))
 
-// ---------- Settings modal (header button) ----------
+// ---------- Settings tab: buttons and modal ----------
 
-const modal = viewsById[findViewId((view) => view.type === 'Modal')]
-globalThis.__dispatch(indexScreenId, 'headeritempress', { side: 'right', index: 0 })
+selectTab(2)
 await settle()
-assert.equal(modal.props.visible, true)
+assert.equal(tabBar.props.selectedIndex, 2)
 
-pressButton('Remover último', 2)
+pressButton('Remover último', 2, settingsTabId)
 await settle()
 assert.ok(renderedTexts().includes('998 itens'))
 assert.ok(!renderedTexts().includes('Pagar contas'))
 assert.equal(keyboardDismissCount, 2)
+
+const modal = viewsById[descendantOfType(settingsTabId, 'Modal')]
+pressButton('Sobre', 1, settingsTabId)
+await settle()
+assert.equal(modal.props.visible, true)
 
 globalThis.__dispatch(
   findViewId((view) => view === modal),
@@ -237,18 +294,18 @@ assert.equal(modal.props.visible, false)
 
 globalThis.__openURL('vuenative://items/3')
 await settle()
-assert.equal(viewsById[topScreenId()].props.title, 'Item 3')
+assert.equal(viewsById[topRootScreenId()].props.title, 'Item 3')
 
-const itemThreeSwitchId = findViewId((view) => view.type === 'Switch', topScreenId())
-globalThis.__dispatch(itemThreeSwitchId, 'valuechange', true)
-globalThis.__openURL('vuenative://') // navigating to a route already in the stack pops back to it
+globalThis.__dispatch(descendantOfType(topRootScreenId(), 'Switch'), 'valuechange', true)
+globalThis.__openURL('vuenative://') // pops back to the tabs and selects the list tab
 await settle()
-assert.equal(screenIds().length, 1)
+assert.equal(rootScreenIds().length, 1)
+assert.equal(tabBar.props.selectedIndex, 0)
 
-// Settings switch hides done items.
+// The settings switch hides done items.
 scrollList(0)
 await settle()
-const hideSwitchId = findViewId((view) => view.type === 'Switch')
+const hideSwitchId = descendantOfType(settingsTabId, 'Switch')
 assert.ok(renderedTexts().includes('✓ Item 3'))
 
 globalThis.__dispatch(hideSwitchId, 'valuechange', true)
@@ -261,12 +318,12 @@ await settle()
 
 globalThis.__openURL('vuenative://does/not/exist')
 await settle()
-assert.equal(viewsById[topScreenId()].props.title, 'Ops!')
-assert.ok(renderedTexts(topScreenId()).includes('Essa tela não existe.'))
+assert.equal(viewsById[topRootScreenId()].props.title, 'Ops!')
+assert.ok(renderedTexts(topRootScreenId()).includes('Essa tela não existe.'))
 
-press(findViewId((view) => view.type === 'PressableView', topScreenId())) // <Link href="/">
+press(descendantOfType(topRootScreenId(), 'PressableView')) // <Link href="/">
 await settle()
-assert.equal(screenIds().length, 1)
+assert.equal(rootScreenIds().length, 1)
 
 // ---------- Pull to refresh and empty list ----------
 
@@ -282,7 +339,7 @@ await new Promise((resolve) => setTimeout(resolve, 900))
 assert.equal(scrollView.props.refreshing, false)
 assert.ok(renderedTexts().includes('1000 itens'))
 
-pressButton('Remover último', 1000)
+pressButton('Remover último', 1000, settingsTabId)
 await settle()
 assert.ok(renderedTexts().includes('Nenhum item'))
 
