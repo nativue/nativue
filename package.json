@@ -1,0 +1,15 @@
+{
+  "name": "vuenative",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "test": "vite build && node test.mjs"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.11",
+    "@vue/runtime-core": "^3.5.45",
+    "vite": "^8.3.8",
+    "vue": "^3.5.45"
+  }
+}
