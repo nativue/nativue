@@ -341,6 +341,14 @@ final class Bridge {
         contentRootsByNodeId[id] as? ModalController
     }
 
+    /// `systemImage` is an SF Symbol name; `svg` ({ viewBox, elements }) an icon from vuenative-icons.
+    private func tabBarImage(_ item: [String: Any]) -> UIImage? {
+        if let name = item["systemImage"] as? String { return UIImage(systemName: name) }
+        guard let svg = item["svg"] as? [String: Any] else { return nil }
+
+        return SvgView.templateImage(elements: svg["elements"] as? [[Any]] ?? [], viewBox: svg["viewBox"])
+    }
+
     private func screenController(_ id: Int) -> ScreenController? {
         contentRootsByNodeId[id] as? ScreenController
     }
@@ -624,9 +632,15 @@ final class Bridge {
             let item = value as? [String: Any] ?? [:]
             screenController(id)?.setTabBarItem(
                 label: item["label"] as? String,
-                systemImage: item["systemImage"] as? String,
+                image: tabBarImage(item),
                 badge: (item["badge"] as? CustomStringConvertible)?.description
             )
+
+        case "activeTintColor":
+            (node.view as? TabBarView)?.tabBar.tintColor = UIColor(rgba: value as Any)
+
+        case "inactiveTintColor":
+            (node.view as? TabBarView)?.setInactiveTintColor(UIColor(rgba: value as Any))
 
         case "selectedIndex":
             (node.view as? TabBarView)?.select(index: value as? Int ?? 0)
@@ -672,10 +686,7 @@ final class Bridge {
             (node.view as? SvgView)?.color = UIColor(rgba: value as Any) ?? .black
 
         case "viewBox":
-            let numbers = (value as? [NSNumber])?.map { CGFloat($0.doubleValue) } ?? []
-            if numbers.count == 4 {
-                (node.view as? SvgView)?.viewBox = CGRect(x: numbers[0], y: numbers[1], width: numbers[2], height: numbers[3])
-            }
+            if let viewBox = SvgView.rect(fromViewBox: value) { (node.view as? SvgView)?.viewBox = viewBox }
 
         case "elements":
             (node.view as? SvgView)?.elements = value as? [[Any]] ?? []

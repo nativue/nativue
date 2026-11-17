@@ -19,6 +19,7 @@ examples/demo/          an app, laid out like any Vue Native project
 Icons: `import { HeartIcon } from 'vuenative-icons/lucide'`, then
 `<HeartIcon :size="24" color="#ff3b30" :stroke-width="2" />`. Only the icons you import end up in
 the bundle.
+They also work as tab icons: `<Tabs.Screen :options="{ tabBarIcon: HouseIcon }" />`.
 
 ## An app
 

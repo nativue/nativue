@@ -11,7 +11,7 @@ export * from '@vue/runtime-core'
 export { Animated } from './animated'
 export { AsyncStorage } from './storage'
 export type * from './types'
-export type { SvgElement } from './native-components'
+export type { SvgElement, SvgIcon } from './native-components'
 
 interface Node {
   id: number

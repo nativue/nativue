@@ -1,13 +1,22 @@
 // Turns an icon set's nodes ([tag, attributes] pairs, like Lucide's) into a component drawn by the
 // native <Svg>. Every icon set in this package goes through it.
-import { defineComponent, h, type PropType, type Style, type SvgElement } from 'vue'
+import {
+  defineComponent,
+  h,
+  markRaw,
+  type PropType,
+  type Style,
+  type SvgElement,
+  type SvgIcon,
+} from 'vue'
 
 const VIEW_BOX: [number, number, number, number] = [0, 0, 24, 24]
 
 export function createIcon(name: string, iconNode: readonly (readonly [string, object])[]) {
   const elements = iconNode as SvgElement[]
+  const svg: SvgIcon['svg'] = { viewBox: VIEW_BOX, elements }
 
-  return defineComponent({
+  const component = defineComponent({
     name: `${name}Icon`,
     props: {
       size: { type: Number, default: 24 },
@@ -31,4 +40,8 @@ export function createIcon(name: string, iconNode: readonly (readonly [string, o
         })
     },
   })
+
+  // Also usable where an image is expected, e.g. tabBarIcon. Raw: options holding it can be reactive,
+  // and a proxied drawing would reach the native side as something else.
+  return markRaw(Object.assign(component, { svg }))
 }

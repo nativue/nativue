@@ -48,6 +48,29 @@ final class SvgView: UIView {
         fatalError("init(coder:) is not supported")
     }
 
+    /// [minX, minY, width, height], as sent from JS.
+    static func rect(fromViewBox value: Any?) -> CGRect? {
+        let numbers = (value as? [NSNumber])?.map { CGFloat($0.doubleValue) } ?? []
+        guard numbers.count == 4 else { return nil }
+
+        return CGRect(x: numbers[0], y: numbers[1], width: numbers[2], height: numbers[3])
+    }
+
+    /// The elements drawn into a template image (tinted by its container, like SF Symbols), sized like
+    /// a tab bar icon.
+    static func templateImage(elements: [[Any]], viewBox: Any?, size: CGFloat = 25) -> UIImage {
+        let svgView = SvgView(frame: CGRect(x: 0, y: 0, width: size, height: size))
+        if let rect = rect(fromViewBox: viewBox) { svgView.viewBox = rect }
+        svgView.elements = elements
+        svgView.layoutIfNeeded()
+
+        let image = UIGraphicsImageRenderer(bounds: svgView.bounds).image { context in
+            svgView.layer.render(in: context.cgContext)
+        }
+
+        return image.withRenderingMode(.alwaysTemplate)
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
 

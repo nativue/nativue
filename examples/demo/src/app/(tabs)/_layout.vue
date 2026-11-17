@@ -1,16 +1,23 @@
 <script setup lang="ts">
+import { LayoutGridIcon, SparklesIcon } from 'vuenative-icons/lucide'
 import { Tabs } from 'vuenative/router'
+import { colors } from '@/lib/theme'
 </script>
 
 <template>
-  <Tabs>
+  <Tabs
+    :screen-options="{
+      tabBarActiveTintColor: colors.green,
+      tabBarInactiveTintColor: colors.secondaryText,
+    }"
+  >
     <Tabs.Screen
       name="index"
-      :options="{ title: 'Welcome', tabBarIcon: 'sparkles', headerShown: false }"
+      :options="{ title: 'Welcome', tabBarIcon: SparklesIcon, headerShown: false }"
     />
     <Tabs.Screen
       name="explore"
-      :options="{ title: 'Explore', tabBarIcon: 'square.grid.2x2', lazy: true }"
+      :options="{ title: 'Explore', tabBarIcon: LayoutGridIcon, lazy: true }"
     />
   </Tabs>
 </template>

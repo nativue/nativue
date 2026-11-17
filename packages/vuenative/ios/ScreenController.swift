@@ -68,10 +68,10 @@ final class ScreenController: UIViewController, ContentRoot {
         YGNodeStyleSetPadding(contentNode.yogaNode, .top, Float(headerBottom))
     }
 
-    /// Only used when the screen is a tab: `systemImage` is an SF Symbol name.
-    func setTabBarItem(label: String?, systemImage: String?, badge: String?) {
+    /// Only used when the screen is a tab.
+    func setTabBarItem(label: String?, image: UIImage?, badge: String?) {
         tabBarItem.title = label ?? tabBarItem.title
-        tabBarItem.image = systemImage.flatMap { UIImage(systemName: $0) } ?? tabBarItem.image
+        tabBarItem.image = image ?? tabBarItem.image
         tabBarItem.badgeValue = badge
     }
 

@@ -42,6 +42,23 @@ final class TabBarView: UIView, ScreenContainer, UITabBarControllerDelegate {
         scheduleSync()
     }
 
+    var tabBar: UITabBar { tabBarController.tabBar }
+
+    /// Through the appearance: the glass tab bar (iOS 26) ignores unselectedItemTintColor.
+    func setInactiveTintColor(_ color: UIColor?) {
+        let appearance = tabBar.standardAppearance.copy()
+        for itemAppearance in [
+            appearance.stackedLayoutAppearance,
+            appearance.inlineLayoutAppearance,
+            appearance.compactInlineLayoutAppearance,
+        ] {
+            itemAppearance.normal.iconColor = color
+            itemAppearance.normal.titleTextAttributes = color.map { [.foregroundColor: $0] } ?? [:]
+        }
+        tabBar.standardAppearance = appearance
+        tabBar.scrollEdgeAppearance = appearance
+    }
+
     func select(index: Int) {
         selectedIndex = index
         scheduleSync()

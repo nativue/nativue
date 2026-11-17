@@ -28,6 +28,7 @@ import {
 } from '@vue/runtime-core'
 import { processColor } from './colors'
 import { Pressable } from './components'
+import type { SvgIcon } from './native-components'
 import { createApp } from './renderer'
 
 export type Params = Record<string, string | string[]>
@@ -49,8 +50,10 @@ export interface ScreenOptions {
   presentation?: 'card' | 'modal' | 'formSheet' | 'fullScreenModal'
   // <Tabs> only
   tabBarLabel?: string
-  tabBarIcon?: string // SF Symbol name
+  tabBarIcon?: string | SvgIcon // SF Symbol name, or an icon from vuenative-icons
   tabBarBadge?: string | number
+  tabBarActiveTintColor?: string // the whole bar's: set it in <Tabs :screen-options>
+  tabBarInactiveTintColor?: string
   lazy?: boolean
 }
 
@@ -540,7 +543,7 @@ function nativeScreenProps(entry: Entry, options: ScreenOptions, onDismissed?: (
     stackPresentation:
       !options.presentation || options.presentation === 'card' ? 'push' : options.presentation,
     headerBackTitle: options.headerBackTitle,
-    headerTintColor: options.headerTintColor && processColor(options.headerTintColor),
+    headerTintColor: optionalColor(options.headerTintColor),
     headerRightItems: headerItems(options.headerRight),
     headerLeftItems: headerItems(options.headerLeft),
     onDismissed,
@@ -674,7 +677,7 @@ const StackNavigatorComponent = defineComponent({
 })
 
 // A page tab gets a single-screen stack, for its header; a layout tab brings its own navigator.
-// Tab options: title / tabBarLabel, tabBarIcon (SF Symbol name), tabBarBadge, plus the header ones, and
+// Tab options: title / tabBarLabel, tabBarIcon (SF Symbol name or SvgIcon), tabBarBadge, plus the header ones, and
 // lazy: mount the tab's content only when it's first opened (faster startup, a short build on first open).
 function tabContent(tab: Entry, options: ScreenOptions) {
   if (tab.node.type !== 'page') return screenContent(tab)
@@ -682,6 +685,14 @@ function tabContent(tab: Entry, options: ScreenOptions) {
   return h('ScreenStack', { style: { flex: 1 } }, [
     h('Screen', nativeScreenProps(tab, options), [screenContent(tab)]),
   ])
+}
+
+function optionalColor(color: string | undefined) {
+  return color && processColor(color)
+}
+
+function tabBarIconProps(icon: ScreenOptions['tabBarIcon']) {
+  return typeof icon === 'string' ? { systemImage: icon } : { svg: icon?.svg }
 }
 
 const TabScreen = defineComponent({
@@ -702,7 +713,7 @@ const TabScreen = defineComponent({
       const options = mergedOptions(tab, props.screenOptions, props.optionsByRouteName)
       const tabBarItem = {
         label: options.tabBarLabel ?? options.title ?? tab.node.name,
-        systemImage: options.tabBarIcon,
+        ...tabBarIconProps(options.tabBarIcon),
         badge: options.tabBarBadge,
       }
 
@@ -746,6 +757,8 @@ const TabsNavigatorComponent = defineComponent({
         {
           style: { flex: 1 },
           selectedIndex: orderedTabs.value.indexOf(navigator.tabs[navigator.state.activeIndex]),
+          activeTintColor: optionalColor(props.screenOptions?.tabBarActiveTintColor),
+          inactiveTintColor: optionalColor(props.screenOptions?.tabBarInactiveTintColor),
           onTabChange: selectTab,
         },
         [

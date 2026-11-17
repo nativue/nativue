@@ -150,14 +150,22 @@ assert.equal(viewsById[rootStackId].type, 'ScreenStack')
 assert.equal(rootScreenIds().length, 1)
 assert.equal(viewsById[rootScreenIds()[0]].props.headerShown, false) // (tabs) brings its own headers
 
+// Tab icons from vuenative-icons reach the native side as their drawing.
+const tabBarItems = childScreenIds(tabBarId).map((id) => viewsById[id].props.tabBarItem)
 assert.deepEqual(
-  childScreenIds(tabBarId).map((id) => viewsById[id].props.tabBarItem),
+  tabBarItems.map(({ label, badge }) => ({ label, badge })),
   [
-    { label: 'Welcome', systemImage: 'sparkles', badge: undefined },
-    { label: 'Explore', systemImage: 'square.grid.2x2', badge: undefined },
+    { label: 'Welcome', badge: undefined },
+    { label: 'Explore', badge: undefined },
   ],
 )
+for (const { svg } of tabBarItems) {
+  assert.deepEqual(svg.viewBox, [0, 0, 24, 24])
+  assert.ok(svg.elements.length > 0)
+}
 assert.equal(tabBar.props.selectedIndex, 0)
+assert.equal(tabBar.props.activeTintColor, processColor('#42b883'))
+assert.equal(tabBar.props.inactiveTintColor, processColor('#6e6e73'))
 
 // A page tab gets a single-screen stack for its header, hidden here.
 assert.equal(viewsById[descendantOfType(welcomeTabId, 'Screen')].props.headerShown, false)

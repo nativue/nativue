@@ -10,6 +10,10 @@ type EventHandler<Payload> = ((payload: Payload) => void) | AnimatedEvent<Payloa
 // [tag, attributes], e.g. ['circle', { cx: 12, cy: 12, r: 10 }]: path, circle, ellipse, rect, line,
 // polyline and polygon. Stroked with `color`; filled too when `fill` isn't 'none'.
 export type SvgElement = [tag: string, attributes: Record<string, string | number>]
+// An icon component that carries its drawing, so it can also be a tab bar icon (see vuenative-icons).
+export interface SvgIcon {
+  svg: { viewBox: [number, number, number, number]; elements: SvgElement[] }
+}
 type ModelProps<Value> = { modelValue?: Value; 'onUpdate:modelValue'?: (value: Value) => void }
 
 declare module '@vue/runtime-core' {
