@@ -1,9 +1,14 @@
 <script setup>
 import { Keyboard, ref } from 'vue'
-import { Link } from 'vuenative/router'
+import { Link, useFocusEffect } from 'vuenative/router'
 import { hideDoneItems, items, removeLastItem } from '../../store.js'
 
 const aboutVisible = ref(false)
+const focusCount = ref(0)
+
+useFocusEffect(() => {
+  focusCount.value++
+})
 
 const styles = {
   screen: { flex: 1, padding: 24, gap: 24 },
@@ -28,6 +33,8 @@ function removeLast() {
       <Text :style="styles.label">Ocultar concluídos</Text>
       <Switch v-model="hideDoneItems" />
     </View>
+
+    <Text :style="styles.label">Vezes que esta aba ganhou foco: {{ focusCount }}</Text>
 
     <Button title="Remover último" :style="styles.removeButton" @press="removeLast" />
     <Button title="Sobre" @press="aboutVisible = true" />

@@ -268,9 +268,13 @@ assert.ok(renderedTexts().includes('Pagar contas'))
 
 // ---------- Settings tab: buttons and modal ----------
 
+const focusCountText = (count) => `Vezes que esta aba ganhou foco: ${count}`
+assert.ok(renderedTexts(settingsTabId).includes(focusCountText(0)))
+
 selectTab(2)
 await settle()
 assert.equal(tabBar.props.selectedIndex, 2)
+assert.ok(renderedTexts(settingsTabId).includes(focusCountText(1))) // useFocusEffect
 
 pressButton('Remover último', 2, settingsTabId)
 await settle()
@@ -313,6 +317,7 @@ await settle()
 globalThis.__dispatch(topRootScreenId(), 'headeritempress', { side: 'right', index: 0 }) // Fechar
 await settle()
 assert.equal(rootScreenIds().length, 1)
+assert.ok(renderedTexts(settingsTabId).includes(focusCountText(3))) // refocused after each modal
 
 // ---------- Deep links and not found ----------
 

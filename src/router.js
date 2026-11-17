@@ -14,9 +14,11 @@ import {
   defineComponent,
   h,
   inject,
+  onUnmounted,
   provide,
   reactive,
   shallowReactive,
+  watch,
   watchEffect,
 } from '@vue/runtime-core'
 import { processColor } from './colors.js'
@@ -26,6 +28,8 @@ import { createApp } from './renderer.js'
 const ENTRY_KEY = Symbol('page entry')
 const LAYOUT_ENTRY_KEY = Symbol('layout entry')
 const NAVIGATOR_KEY = Symbol('navigator options')
+const FOCUS_KEY = Symbol('focus')
+const ALWAYS_FOCUSED = computed(() => true)
 
 // ---------- Route tree ----------
 
@@ -355,6 +359,44 @@ export function usePathname() {
   return inject(ENTRY_KEY).href.split('?')[0]
 }
 
+// Whether this screen is the one on screen: on top of its stack (or the selected tab), inside a
+// focused parent. A ref.
+export function useIsFocused() {
+  return inject(FOCUS_KEY, ALWAYS_FOCUSED)
+}
+
+// Runs `effect` whenever the screen gains focus; the function it returns runs when it loses focus
+// (or unmounts). Like expo-router's useFocusEffect, e.g. to reload data when coming back to a screen.
+export function useFocusEffect(effect) {
+  const isFocused = useIsFocused()
+  let cleanup = null
+
+  function runCleanup() {
+    cleanup?.()
+    cleanup = null
+  }
+
+  watch(
+    isFocused,
+    (focused) => {
+      if (!focused) return runCleanup()
+
+      const result = effect()
+      cleanup = typeof result === 'function' ? result : null
+    },
+    { immediate: true },
+  )
+  onUnmounted(runCleanup)
+}
+
+// Focus flows down the navigator tree: a screen is focused when its parent is and it's the active one.
+function provideFocus(isActive) {
+  const parentFocused = useIsFocused()
+  const isFocused = computed(() => parentFocused.value && isActive())
+
+  provide(FOCUS_KEY, isFocused)
+}
+
 // vuenative://items/42 -> /items/42
 function hrefFromURL(url) {
   return url.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '/')
@@ -459,6 +501,8 @@ const StackScreen = defineComponent({
   props: { entry: Object, navigator: Object, screenOptions: Object, optionsByRouteName: Object },
 
   setup(props) {
+    provideFocus(() => props.navigator.entries.at(-1) === props.entry)
+
     return () => {
       const { entry, navigator } = props
       const options = mergedOptions(entry, props.screenOptions, props.optionsByRouteName)
@@ -500,9 +544,11 @@ export const Stack = defineComponent({
 // A page tab gets a single-screen stack, for its header; a layout tab brings its own navigator.
 // Tab options: title / tabBarLabel, tabBarIcon (SF Symbol name), tabBarBadge, plus the header ones.
 const TabScreen = defineComponent({
-  props: { tab: Object, screenOptions: Object, optionsByRouteName: Object },
+  props: { tab: Object, navigator: Object, screenOptions: Object, optionsByRouteName: Object },
 
   setup(props) {
+    provideFocus(() => props.navigator.tabs[props.navigator.state.activeIndex] === props.tab)
+
     return () => {
       const { tab } = props
       const options = mergedOptions(tab, props.screenOptions, props.optionsByRouteName)
@@ -564,6 +610,7 @@ export const Tabs = defineComponent({
             h(TabScreen, {
               key: tab.key,
               tab,
+              navigator,
               screenOptions: props.screenOptions,
               optionsByRouteName,
             }),
