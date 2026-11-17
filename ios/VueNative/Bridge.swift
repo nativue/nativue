@@ -36,6 +36,8 @@ final class Bridge {
     var rootView: RootView!
     // ponytail: children of a removed node stay in the dictionary; clean up recursively if memory leaks.
     var nodesById: [Int: NativeNode] = [:]
+    // ponytail: controllers of removed modals stay here; drop them on remove if many modals come and go.
+    private var modalControllersByNodeId: [Int: ModalController] = [:]
 
     func start(rootView: RootView) {
         self.rootView = rootView
@@ -79,6 +81,11 @@ final class Bridge {
 
     func layout() {
         nodesById[0]?.calculateLayout(width: rootView.bounds.width, height: rootView.bounds.height)
+
+        for modalController in modalControllersByNodeId.values {
+            modalController.dismissIfDetached()
+            modalController.layoutContent()
+        }
     }
 
     /// UIKit coalesces these requests, so the layout pass runs once per batch.
@@ -215,6 +222,8 @@ final class Bridge {
 
     private func resetNodeTree() {
         rootView.subviews.forEach { $0.removeFromSuperview() }
+        modalControllersByNodeId.values.forEach { $0.setVisible(false) }
+        modalControllersByNodeId = [:]
         nodesById = [0: NativeNode(view: rootView, measuresContent: false)]
     }
 
@@ -226,7 +235,7 @@ final class Bridge {
             return
         }
 
-        parent.insertChild(child, at: index)
+        (parent.contentNode ?? parent).insertChild(child, at: index)
     }
 
     private func makeNode(type: String, id: Int) -> NativeNode {
@@ -272,6 +281,29 @@ final class Bridge {
 
         case "TextInput":
             return NativeNode(view: makeTextInput(id: id), measuresContent: true)
+
+        case "Switch":
+            let toggle = UISwitch()
+            toggle.addAction(UIAction { [unowned self, unowned toggle] _ in
+                dispatchEvent("valuechange", toNodeId: id, payload: toggle.isOn)
+            }, for: .valueChanged)
+            return NativeNode(view: toggle, measuresContent: true)
+
+        case "ActivityIndicator":
+            let indicator = UIActivityIndicatorView(style: .medium)
+            indicator.hidesWhenStopped = true
+            indicator.startAnimating() // React Native's `animating` defaults to true
+            return NativeNode(view: indicator, measuresContent: true)
+
+        case "Modal":
+            let modalController = ModalController()
+            modalController.onEvent = { [unowned self] eventName in dispatchEvent(eventName, toNodeId: id) }
+            modalControllersByNodeId[id] = modalController
+
+            let node = NativeNode(view: modalController.placeholderView, measuresContent: false)
+            YGNodeStyleSetDisplay(node.yogaNode, .none)
+            node.contentNode = modalController.contentNode
+            return node
 
         default:
             return NativeNode(view: UIView(), measuresContent: false)
@@ -329,6 +361,33 @@ final class Bridge {
 
         case "value":
             (node.view as? TextInputView)?.setTextFromJavaScript(value as? String ?? "")
+            (node.view as? UISwitch)?.setOn(isTruthyAttribute(value), animated: true)
+
+        case "disabled":
+            (node.view as? UIControl)?.isEnabled = !isTruthyAttribute(value)
+
+        case "animating":
+            guard let indicator = node.view as? UIActivityIndicatorView else { break }
+            if isTruthyAttribute(value) { indicator.startAnimating() } else { indicator.stopAnimating() }
+
+        case "size":
+            (node.view as? UIActivityIndicatorView)?.style = value as? String == "large" ? .large : .medium
+            node.markContentChanged()
+
+        case "color":
+            (node.view as? UIActivityIndicatorView)?.color = UIColor(rgba: value as Any)
+
+        case "visible":
+            modalControllersByNodeId[id]?.setVisible(isTruthyAttribute(value))
+
+        case "animationType":
+            modalControllersByNodeId[id]?.animationType = value as? String ?? "none"
+
+        case "presentationStyle":
+            modalControllersByNodeId[id]?.presentationStyleName = value as? String ?? "fullScreen"
+
+        case "transparent":
+            modalControllersByNodeId[id]?.transparent = isTruthyAttribute(value)
 
         case "placeholder":
             (node.view as? TextInputView)?.placeholder = value as? String

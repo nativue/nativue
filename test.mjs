@@ -157,6 +157,36 @@ assert.ok(renderedTexts().includes('999 itens'))
 assert.ok(!renderedTexts().includes('Pagar contas'))
 assert.equal(keyboardDismissCount, 2)
 
+// Modal: the settings button shows it; swiping the sheet down (requestclose) hides it.
+const modal = viewsById[findViewId((view) => view.type === 'Modal')]
+pressButton('Ajustes')
+await settle()
+assert.equal(modal.props.visible, true)
+
+const modalId = findViewId((view) => view === modal)
+globalThis.__dispatch(modalId, 'requestclose')
+await settle()
+assert.equal(modal.props.visible, false)
+
+// Switch v-model: hiding done items filters them out of the list.
+scrollList(0)
+await settle()
+globalThis.__dispatch(pressableShowing('Item 3'), 'press')
+await settle()
+assert.ok(renderedTexts().includes('✓ Item 3'))
+const switchId = findViewId((view) => view.type === 'Switch')
+assert.equal(viewsById[switchId].props.value, false)
+
+globalThis.__dispatch(switchId, 'valuechange', true)
+await settle()
+assert.equal(viewsById[switchId].props.value, true)
+assert.ok(!renderedTexts().includes('✓ Item 3'))
+assert.ok(renderedTexts().includes('Item 4'))
+
+globalThis.__dispatch(switchId, 'valuechange', false)
+await settle()
+assert.ok(renderedTexts().includes('✓ Item 3'))
+
 // Header and footer slots render around the rows.
 assert.ok(renderedTexts().includes('Puxe para atualizar'))
 assert.ok(renderedTexts().includes('Fim da lista'))
@@ -165,6 +195,11 @@ assert.ok(renderedTexts().includes('Fim da lista'))
 globalThis.__dispatch(scrollViewId, 'refresh')
 await settle()
 assert.equal(scrollView.props.refreshing, true)
+assert.ok(findViewId((view) => view.type === 'ActivityIndicator'))
+assert.equal(
+  viewsById[findViewId((view) => view.type === 'ActivityIndicator')].props.color,
+  0x8e8e93ff,
+)
 
 await new Promise((resolve) => setTimeout(resolve, 900))
 assert.equal(scrollView.props.refreshing, false)

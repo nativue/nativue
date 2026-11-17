@@ -1,5 +1,5 @@
 <script setup>
-import { Keyboard, ref } from 'vue'
+import { computed, Keyboard, ref } from 'vue'
 import logo from './assets/vue-logo.png'
 
 const ITEM_HEIGHT = 60
@@ -8,6 +8,12 @@ let nextItemId = 1
 const items = ref(createItems())
 const newItemText = ref('')
 const refreshing = ref(false)
+const settingsVisible = ref(false)
+const hideDoneItems = ref(false)
+
+const visibleItems = computed(() =>
+  hideDoneItems.value ? items.value.filter((item) => !item.done) : items.value,
+)
 
 const styles = {
   screen: { flex: 1, padding: 24, gap: 16 },
@@ -15,8 +21,14 @@ const styles = {
   logo: { width: 44, height: 44 },
   headerText: { flex: 1, gap: 4 },
   title: { fontSize: 28, fontWeight: 'bold', color: '#42b883' },
+  subtitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   subtitle: { fontSize: 15, color: '#8e8e93' },
-  removeButton: { color: '#ff3b30', fontSize: 15 },
+  settings: { flex: 1, padding: 24, gap: 24 },
+  settingsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  settingsTitle: { fontSize: 22, fontWeight: 'bold' },
+  settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  settingLabel: { fontSize: 17 },
+  removeButton: { color: '#ff3b30', fontSize: 17 },
   form: { flexDirection: 'row', gap: 12 },
   input: {
     flex: 1,
@@ -94,13 +106,16 @@ function removeLastItem() {
           <Image :source="logo" resize-mode="contain" :style="styles.logo" />
           <View :style="styles.headerText">
             <Text :style="styles.title">Vue Native</Text>
-            <Text :style="styles.subtitle">{{ items.length }} itens</Text>
+            <View :style="styles.subtitleRow">
+              <Text :style="styles.subtitle">{{ items.length }} itens</Text>
+              <ActivityIndicator v-if="refreshing" color="#8e8e93" />
+            </View>
           </View>
-          <Button title="Remover último" :style="styles.removeButton" @press="removeLastItem" />
+          <Button title="Ajustes" @press="settingsVisible = true" />
         </View>
 
         <FlatList
-          :data="items"
+          :data="visibleItems"
           :item-height="ITEM_HEIGHT"
           :key-extractor="(item) => item.id"
           :style="styles.list"
@@ -142,5 +157,26 @@ function removeLastItem() {
         </View>
       </View>
     </KeyboardAvoidingView>
+
+    <Modal
+      :visible="settingsVisible"
+      animation-type="slide"
+      presentation-style="pageSheet"
+      @request-close="settingsVisible = false"
+    >
+      <View :style="styles.settings">
+        <View :style="styles.settingsHeader">
+          <Text :style="styles.settingsTitle">Ajustes</Text>
+          <Button title="Fechar" @press="settingsVisible = false" />
+        </View>
+
+        <View :style="styles.settingRow">
+          <Text :style="styles.settingLabel">Ocultar concluídos</Text>
+          <Switch v-model="hideDoneItems" />
+        </View>
+
+        <Button title="Remover último" :style="styles.removeButton" @press="removeLastItem" />
+      </View>
+    </Modal>
   </SafeAreaView>
 </template>

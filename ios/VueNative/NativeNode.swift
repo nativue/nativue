@@ -14,6 +14,9 @@ final class NativeNode {
     let view: UIView
     let yogaNode: YGNodeRef
 
+    /// Where children go when it isn't this node (a <Modal>'s children live in the presented controller).
+    var contentNode: NativeNode?
+
     var fontSize: CGFloat = UIFont.labelFontSize
     var fontWeight: UIFont.Weight = .regular
 

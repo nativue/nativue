@@ -72,9 +72,14 @@ function patchStyle(element, previousStyle, nextStyle) {
   native.setProp(element.id, 'style', changes)
 }
 
-// <Image :source="logo" /> or :source="{ uri }", like React Native.
+// <Image :source="logo" /> or :source="{ uri }", like React Native. Color props (<ActivityIndicator
+// color>) are converted like color styles.
 function nativePropValue(key, value) {
-  return key === 'source' ? (value?.uri ?? value) : value
+  if (value == null) return value
+  if (key === 'source') return value?.uri ?? value
+  if (COLOR_PROPERTIES.has(key)) return processColor(value)
+
+  return value
 }
 
 function patchEventHandler(element, key, handler) {
@@ -149,8 +154,12 @@ const { createApp: createBaseApp } = createRenderer({
   },
 })
 
-// v-model compiles to an "onUpdate:modelValue" handler; it listens to the same native event as @changeText.
-const MODEL_EVENT_BY_NATIVE_EVENT = { changetext: 'update:modelvalue' }
+// v-model compiles to an "onUpdate:modelValue" handler; it listens to the same native event as
+// @change-text (<TextInput>) or @value-change (<Switch>).
+const MODEL_EVENT_BY_NATIVE_EVENT = {
+  changetext: 'update:modelvalue',
+  valuechange: 'update:modelvalue',
+}
 
 globalThis.__dispatch = (nodeId, eventName, payload) => {
   const handlers = eventHandlersByNodeId[nodeId]
@@ -166,7 +175,8 @@ export const Keyboard = {
   },
 }
 
-// Replaces Vue's DOM-only vModelText, which the template compiler emits for v-model on <TextInput>.
+// Replaces Vue's DOM-only vModelText, which the template compiler emits for v-model on
+// <TextInput> and <Switch>.
 // ponytail: v-model modifiers (.trim, .number, .lazy) are not supported yet.
 export const vModelText = {
   created(element, { value }) {

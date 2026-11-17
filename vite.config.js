@@ -11,6 +11,9 @@ const nativeComponentTags = [
   'TextInput',
   'KeyboardAvoidingView',
   'Image',
+  'Switch',
+  'ActivityIndicator',
+  'Modal',
 ]
 
 export default defineConfig(({ mode }) => ({
