@@ -1,6 +1,6 @@
 {
   "name": "create-nativue",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "description": "Creates a Nativue app: npm create nativue@latest my-app",
   "keywords": [
     "vue",
