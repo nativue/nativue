@@ -367,6 +367,12 @@ class ScrollContainerView(context: Context) : ContainerView(context) {
         refreshIndicator.layout(indicatorLeft, -size, indicatorLeft + size, 0)
     }
 
+    // The visible area changes with the size too: FlatList renders more rows when it grows.
+    override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
+        super.onSizeChanged(width, height, oldWidth, oldHeight)
+        reportScrollThrottled()
+    }
+
     // Within the throttle, the report waits for its end, so the last position always reaches JS.
     private fun reportScrollThrottled() {
         if (onScroll == null || hasPendingReport) return
