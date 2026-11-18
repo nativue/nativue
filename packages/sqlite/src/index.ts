@@ -22,6 +22,9 @@ export interface RunResult {
   lastInsertId: number
 }
 
+/** A statement and its parameters, for `batch()`. */
+export type BatchStatement = [sql: string, parameters?: QueryParameters]
+
 /** BLOBs cross as base64, in an object to tell them from text. */
 type NativeValue = number | string | null | { base64: string }
 
@@ -34,6 +37,10 @@ const nativeQuery =
   requireNativeFunction<
     (database: string, sql: string, parameters: NativeValue[]) => Promise<NativeResult>
   >('sqlite.query')
+const nativeBatch =
+  requireNativeFunction<
+    (database: string, statements: [string, NativeValue[]][]) => Promise<RunResult>
+  >('sqlite.batch')
 const nativeClose = requireNativeFunction<(database: string) => Promise<void>>('sqlite.close')
 
 /** Statements run on a database: the Database itself, or the transaction it hands to `transaction()`. */
@@ -70,12 +77,27 @@ export class Statements {
     return rows.map((row) => row.map(value))
   }
 
-  protected query(sql: string, parameters: QueryParameters): Promise<NativeResult> {
-    const [numberedSql, values] = Array.isArray(parameters)
-      ? [sql, parameters]
-      : namedAsNumbered(sql, parameters)
+  /**
+   * The statements in one native call, all or none: much faster than awaiting each one. `changes` counts
+   * every statement's rows.
+   */
+  async batch(statements: BatchStatement[]): Promise<RunResult> {
+    const nativeStatements = statements.map(([sql, parameters = []]) =>
+      nativeStatement(sql, parameters),
+    )
 
-    return nativeQuery(this.name, numberedSql, values.map(nativeParameter))
+    return this.send(() => nativeBatch(this.name, nativeStatements))
+  }
+
+  protected query(sql: string, parameters: QueryParameters): Promise<NativeResult> {
+    const [numberedSql, values] = nativeStatement(sql, parameters)
+
+    return this.send(() => nativeQuery(this.name, numberedSql, values))
+  }
+
+  /** Hands work to the native side: right away here, in turn on a Database. */
+  protected send<Result>(work: () => Promise<Result>): Promise<Result> {
+    return work()
   }
 }
 
@@ -108,8 +130,8 @@ export class Database extends Statements {
     return this.enqueue(() => nativeClose(this.name))
   }
 
-  protected override query(sql: string, parameters: QueryParameters): Promise<NativeResult> {
-    return this.enqueue(() => super.query(sql, parameters))
+  protected override send<Result>(work: () => Promise<Result>): Promise<Result> {
+    return this.enqueue(work)
   }
 
   private enqueue<Result>(work: () => Promise<Result>): Promise<Result> {
@@ -130,13 +152,12 @@ export const SQLite = {
   },
 }
 
-function namedAsNumbered(
-  sql: string,
-  values: Record<string, Parameter>,
-): [sql: string, parameters: Parameter[]] {
-  const numbered = numberNamedParameters(sql, values)
+function nativeStatement(sql: string, parameters: QueryParameters): [string, NativeValue[]] {
+  if (Array.isArray(parameters)) return [sql, parameters.map(nativeParameter)]
 
-  return [numbered.sql, numbered.parameters]
+  const numbered = numberNamedParameters(sql, parameters)
+
+  return [numbered.sql, numbered.parameters.map(nativeParameter)]
 }
 
 function nativeParameter(parameter: Parameter): NativeValue {

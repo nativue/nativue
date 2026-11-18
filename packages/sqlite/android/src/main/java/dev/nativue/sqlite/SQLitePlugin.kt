@@ -14,7 +14,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.abs
 
-/** sqlite.query and sqlite.close (src/index.ts), on the SQLite that ships with Android. */
+/** sqlite.query, sqlite.batch and sqlite.close (src/index.ts), on the SQLite that ships with Android. */
 class SQLitePlugin : NativuePlugin {
     /** The open databases, by name: one connection each, kept across JS reloads. */
     private val databasesByName = ConcurrentHashMap<String, Database>()
@@ -26,6 +26,16 @@ class SQLitePlugin : NativuePlugin {
             val name = arguments[0] as String
             val database = databasesByName.computeIfAbsent(name) { Database(context, name) }
             database.query(arguments[1] as String, arguments[2] as? List<*> ?: emptyList<Any?>(), promise)
+        }
+
+        registry.addAsyncFunction("sqlite.batch") { arguments, promise ->
+            val name = arguments[0] as String
+            val database = databasesByName.computeIfAbsent(name) { Database(context, name) }
+            val statements = (arguments[1] as? List<*> ?: emptyList<Any?>()).map { statement ->
+                val parts = statement as List<*>
+                parts[0] as String to (parts.getOrNull(1) as? List<*> ?: emptyList<Any?>())
+            }
+            database.batch(statements, promise)
         }
 
         registry.addAsyncFunction("sqlite.close") { arguments, promise ->
@@ -53,9 +63,13 @@ private class Database(context: Context, name: String) {
         }
     }
 
-    fun query(sql: String, parameters: List<*>, promise: Promise) = executor.execute {
+    fun query(sql: String, parameters: List<*>, promise: Promise) = settle(promise) { run(sql, parameters) }
+
+    fun batch(statements: List<Pair<String, List<*>>>, promise: Promise) = settle(promise) { runBatch(statements) }
+
+    private fun settle(promise: Promise, work: () -> Map<String, Any?>) = executor.execute {
         try {
-            promise.resolve(run(sql, parameters))
+            promise.resolve(work())
         } catch (error: Exception) {
             // Android adds " (code 1 SQLITE_ERROR): , while compiling: …" to SQLite's message
             promise.reject(error.message?.substringBefore(" (code ") ?: error.toString())
@@ -66,6 +80,26 @@ private class Database(context: Context, name: String) {
         connection.close()
         executor.shutdown()
         promise.resolve()
+    }
+
+    /** All the statements or none: a savepoint is a transaction of its own, or nests in the caller's. */
+    private fun runBatch(statements: List<Pair<String, List<*>>>): Map<String, Any?> {
+        val changesBefore = longQuery("SELECT total_changes()")
+        run("SAVEPOINT nativue_batch", emptyList<Any?>())
+
+        try {
+            for ((sql, parameters) in statements) run(sql, parameters)
+            run("RELEASE nativue_batch", emptyList<Any?>())
+        } catch (error: Exception) {
+            run("ROLLBACK TO nativue_batch", emptyList<Any?>())
+            run("RELEASE nativue_batch", emptyList<Any?>())
+            throw error
+        }
+
+        return mapOf(
+            "changes" to longQuery("SELECT total_changes()") - changesBefore,
+            "lastInsertId" to longQuery("SELECT last_insert_rowid()"),
+        )
     }
 
     /**

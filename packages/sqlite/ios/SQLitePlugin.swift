@@ -2,7 +2,7 @@ import Foundation
 import Nativue
 import SQLite3
 
-/// sqlite.query and sqlite.close (src/index.ts), on the SQLite that ships with iOS.
+/// sqlite.query, sqlite.batch and sqlite.close (src/index.ts), on the SQLite that ships with iOS.
 public final class SQLitePlugin: NativuePlugin {
     private let databases = Databases()
 
@@ -13,6 +13,15 @@ public final class SQLitePlugin: NativuePlugin {
             let database = try databases.database(named: arguments[0] as? String ?? "")
 
             return try await database.query(arguments[1] as? String ?? "", parameters: arguments[2] as? [Any] ?? [])
+        }
+
+        registry.addAsyncFunction("sqlite.batch") { [databases] arguments in
+            let database = try databases.database(named: arguments[0] as? String ?? "")
+            let statements = (arguments[1] as? [[Any]] ?? []).map { statement in
+                (sql: statement.first as? String ?? "", parameters: statement.dropFirst().first as? [Any] ?? [])
+            }
+
+            return try await database.batch(statements)
         }
 
         registry.addAsyncFunction("sqlite.close") { [databases] arguments in
@@ -89,6 +98,15 @@ private final class Database: @unchecked Sendable {
         }
     }
 
+    /// All the statements or none: a savepoint is a transaction of its own, or nests in the caller's.
+    func batch(_ statements: [(sql: String, parameters: [Any])]) async throws -> [String: Any] {
+        try await withCheckedThrowingContinuation { continuation in
+            queue.async {
+                continuation.resume(with: Result { try self.runBatch(statements) })
+            }
+        }
+    }
+
     func close() async {
         await withCheckedContinuation { continuation in
             queue.async {
@@ -127,6 +145,24 @@ private final class Database: @unchecked Sendable {
             "columns": columns,
             "rows": rows,
             "changes": Int(sqlite3_changes(connection)),
+            "lastInsertId": sqlite3_last_insert_rowid(connection),
+        ]
+    }
+
+    private func runBatch(_ statements: [(sql: String, parameters: [Any])]) throws -> [String: Any] {
+        let changesBefore = sqlite3_total_changes(connection)
+        _ = try run("SAVEPOINT nativue_batch", parameters: [])
+
+        do {
+            for statement in statements { _ = try run(statement.sql, parameters: statement.parameters) }
+            _ = try run("RELEASE nativue_batch", parameters: [])
+        } catch {
+            sqlite3_exec(connection, "ROLLBACK TO nativue_batch; RELEASE nativue_batch", nil, nil, nil)
+            throw error
+        }
+
+        return [
+            "changes": Int(sqlite3_total_changes(connection) - changesBefore),
             "lastInsertId": sqlite3_last_insert_rowid(connection),
         ]
     }

@@ -34,6 +34,9 @@ await db.transaction(async (transaction) => {
   await transaction.run('UPDATE todos SET done = 1 WHERE id = ?', [lastInsertId])
   await transaction.run('DELETE FROM todos WHERE done = 1')
 })
+
+// Many statements in one call: much faster than awaiting each one.
+await db.batch(titles.map((title) => ['INSERT INTO todos (title) VALUES (?)', [title]]))
 ```
 
 |                                         |                                                                              |
@@ -45,6 +48,7 @@ await db.transaction(async (transaction) => {
 | `get(sql, parameters?)`                 | the first row, or `null`                                                     |
 | `values(sql, parameters?)`              | the rows, as arrays in the columns' order: for ORMs                          |
 | `transaction(async (transaction) => …)` | commits when it resolves, rolls back when it throws                          |
+| `batch([[sql, parameters?], …])`        | the statements in one call, all or none; `{ changes, lastInsertId }`         |
 | `close()`                               | the next statement opens it again                                            |
 
 - Parameters are `?` placeholders with an array, in order, or `$name`, `:name` and `@name` ones
@@ -61,6 +65,9 @@ await db.transaction(async (transaction) => {
   times faster; losing power (not the app crashing) can undo the last commits, but never corrupts
   the database. The log sits
   next to the file (`app.db-wal`, `app.db-shm`): close the database before copying it.
+- Each awaited statement crosses from JavaScript to the native side and back. For many writes at once
+  (an import, a sync), `batch()` sends them all in one call: on Android, 10,000 inserts take about
+  half a second instead of several. It runs in a transaction of its own, or inside `transaction()`.
 - Integers beyond `Number.MAX_SAFE_INTEGER` lose precision: store them as text.
 
 ## Drizzle

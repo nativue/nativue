@@ -50,6 +50,8 @@ globalThis.__native = {
   'plugin:haptics.notification': (type) => hapticsCalls.push(['notification', type]),
   'plugin:haptics.selection': () => hapticsCalls.push(['selection']),
   'pluginAsync:sqlite.query': fakeSqliteQuery,
+  'pluginAsync:sqlite.batch': (callId) =>
+    setTimeout(() => globalThis.__asyncFunctionFinished(callId, { changes: 0, lastInsertId: 0 }, null)),
   'pluginAsync:sqlite.close': (callId) =>
     setTimeout(() => globalThis.__asyncFunctionFinished(callId, null, null)),
   windowSize: () => WINDOW,
