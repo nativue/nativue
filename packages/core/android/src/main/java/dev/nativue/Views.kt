@@ -20,7 +20,9 @@ import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.Switch
+import java.io.File
 import java.net.URL
+import java.security.MessageDigest
 import java.util.concurrent.Executors
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -489,14 +491,16 @@ private fun pageOffset(offset: Int, pageSize: Int, velocity: Int): Int {
 }
 
 /**
- * Loads `data:` URIs (bundled images) and http(s) URLs off the main thread. Decoded images are kept in
- * memory, so one that comes back on screen (a list row) shows at once.
+ * Image view behind <Image>. Loads `data:` URIs (bundled images) and http(s) URLs off the main thread.
+ * Mirrors ios/ImageView.swift: with `cache` "disk" (the default), downloads are kept on disk and decoded
+ * images in memory; "memory" keeps only the decoded images; "none" keeps nothing.
  */
-// Limitation: No HTTP disk cache, unlike iOS's URLCache: after a relaunch images download again. Give image
-// requests their own cache if that matters (a global HttpResponseCache would also cache the dev bundle).
 class RemoteImageView(context: Context) : ImageView(context) {
     /** The image changed, and with it the size the view measures. */
     var onImageChange: () -> Unit = {}
+
+    /** "disk", "memory" or "none". Read when a download finishes, so it applies even when set after `source`. */
+    var cachePolicy = "disk"
 
     private var source: String? = null
     private var bitmap: Bitmap? = null
@@ -509,14 +513,31 @@ class RemoteImageView(context: Context) : ImageView(context) {
         if (source == this.source) return
 
         this.source = source
-        show(source?.let(decodedImages::get))
+        show(if (source != null && cachePolicy != "none") decodedImages.get(source) else null)
         if (source == null || bitmap != null) return
 
+        val diskCache = ImageDiskCache(context.cacheDir)
+        val readsDisk = cachePolicy == "disk"
         loader.execute {
-            val bitmap = runCatching { decode(source) }.getOrNull() ?: return@execute
-            decodedImages.put(source, bitmap)
-            post { if (source == this.source) show(bitmap) }
+            val cachedBytes = if (readsDisk) diskCache.read(source) else null
+            val downloadedBytes = if (cachedBytes == null) runCatching { download(source) }.getOrNull() else null
+            val bytes = cachedBytes ?: downloadedBytes ?: return@execute
+            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@execute
+
+            post {
+                store(bitmap, downloadedBytes, source, diskCache)
+                if (source == this.source) show(bitmap)
+            }
         }
+    }
+
+    private fun store(bitmap: Bitmap, downloadedBytes: ByteArray?, source: String, diskCache: ImageDiskCache) {
+        if (cachePolicy == "none") return
+
+        decodedImages.put(source, bitmap)
+        if (cachePolicy != "disk" || downloadedBytes == null || source.startsWith("data:")) return
+
+        loader.execute { diskCache.write(source, downloadedBytes) }
     }
 
     private fun show(nextBitmap: Bitmap?) {
@@ -557,13 +578,10 @@ class RemoteImageView(context: Context) : ImageView(context) {
         setMeasuredDimension(measuredWidth.roundToInt(), measuredHeight.roundToInt())
     }
 
-    private fun decode(source: String): Bitmap? {
-        if (source.startsWith("data:")) {
-            val bytes = Base64.decode(source.substringAfter(","), Base64.DEFAULT)
-            return BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-        }
+    private fun download(source: String): ByteArray {
+        if (source.startsWith("data:")) return Base64.decode(source.substringAfter(","), Base64.DEFAULT)
 
-        return URL(source).openStream().use(BitmapFactory::decodeStream)
+        return URL(source).openStream().use { it.readBytes() }
     }
 
     companion object {
@@ -580,6 +598,53 @@ class RemoteImageView(context: Context) : ImageView(context) {
             "stretch" to ScaleType.FIT_XY,
             "center" to ScaleType.CENTER_INSIDE,
         )
+    }
+}
+
+/**
+ * Downloaded images by url, in the app's cache folder, which Android may empty when storage runs low. Past
+ * its limit, the images used least recently go first.
+ */
+private class ImageDiskCache(cacheDirectory: File) {
+    private val directory = File(cacheDirectory, "nativue-images")
+
+    fun read(source: String): ByteArray? {
+        val file = fileFor(source)
+        if (!file.exists()) return null
+
+        file.setLastModified(System.currentTimeMillis())
+
+        return runCatching { file.readBytes() }.getOrNull()
+    }
+
+    fun write(source: String, bytes: ByteArray) {
+        directory.mkdirs()
+        val partialFile = File(directory, "${fileFor(source).name}.partial")
+        partialFile.writeBytes(bytes)
+        partialFile.renameTo(fileFor(source)) // whole files only: a reader never sees half an image
+        trim()
+    }
+
+    private fun fileFor(source: String): File {
+        val hash = MessageDigest.getInstance("SHA-256").digest(source.toByteArray())
+
+        return File(directory, hash.joinToString("") { "%02x".format(it) })
+    }
+
+    private fun trim() {
+        val files = directory.listFiles()?.sortedBy(File::lastModified) ?: return
+        var totalSize = files.sumOf(File::length)
+
+        for (file in files) {
+            if (totalSize <= MAX_BYTE_COUNT) break
+
+            totalSize -= file.length()
+            file.delete()
+        }
+    }
+
+    companion object {
+        const val MAX_BYTE_COUNT = 100L * 1024 * 1024
     }
 }
 

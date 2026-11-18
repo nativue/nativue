@@ -899,6 +899,9 @@ final class Bridge {
         case "source":
             (node.view as? ImageView)?.load(value as? String)
 
+        case "cache":
+            (node.view as? ImageView)?.cachePolicy = value as? String ?? "disk"
+
         case "resizeMode":
             node.view.contentMode = ImageView.resizeModes[value as? String ?? ""] ?? .scaleAspectFill
 

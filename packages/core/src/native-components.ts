@@ -78,6 +78,8 @@ declare module '@vue/runtime-core' {
       /** What the image shows, for screen readers. Leave it out for decorative images. */
       alt?: string
       resizeMode?: 'cover' | 'contain' | 'stretch' | 'center'
+      /** Where downloads are kept: on disk and in memory (the default), in memory only, or not at all. */
+      cache?: 'disk' | 'memory' | 'none'
     }>
     Switch: NativeComponent<
       ModelProps<boolean> & { value?: boolean; onValueChange?: (value: boolean) => void }

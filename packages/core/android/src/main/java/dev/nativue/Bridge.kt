@@ -894,6 +894,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
 
             "source" -> (view as? RemoteImageView)?.load(value as? String)
 
+            "cache" -> (view as? RemoteImageView)?.cachePolicy = value as? String ?: "disk"
             "resizeMode" -> (view as? RemoteImageView)?.scaleType = RemoteImageView.scaleTypes[value] ?: ImageView.ScaleType.CENTER_CROP
 
             "onLongPress" -> (view as? PressableView)?.reportsLongPress = isTruthyAttribute(value)
