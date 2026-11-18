@@ -182,6 +182,10 @@ private func measureView(
         let maxHeight = heightMode == .undefined ? CGFloat.greatestFiniteMagnitude : CGFloat(height)
 
         let view = NativeNode.view(of: yogaNode!)
+        if let imageView = view as? ImageView {
+            return imageView.measuredSize(width: width, widthMode: widthMode, height: height, heightMode: heightMode)
+        }
+
         let singleLineLabelSize = (view as? UILabel).flatMap { singleLineSize(of: $0, maxWidth: maxWidth) }
         let fittingSize = singleLineLabelSize ?? view.sizeThatFits(CGSize(width: maxWidth, height: maxHeight))
 

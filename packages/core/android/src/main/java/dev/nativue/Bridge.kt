@@ -628,7 +628,15 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
             }
         }
 
-        "Image" -> NativeNode(RemoteImageView(activity), measuresContent = false)
+        "Image" -> {
+            val imageView = RemoteImageView(activity)
+            NativeNode(imageView, measuresContent = true).also { node ->
+                imageView.onImageChange = {
+                    node.markContentChanged()
+                    rootView.requestLayout()
+                }
+            }
+        }
 
         "SwipeableView" -> NativeNode(SwipeableView(activity), measuresContent = false)
 

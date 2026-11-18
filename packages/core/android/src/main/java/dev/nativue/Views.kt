@@ -8,6 +8,7 @@ import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
+import android.util.LruCache
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -20,7 +21,9 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.Switch
 import java.net.URL
-import kotlin.concurrent.thread
+import java.util.concurrent.Executors
+import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.abs
 
 /**
@@ -484,9 +487,18 @@ private fun pageOffset(offset: Int, pageSize: Int, velocity: Int): Int {
     return targetPage.toInt() * pageSize
 }
 
-/** Loads `data:` URIs (bundled images) and http(s) URLs off the main thread. */
+/**
+ * Loads `data:` URIs (bundled images) and http(s) URLs off the main thread. Decoded images are kept in
+ * memory, so one that comes back on screen (a list row) shows at once.
+ */
+// Limitation: No HTTP disk cache, unlike iOS's URLCache: after a relaunch images download again. Give image
+// requests their own cache if that matters (a global HttpResponseCache would also cache the dev bundle).
 class RemoteImageView(context: Context) : ImageView(context) {
+    /** The image changed, and with it the size the view measures. */
+    var onImageChange: () -> Unit = {}
+
     private var source: String? = null
+    private var bitmap: Bitmap? = null
 
     init {
         scaleType = ScaleType.CENTER_CROP
@@ -496,13 +508,52 @@ class RemoteImageView(context: Context) : ImageView(context) {
         if (source == this.source) return
 
         this.source = source
-        setImageDrawable(null)
-        if (source == null) return
+        show(source?.let(decodedImages::get))
+        if (source == null || bitmap != null) return
 
-        thread {
-            val bitmap = runCatching { decode(source) }.getOrNull()
-            post { if (source == this.source) setImageBitmap(bitmap) }
+        loader.execute {
+            val bitmap = runCatching { decode(source) }.getOrNull() ?: return@execute
+            decodedImages.put(source, bitmap)
+            post { if (source == this.source) show(bitmap) }
         }
+    }
+
+    private fun show(nextBitmap: Bitmap?) {
+        if (nextBitmap === bitmap) return
+
+        bitmap = nextBitmap
+        setImageBitmap(nextBitmap)
+        onImageChange()
+    }
+
+    /**
+     * Without a width or height, the image takes its own size, a pixel per dp; given one of them, the other
+     * follows its aspect ratio, as on the web.
+     */
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val density = resources.displayMetrics.density
+        val naturalWidth = (bitmap?.width ?: 0) * density
+        val naturalHeight = (bitmap?.height ?: 0) * density
+        val widthMode = MeasureSpec.getMode(widthMeasureSpec)
+        val heightMode = MeasureSpec.getMode(heightMeasureSpec)
+        val width = MeasureSpec.getSize(widthMeasureSpec).toFloat()
+        val height = MeasureSpec.getSize(heightMeasureSpec).toFloat()
+        val maxWidth = if (widthMode == MeasureSpec.UNSPECIFIED) Float.POSITIVE_INFINITY else width
+        val maxHeight = if (heightMode == MeasureSpec.UNSPECIFIED) Float.POSITIVE_INFINITY else height
+        val aspectRatio = naturalWidth / naturalHeight
+
+        val (measuredWidth, measuredHeight) = when {
+            widthMode == MeasureSpec.EXACTLY && heightMode == MeasureSpec.EXACTLY -> width to height
+            naturalWidth == 0f || naturalHeight == 0f ->
+                (if (widthMode == MeasureSpec.EXACTLY) width else 0f) to (if (heightMode == MeasureSpec.EXACTLY) height else 0f)
+            widthMode == MeasureSpec.EXACTLY -> width to min(width / aspectRatio, maxHeight)
+            heightMode == MeasureSpec.EXACTLY -> min(height * aspectRatio, maxWidth) to height
+            else -> {
+                val scale = minOf(1f, maxWidth / naturalWidth, maxHeight / naturalHeight)
+                naturalWidth * scale to naturalHeight * scale
+            }
+        }
+        setMeasuredDimension(measuredWidth.roundToInt(), measuredHeight.roundToInt())
     }
 
     private fun decode(source: String): Bitmap? {
@@ -515,6 +566,13 @@ class RemoteImageView(context: Context) : ImageView(context) {
     }
 
     companion object {
+        private val loader = Executors.newFixedThreadPool(4)
+
+        /** Decoded images, an eighth of the app's memory at most: one that comes back on screen shows at once. */
+        private val decodedImages = object : LruCache<String, Bitmap>((Runtime.getRuntime().maxMemory() / 8).toInt()) {
+            override fun sizeOf(key: String, value: Bitmap) = value.byteCount
+        }
+
         val scaleTypes = mapOf(
             "cover" to ScaleType.CENTER_CROP,
             "contain" to ScaleType.FIT_CENTER,

@@ -463,7 +463,13 @@ final class Bridge {
             return NativeNode(view: VueScrollView(), measuresContent: false)
 
         case "Image":
-            return NativeNode(view: ImageView(frame: .zero), measuresContent: false)
+            let imageView = ImageView(frame: .zero)
+            let node = NativeNode(view: imageView, measuresContent: true)
+            imageView.onImageChange = { [unowned self, weak node] in
+                node?.markContentChanged()
+                rootView.setNeedsLayout()
+            }
+            return node
 
         case "SwipeableView":
             return NativeNode(view: SwipeableView(frame: .zero), measuresContent: false)
