@@ -26,10 +26,11 @@ const theme = await AsyncStorage.getItem('theme') // 'dark', or null when missin
 | `multiRemove(keys)`           |                                               |
 | `clear()`                     | removes everything                            |
 
-Values are kept in memory, so reads are fast, and saved to disk in the background. For objects,
-store JSON: `setItem('user', JSON.stringify(user))`.
+Values are kept in memory, so reads are fast, and saved in the background to a SQLite table, only
+the keys that changed. For objects, store JSON: `setItem('user', JSON.stringify(user))`.
 
-Each save rewrites the whole store: it's meant for settings and small data, not large datasets.
+Every value stays in memory: it's meant for settings and small data. For large datasets or queries,
+use [`@nativue/sqlite`](../packages/sqlite/README.md).
 
 ## fetch
 

@@ -1,6 +1,6 @@
-// AsyncStorage: promise-based, string values. Native keeps every
-// value in memory (reads never touch the disk) and saves to a file in the background, so
-// each call is a fast synchronous native call behind the promise.
+// AsyncStorage: promise-based, string values. Native keeps every value in memory (reads never touch
+// the disk) and saves the changed keys to SQLite in the background, so each call is a fast synchronous
+// native call behind the promise.
 const native = globalThis.__native
 
 export const AsyncStorage = {

@@ -2,7 +2,6 @@ package dev.nativue
 
 import android.annotation.SuppressLint
 import android.app.Activity
-import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.res.Configuration
 import android.content.res.ColorStateList
@@ -55,7 +54,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     private val javaScriptHandler = startJavaScriptThread()
     private val isDebuggable = activity.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
     private val density = activity.resources.displayMetrics.density
-    private val storage = activity.getSharedPreferences("dev.nativue.storage", Context.MODE_PRIVATE)
+    private val storage = KeyValueStorage(activity)
     private val pluginRegistry = PluginRegistry(activity)
 
     // Only touched on the JS thread.
@@ -392,11 +391,11 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     }
 
     private fun storageFunctions(): Map<String, NativeFunction> = mapOf(
-        "storageGet" to { arguments -> storage.getString(arguments[0] as String, null) },
-        "storageSet" to { arguments -> storage.edit().putString(arguments[0] as String, arguments[1] as String).apply() },
-        "storageRemove" to { arguments -> storage.edit().remove(arguments[0] as String).apply() },
-        "storageKeys" to { _ -> storage.all.keys.toList() },
-        "storageClear" to { _ -> storage.edit().clear().apply() },
+        "storageGet" to { arguments -> storage.value(arguments[0] as String) },
+        "storageSet" to { arguments -> storage.setValue(arguments[0] as String, arguments[1] as String) },
+        "storageRemove" to { arguments -> storage.removeValue(arguments[0] as String) },
+        "storageKeys" to { _ -> storage.keys },
+        "storageClear" to { _ -> storage.removeAll() },
     )
 
     private fun animatedFunctions(): Map<String, NativeFunction> = mapOf(
