@@ -97,11 +97,11 @@ Created ${displayNameOf(slug)} in ${projectPath}
 
   cd ${projectPath}
   npm install
-  npm run dev                 keep it running: it rebuilds and reloads the app on save
+  npm run ios                 or npm run android: opens the app on a simulator or emulator, then
+                              keeps running, rebuilding and reloading the app on save
 
-  iOS:      open ios/App.xcodeproj, pick a simulator or your iPhone and press Run
-  Android:  open the android folder in Android Studio and press Run,
-            or start an emulator and run: cd android && ./gradlew installDebug
+  On your phone: open ios/App.xcodeproj in Xcode, or the android folder in Android Studio, and
+  press Run, with npm run dev running
 
 Bundle id: ${bundleId} (set it with --bundle-id, or later in Xcode and android/app/build.gradle.kts)
 `)

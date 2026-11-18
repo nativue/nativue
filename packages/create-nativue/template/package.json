@@ -4,6 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "nativue dev",
+    "ios": "nativue run ios",
+    "android": "nativue run android",
     "build": "nativue build --production",
     "typecheck": "vue-tsc"
   },

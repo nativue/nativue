@@ -8,6 +8,8 @@
   ],
   "scripts": {
     "dev": "npm run dev -w demo",
+    "ios": "npm run ios -w demo",
+    "android": "npm run android -w demo",
     "build": "npm run build -w demo",
     "test": "npm test -w @nativue/core",
     "typecheck": "npm run typecheck --workspaces --if-present",

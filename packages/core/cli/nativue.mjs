@@ -4,14 +4,18 @@
 //                                    folder, android/app/src/main/assets/main.bundle.js; Hermes bytecode
 //                                    with --production)
 //   nativue dev                    rebuilds on save and tells the app (via SSE) to reload the bundle
+//   nativue run <ios | android>    builds, installs and opens the app on a simulator or emulator, then
+//                                    keeps going as `nativue dev` (unless one is already running)
 import { build } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import http from 'node:http'
+import net from 'node:net'
 import { execFileSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { runOnAndroid, runOnIOS } from './run.mjs'
 import { createSymbolicator } from './symbolicate.mjs'
 
 const PORT = 42883 // #42b883, Vue's green
@@ -175,9 +179,7 @@ function startDevServer() {
   }
 }
 
-const [command, ...args] = process.argv.slice(2)
-
-if (command === 'dev') {
+async function dev() {
   const reloadPlugin = startDevServer()
   await build(
     viteConfig({
@@ -187,13 +189,45 @@ if (command === 'dev') {
       sourcemap: 'hidden', // no comment in the bundle: the dev server serves the map
     }),
   )
-} else if (command === 'build') {
-  await build(
-    viteConfig({
-      mode: args.includes('--production') ? 'production' : 'development',
-    }),
-  )
-} else {
-  console.log('usage: nativue <dev | build> [--production]')
+}
+
+function isPortFree(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer()
+    server.once('error', () => resolve(false))
+    server.listen(port, () => server.close(() => resolve(true)))
+  })
+}
+
+const RUNNERS = { ios: runOnIOS, android: runOnAndroid }
+
+async function runApp(platform) {
+  await build(viteConfig({ mode: 'development' }))
+  await RUNNERS[platform]()
+
+  if (await isPortFree(PORT)) return dev()
+
+  console.log('\nA dev server is already running: the app reloads from it.')
+}
+
+const [command, ...args] = process.argv.slice(2)
+
+try {
+  if (command === 'dev') {
+    await dev()
+  } else if (command === 'build') {
+    await build(
+      viteConfig({
+        mode: args.includes('--production') ? 'production' : 'development',
+      }),
+    )
+  } else if (command === 'run' && RUNNERS[args[0]]) {
+    await runApp(args[0])
+  } else {
+    console.log('usage: nativue <dev | build [--production] | run <ios | android>>')
+    process.exitCode = 1
+  }
+} catch (error) {
+  console.error(`\n${error.message}`)
   process.exitCode = 1
 }

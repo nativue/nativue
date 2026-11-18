@@ -17,12 +17,14 @@ drives UIKit; on Android it runs in Hermes and drives Android views, with Materi
 npm create nativue@latest my-app    # add -- --bundle-id com.company.myapp to set it now
 cd my-app
 npm install
-npm run dev                            # keep it running: rebuilds and reloads the app on save
-open ios/App.xcodeproj                 # iOS: pick a simulator or your iPhone, then Run
+npm run ios                            # or npm run android
 ```
 
-On Android, open the `android` folder in Android Studio and press Run, or start an emulator and run
-`cd android && ./gradlew installDebug`. It needs Android 11 (API 30) or later and JDK 17+.
+`npm run ios` / `npm run android` build the app, open it on a simulator or emulator (starting one
+if none is running) and keep running as `npm run dev`: save a file and the app reloads. On a phone,
+open `ios/App.xcodeproj` in Xcode or the `android` folder in Android Studio and press Run, with
+`npm run dev` running. Android needs Android 11 (API 30) or later; without `JAVA_HOME`, the build
+uses the JDK inside Android Studio.
 
 A debug build finds the dev server by itself: the simulator or emulator through the computer, a
 phone on the same Wi-Fi through the computer's local address (written into the app when it's built,
@@ -88,11 +90,13 @@ From the repository root:
 
 | Command             | What it does                                              |
 | ------------------- | --------------------------------------------------------- |
+| `npm run ios`       | opens the demo on an iOS simulator, then runs `dev`       |
+| `npm run android`   | opens the demo on an Android emulator, then runs `dev`    |
 | `npm run dev`       | rebuilds the demo on save and hot-reloads the running app |
 | `npm run build`     | bundles the demo into its iOS and Android apps            |
 | `npm test`          | builds the demo and runs the framework tests              |
 | `npm run typecheck` | type-checks the framework and the demo                    |
 | `npm run format`    | formats everything with Prettier                          |
 
-Open `examples/demo/ios/App.xcodeproj` in Xcode, or `examples/demo/android` in Android Studio, to run
-the app on a simulator, emulator or device.
+To run it on a phone, open `examples/demo/ios/App.xcodeproj` in Xcode or `examples/demo/android` in
+Android Studio.
