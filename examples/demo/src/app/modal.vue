@@ -23,7 +23,7 @@ const styles = StyleSheet.create({
     <Stack.Screen :options="screenOptions" />
 
     <View :style="styles.hero">
-      <IconTile :icon="AppWindowIcon" :tint="colors.navy" :size="72" />
+      <IconTile :icon="AppWindowIcon" :tint="colors.ink" :size="72" />
       <Text :style="styles.title">A modal route</Text>
       <Text :style="styles.body">
         It lives at src/app/modal.vue. Swipe down, tap Close or use the button to dismiss it.

@@ -16,7 +16,7 @@ useFocusEffect(() => {
 
 const styles = StyleSheet.create({
   counter: { fontSize: 48, fontWeight: '800', color: colors.green, textAlign: 'center' },
-  code: { fontSize: 15, fontWeight: '600', color: colors.navy },
+  code: { fontSize: 15, fontWeight: '600', color: colors.ink },
 })
 </script>
 
@@ -31,7 +31,7 @@ const styles = StyleSheet.create({
     <Section title="Modal" footer="A route with presentation: 'modal' in the root layout.">
       <PrimaryButton
         title="Open the modal route"
-        :tint="colors.navy"
+        :tint="colors.ink"
         @press="router.push('/modal')"
       />
     </Section>

@@ -99,7 +99,7 @@ const styles = StyleSheet.create({
     borderColor: colors.purple,
     alignItems: 'center',
   },
-  spinnerMark: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.navy },
+  spinnerMark: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.ink },
   pulse: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.pink },
   track: { height: BALL_SIZE, borderRadius: BALL_SIZE / 2, backgroundColor: colors.background },
   ball: {
@@ -124,7 +124,7 @@ function presetStyle(name: PresetName): Style {
     paddingVertical: 10,
     borderRadius: radius.small,
     alignItems: 'center',
-    backgroundColor: selected ? colors.navy : colors.background,
+    backgroundColor: selected ? colors.ink : colors.background,
   }
 }
 
@@ -134,7 +134,7 @@ function panelStyle(): Style {
     padding: spacing.medium,
     gap: 6,
     borderRadius: radius.medium,
-    backgroundColor: expanded.value ? colors.green : colors.navy,
+    backgroundColor: expanded.value ? colors.green : colors.ink,
     justifyContent: 'center',
   }
 }
@@ -180,7 +180,7 @@ onUnmounted(() => loops.forEach((loop) => loop.stop())) // native would keep run
       </View>
       <View :style="styles.buttons">
         <View :style="styles.button">
-          <PrimaryButton title="Timing" :tint="colors.navy" @press="moveBall('timing')" />
+          <PrimaryButton title="Timing" :tint="colors.ink" @press="moveBall('timing')" />
         </View>
         <View :style="styles.button">
           <PrimaryButton title="Spring" :tint="colors.purple" @press="moveBall('spring')" />
@@ -200,7 +200,7 @@ onUnmounted(() => loops.forEach((loop) => loop.stop())) // native would keep run
           @press="presetName = name"
         >
           <Text
-            :style="{ ...styles.presetText, color: name === presetName ? '#ffffff' : colors.navy }"
+            :style="{ ...styles.presetText, color: name === presetName ? '#ffffff' : colors.ink }"
           >
             {{ PRESET_LABELS[name] }}
           </Text>

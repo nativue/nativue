@@ -23,7 +23,7 @@ const COLORED_ICONS = [
   { icon: HeartIcon, color: colors.red },
   { icon: StarIcon, color: colors.orange },
   { icon: BellIcon, color: colors.blue },
-  { icon: CameraIcon, color: colors.navy },
+  { icon: CameraIcon, color: colors.ink },
   { icon: MessageCircleIcon, color: colors.green },
   { icon: SettingsIcon, color: colors.purple },
 ]
@@ -142,7 +142,7 @@ const styles = StyleSheet.create({
     </Section>
 
     <Section title="Sheets">
-      <PrimaryButton title="Present a sheet" :tint="colors.navy" @press="sheetVisible = true" />
+      <PrimaryButton title="Present a sheet" :tint="colors.ink" @press="sheetVisible = true" />
     </Section>
 
     <Modal

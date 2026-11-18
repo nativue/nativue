@@ -62,7 +62,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.medium,
     backgroundColor: colors.surface,
   },
-  hintText: { fontSize: 15, fontWeight: '500', color: colors.navy },
+  hintText: { fontSize: 15, fontWeight: '500', color: colors.ink },
   footnote: { fontSize: 13, color: colors.secondaryText, textAlign: 'center' },
 })
 

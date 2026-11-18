@@ -1,14 +1,16 @@
-// Design tokens shared by every screen of the demo.
+// Design tokens shared by every screen of the demo. The first ones are the nativue brand colors.
 import type { Style } from 'vue'
 
 export const colors = {
-  green: '#42b883',
-  greenSoft: '#42b8831f',
-  navy: '#213547',
-  navySoft: '#2135470f',
-  background: '#f2f2f7',
+  ink: '#0b1220',
+  inkSoft: '#0b12200f',
+  green: '#0e9f84', // the "vue" of the logo: accents on light backgrounds
+  greenSoft: '#0e9f841f',
+  mint: '#4af2ae', // accents on dark backgrounds
+  seaGreen: '#10b39b',
+  background: '#f1f5f9',
   surface: '#ffffff',
-  text: '#1c1c1e',
+  text: '#0b1220',
   secondaryText: '#6e6e73',
   tertiaryText: '#aeaeb2',
   separator: '#e5e5ea',
