@@ -28,7 +28,9 @@ const styles = computed(() =>
 
 <template>
   <View :style="styles.section">
-    <Text v-if="title" :style="styles.title">{{ title.toUpperCase() }}</Text>
+    <Text v-if="title" role="heading" :aria-label="title" :style="styles.title">
+      {{ title.toUpperCase() }}
+    </Text>
     <View :style="flush ? { ...styles.card, ...styles.flushCard } : styles.card">
       <slot />
     </View>

@@ -45,6 +45,7 @@ const styles = computed(() => {
   <View :style="styles.screen">
     <Image
       :source="colorScheme === 'dark' ? logoDark : logo"
+      alt="nativue"
       resize-mode="contain"
       :style="styles.logo"
     />

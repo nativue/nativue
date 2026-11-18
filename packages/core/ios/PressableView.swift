@@ -54,6 +54,17 @@ final class PressableView: UIControl {
             .contains { $0 is UIControl || $0 is UIScrollView || !($0.gestureRecognizers ?? []).isEmpty }
     }
 
+    /// VoiceOver's double tap: a press, even when something interactive sits under the activation point.
+    override func accessibilityActivate() -> Bool {
+        guard isEnabled else { return false }
+
+        onEvent?("pressin")
+        onEvent?("pressout")
+        onEvent?("press")
+
+        return true
+    }
+
     @objc private func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
         guard recognizer.state == .began, isEnabled else { return }
 

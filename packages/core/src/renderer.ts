@@ -13,12 +13,18 @@ import {
   type ComponentPublicInstance,
   type Directive,
 } from '@vue/runtime-core'
+import {
+  isAccessibilityAttribute,
+  withAccessibilityAttribute,
+  type AccessibilityAttributes,
+} from './accessibility'
 import { animatedEventMapping, animatedStyleBinding, isAnimatedEvent } from './animated'
 import { Appearance } from './appearance'
 import { COLOR_PROPERTIES, processColor } from './colors'
 import { FlatList, Pressable, Swipeable } from './components'
 import type { LayoutAnimationConfig, Style } from './types'
 export * from '@vue/runtime-core'
+export { AccessibilityInfo } from './accessibility'
 export { Animated } from './animated'
 export {
   Appearance,
@@ -50,6 +56,7 @@ interface Node {
   focused?: boolean
   disabled?: boolean
   classStyle?: Style
+  accessibility?: AccessibilityAttributes
 }
 
 type ElementState = Pick<Node, 'pressed' | 'focused' | 'disabled'>
@@ -88,6 +95,14 @@ function forgetSubtree(node: Node) {
   textInputsById.delete(node.id)
   delete eventHandlersByNodeId[node.id]
   node.children.forEach(forgetSubtree)
+}
+
+function updateAccessibility(element: Node, key: string, value: unknown) {
+  const accessibility = withAccessibilityAttribute(element.accessibility, key, value)
+  if (!accessibility) return
+
+  element.accessibility = accessibility
+  native.setProp(element.id, 'accessibility', accessibility)
 }
 
 // As the native side reads boolean props: a bare attribute (`disabled`) is '', true.
@@ -320,6 +335,7 @@ const { createApp: createBaseApp } = createRenderer<Node, Node>({
     if (key === 'style') updateStyle(element, { style: nextValue })
     else if (key === 'class') updateStyle(element, { className: nextValue ?? undefined })
     else if (key === 'pressed') updateStyle(element, { pressed: nextValue })
+    else if (isAccessibilityAttribute(key)) updateAccessibility(element, key, nextValue)
     else if (camelize(key) === 'focusedStyle') updateStyle(element, { focusedStyle: nextValue })
     else if (key === 'disabled') {
       updateStyle(element, { disabled: isTruthyAttribute(nextValue) })

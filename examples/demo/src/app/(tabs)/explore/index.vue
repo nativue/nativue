@@ -71,7 +71,7 @@ const styles = computed(() =>
     <Stack.Screen :options="{ title: 'Explore', headerShown: false }" />
 
     <View :style="styles.brand">
-      <Image :source="logo" resize-mode="contain" :style="styles.logo" />
+      <Image :source="logo" alt="nativue" resize-mode="contain" :style="styles.logo" />
       <View :style="styles.platforms">
         <Text :style="styles.platformsText">iOS · Android</Text>
       </View>

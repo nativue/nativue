@@ -11,6 +11,7 @@ New to nativue? Start with [Getting started](getting-started.md).
 - [Navigation](navigation.md): file-based routes, layouts, stacks, tabs, modals, header buttons,
   deep links
 - [Animations and gestures](animations.md): `Animated`, pan, pinch and rotate, `LayoutAnimation`
+- [Accessibility](accessibility.md): VoiceOver and TalkBack, `role` and `aria-*`, `AccessibilityInfo`
 - [APIs](apis.md): `AsyncStorage`, `fetch`, `Platform`, `Appearance`, `Keyboard`, `Dimensions`,
   `useWindowDimensions`, timers
 - [Packages](packages.md): icons, Tailwind, haptics, and writing a package with native code

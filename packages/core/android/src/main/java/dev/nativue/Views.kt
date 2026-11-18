@@ -110,6 +110,22 @@ class PressableView(context: Context) : ContainerView(context) {
     private val longPressHandler = Handler(Looper.getMainLooper())
     private var didLongPress = false
 
+    init {
+        isClickable = true // so TalkBack can activate it
+    }
+
+    /** TalkBack's double tap. Touches don't come through here: onTouchEvent reports them. */
+    override fun performClick(): Boolean {
+        super.performClick()
+        if (!isEnabled) return false
+
+        onEvent("pressin")
+        onEvent("pressout")
+        onEvent("press")
+
+        return true
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         // Consumed but ignored, as disabled Android buttons do: the touch doesn't reach a parent.

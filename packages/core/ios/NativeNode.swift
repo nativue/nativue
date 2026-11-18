@@ -17,6 +17,9 @@ final class NativeNode {
     /// Where children go when it isn't this node (a <Modal>'s children live in the presented controller).
     var contentNode: NativeNode?
 
+    /// The view's own, before role and aria-* change them: read the first time they're applied.
+    lazy var defaultAccessibility = (isElement: view.isAccessibilityElement, traits: view.accessibilityTraits)
+
     var fontSize: CGFloat = UIFont.labelFontSize
     var fontWeight: UIFont.Weight = .regular
 

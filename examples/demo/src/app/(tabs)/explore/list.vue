@@ -178,6 +178,7 @@ function refresh() {
           <Pressable
             :style="styles.rowContent"
             :pressed-style="{ backgroundColor: colors.pressed }"
+            :aria-label="item.done ? `${item.text}, done` : item.text"
             @press="router.push(`/explore/items/${item.id}`)"
           >
             <View :style="checkStyle(item)">

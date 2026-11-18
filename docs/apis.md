@@ -88,6 +88,16 @@ To keep fields visible above the keyboard, see
 [`ScrollView`](components/scroll-view.md#the-keyboard) and
 [`KeyboardAvoidingView`](components/keyboard-avoiding-view.md).
 
+## AccessibilityInfo
+
+```ts
+AccessibilityInfo.isScreenReaderEnabled() // VoiceOver or TalkBack is on
+AccessibilityInfo.isReduceMotionEnabled()
+AccessibilityInfo.announce('Saved')
+```
+
+See [Accessibility](accessibility.md).
+
 ## Dimensions
 
 ```ts

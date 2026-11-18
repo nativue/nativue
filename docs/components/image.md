@@ -17,11 +17,12 @@ Give images a size in their style: they don't size themselves to the picture.
 
 ## Props
 
-| Prop          | Type                                            | Default   | Description                     |
-| ------------- | ----------------------------------------------- | --------- | ------------------------------- |
-| `source`      | an imported asset, or `{ uri: string }`         |           | the image                       |
-| `resize-mode` | `'cover' \| 'contain' \| 'stretch' \| 'center'` | `'cover'` | how the image fills its box     |
-| `style`       | `Style`                                         |           | `borderRadius` rounds the image |
+| Prop          | Type                                            | Default   | Description                                                           |
+| ------------- | ----------------------------------------------- | --------- | --------------------------------------------------------------------- |
+| `source`      | an imported asset, or `{ uri: string }`         |           | the image                                                             |
+| `resize-mode` | `'cover' \| 'contain' \| 'stretch' \| 'center'` | `'cover'` | how the image fills its box                                           |
+| `alt`         | `string`                                        |           | what it shows, for screen readers; leave it out for decorative images |
+| `style`       | `Style`                                         |           | `borderRadius` rounds the image                                       |
 
 - `cover`: fills the box, cropping what overflows
 - `contain`: fits inside the box, whole

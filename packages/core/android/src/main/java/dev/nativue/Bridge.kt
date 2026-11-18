@@ -320,6 +320,12 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         put("windowSize") { _ -> windowSize }
         put("platform") { _ -> "android" }
         put("colorScheme") { _ -> colorScheme() }
+        put("accessibilityInfo") { _ -> accessibilityStatus(activity) }
+        put("announce") { arguments ->
+            val message = arguments[0] as String
+            @Suppress("DEPRECATION") // its replacements (live regions, pane titles) need a view to describe
+            mainHandler.post { rootView.announceForAccessibility(message) }
+        }
         // Prefixed, so a plugin can't replace nativue's own functions.
         pluginRegistry.functions.forEach { (name, function) -> put("plugin:$name", function) }
         pluginRegistry.asyncFunctions.forEach { (name, function) -> put("pluginAsync:$name", asyncCall(function)) }
@@ -807,6 +813,8 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
                 (view as? TextInputView)?.setTextFromJavaScript(value as? String ?: "")
                 (view as? ToggleSwitch)?.setCheckedFromJavaScript(isTruthyAttribute(value))
             }
+
+            "accessibility" -> view.applyAccessibility(value as? Map<*, *> ?: emptyMap<Any, Any>())
 
             "disabled" -> {
                 view.isEnabled = !isTruthyAttribute(value)

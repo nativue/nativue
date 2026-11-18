@@ -19,6 +19,8 @@ Like on the web, but children stack in a column by default (`flexDirection: 'col
 | ------- | ------- | ---------------------------- |
 | `style` | `Style` | see [Styling](../styling.md) |
 
+Like every component, it takes `role` and `aria-*`: see [Accessibility](../accessibility.md).
+
 ## Events
 
 | Event     | Payload       | Fires                            |

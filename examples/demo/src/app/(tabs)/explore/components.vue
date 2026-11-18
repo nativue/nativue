@@ -147,8 +147,12 @@ const styles = computed(() =>
 
     <Section title="Images" footer="A bundled asset and an image loaded over the network.">
       <View :style="styles.images">
-        <Image :source="logo" resize-mode="contain" :style="styles.localImage" />
-        <Image :source="{ uri: REMOTE_IMAGE_URL }" :style="styles.remoteImage" />
+        <Image :source="logo" alt="nativue logo" resize-mode="contain" :style="styles.localImage" />
+        <Image
+          :source="{ uri: REMOTE_IMAGE_URL }"
+          alt="A lake among mountains"
+          :style="styles.remoteImage"
+        />
       </View>
     </Section>
 

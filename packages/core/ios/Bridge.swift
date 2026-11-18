@@ -34,6 +34,8 @@ final class Bridge {
     private var nextLayoutAnimation: LayoutAnimation?
     /// Appearance.getColorScheme(): read on the main thread at start, then kept up to date.
     private var colorScheme = "light"
+    /// Kept on the JS queue, for AccessibilityInfo.
+    private var accessibilityStatus = AccessibilityStatus()
 
     // Only touched on the main thread.
     var rootView: RootView!
@@ -73,6 +75,13 @@ final class Bridge {
                 [unowned self] (rootView: RootView, _: UITraitCollection) in
                 nodesById.values.forEach { $0.updateFont() }
                 rootView.setNeedsLayout()
+            }
+        }
+
+        for name in AccessibilityStatus.changeNotifications {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [unowned self] _ in
+                let nextStatus = AccessibilityStatus()
+                evaluate { [unowned self] in accessibilityStatus = nextStatus }
             }
         }
 
@@ -247,6 +256,13 @@ final class Bridge {
         }
 
         defineGetter("platform") { _ in "ios" }
+
+        defineGetter("accessibilityInfo") { [unowned self] _ in accessibilityStatus.dictionary }
+
+        define("announce") { arguments in
+            let message = string(arguments[0])
+            DispatchQueue.main.async { UIAccessibility.post(notification: .announcement, argument: message) }
+        }
 
         // Prefixed, so a plugin can't replace nativue's own functions.
         for (name, function) in pluginRegistry.functions {
@@ -783,6 +799,9 @@ final class Bridge {
 
         case "disabled":
             (node.view as? UIControl)?.isEnabled = !isTruthyAttribute(value)
+
+        case "accessibility":
+            node.applyAccessibility(value as? [String: Any] ?? [:])
 
         case "animating":
             guard let indicator = node.view as? UIActivityIndicatorView else { break }

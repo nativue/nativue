@@ -70,6 +70,8 @@ export const Pressable = defineComponent({
       return h(
         'PressableView',
         {
+          role: 'button',
+          'aria-disabled': props.disabled || undefined,
           ...attrs,
           style,
           pressed: pressed.value,

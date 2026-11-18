@@ -5,7 +5,22 @@ import type { AnimatedEvent } from './animated'
 import type { FlatList, Pressable, Swipeable } from './components'
 import type { PanEvent, PinchEvent, RotateEvent, ScrollEvent, Style } from './types'
 
-type NativeComponent<Props = {}> = DefineComponent<Props & { style?: Style }>
+type NativeComponent<Props = {}> = DefineComponent<Props & { style?: Style } & AccessibilityProps>
+type BooleanAttribute = boolean | 'true' | 'false'
+// As on the web: what a screen reader says about the view. See docs/accessibility.md.
+export interface AccessibilityProps {
+  role?: 'button' | 'link' | 'heading' | 'img' | 'text' | 'switch' | 'checkbox' | 'none'
+  /** What the screen reader says. Without one, a view with a role reads the text inside it. */
+  'aria-label'?: string
+  /** Said after the label: what happens when it's activated. */
+  'aria-description'?: string
+  /** Hides it, and everything inside it, from the screen reader. */
+  'aria-hidden'?: BooleanAttribute
+  'aria-disabled'?: BooleanAttribute
+  'aria-selected'?: BooleanAttribute
+  /** For role="switch" and role="checkbox". */
+  'aria-checked'?: BooleanAttribute
+}
 type EventHandler<Payload> = ((payload: Payload) => void) | AnimatedEvent<Payload>
 // [tag, attributes], e.g. ['circle', { cx: 12, cy: 12, r: 10 }]: path, circle, ellipse, rect, line,
 // polyline and polygon. Stroked with `color`; filled too when `fill` isn't 'none'.
@@ -58,6 +73,8 @@ declare module '@vue/runtime-core' {
     >
     Image: NativeComponent<{
       source: string | { uri: string }
+      /** What the image shows, for screen readers. Leave it out for decorative images. */
+      alt?: string
       resizeMode?: 'cover' | 'contain' | 'stretch' | 'center'
     }>
     Switch: NativeComponent<

@@ -32,6 +32,9 @@ The pressed look stays on for at least 130 ms, so even a quick tap shows it.
 | `pressed-style` | `Style`   | merged over `style` while pressed |
 | `disabled`      | `boolean` | ignores touches                   |
 
+Screen readers read it as a button, saying the text inside it. A Pressable with only an icon needs
+an `aria-label`; see [Accessibility](../accessibility.md).
+
 ## Events
 
 | Event         | Fires                                                              |

@@ -106,6 +106,8 @@ export interface NativeModule {
   windowSize(): { width: number; height: number }
   platform(): 'ios' | 'android'
   colorScheme(): 'light' | 'dark'
+  accessibilityInfo(): { screenReaderEnabled: boolean; reduceMotionEnabled: boolean }
+  announce(message: string): void
   create(id: number, type: string): void
   insert(parentId: number, childId: number, index: number): void
   remove(id: number): void

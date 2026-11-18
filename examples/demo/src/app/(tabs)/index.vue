@@ -220,6 +220,7 @@ onUnmounted(() => floatLoop.stop())
             <View :style="styles.logoCore">
               <Image
                 :source="colorScheme === 'dark' ? logoDark : logo"
+                alt="nativue"
                 resize-mode="contain"
                 :style="styles.logo"
               />

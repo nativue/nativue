@@ -276,6 +276,13 @@ await waitForPressRelease()
 assert.equal(viewsById[customPressableId].style.backgroundColor, null) // removed: native resets it
 assert.ok(tapCount(3))
 
+// Accessibility: role, alt and aria-* reach native together. A Pressable is a button.
+assert.deepEqual(viewsById[customPressableId].props.accessibility, { role: 'button' })
+const sectionTitle = renderedViewIds(componentsId)
+  .map((id) => viewsById[id])
+  .find((view) => view.text === 'TEXT')
+assert.deepEqual(sectionTitle.props.accessibility, { role: 'heading', label: 'Text' })
+
 // v-model on TextInput and Switch.
 const nameInputId = descendantOfType(componentsId, 'TextInput')
 const inputBorderColor = () => viewsById[nameInputId].style.borderColor
@@ -320,6 +327,7 @@ const [localImage, remoteImage] = renderedViewIds(componentsId)
 assert.match(localImage.props.source, /^data:image\/png;base64,/) // imported asset is inlined
 assert.equal(localImage.props.resizeMode, 'contain') // kebab-case attribute arrives camelized
 assert.equal(remoteImage.props.source, 'https://picsum.photos/id/1018/800/400') // { uri }
+assert.deepEqual(remoteImage.props.accessibility, { label: 'A lake among mountains' }) // alt
 
 const largeIndicator = renderedViewIds(componentsId)
   .map((id) => viewsById[id])
