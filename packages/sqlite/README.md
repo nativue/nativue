@@ -49,6 +49,7 @@ await db.batch(titles.map((title) => ['INSERT INTO todos (title) VALUES (?)', [t
 | `values(sql, parameters?)`              | the rows, as arrays in the columns' order: for ORMs                          |
 | `transaction(async (transaction) => …)` | commits when it resolves, rolls back when it throws                          |
 | `batch([[sql, parameters?], …])`        | the statements in one call, all or none; `{ changes, lastInsertId }`         |
+| `iterate(sql, parameters?, chunkSize?)` | the rows in chunks (100 by default), read as you loop: for large results     |
 | `close()`                               | the next statement opens it again                                            |
 
 - Parameters are `?` placeholders with an array, in order, or `$name`, `:name` and `@name` ones
@@ -68,6 +69,9 @@ await db.batch(titles.map((title) => ['INSERT INTO todos (title) VALUES (?)', [t
 - Each awaited statement crosses from JavaScript to the native side and back. For many writes at once
   (an import, a sync), `batch()` sends them all in one call: on Android, 10,000 inserts take about
   half a second instead of several. It runs in a transaction of its own, or inside `transaction()`.
+- `iterate()` keeps the query open on the native side between chunks, so memory holds one chunk at a
+  time: `for await (const todos of db.iterate<Todo>('SELECT * FROM todos')) …`. Breaking out of the
+  loop closes it.
 - Integers beyond `Number.MAX_SAFE_INTEGER` lose precision: store them as text.
 
 ## Drizzle
@@ -138,5 +142,5 @@ export const db = new Kysely<Schema>({
 
 Queries, `returning()`, `insertId`, transactions (controlled ones and savepoints too), the
 `Migrator` (from `kysely/migration`, with a provider that returns your migrations) and
-introspection work as usual. While a transaction runs, Kysely's other queries wait for it to end.
-`stream()` isn't supported.
+introspection work as usual, and so does `stream()`, which reads the rows in chunks. While a
+transaction or a stream runs, Kysely's other queries wait for it to end.

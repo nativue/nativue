@@ -2,7 +2,7 @@ import Foundation
 import Nativue
 import SQLite3
 
-/// sqlite.query, sqlite.batch and sqlite.close (src/index.ts), on the SQLite that ships with iOS.
+/// The sqlite.* functions src/index.ts calls, on the SQLite that ships with iOS.
 public final class SQLitePlugin: NativuePlugin {
     private let databases = Databases()
 
@@ -13,6 +13,26 @@ public final class SQLitePlugin: NativuePlugin {
             let database = try databases.database(named: arguments[0] as? String ?? "")
 
             return try await database.query(arguments[1] as? String ?? "", parameters: arguments[2] as? [Any] ?? [])
+        }
+
+        registry.addAsyncFunction("sqlite.iterate") { [databases] arguments in
+            let database = try databases.database(named: arguments[0] as? String ?? "")
+            let sql = arguments[1] as? String ?? ""
+
+            return try await database.iterate(sql, parameters: arguments[2] as? [Any] ?? [], chunkSize: int(arguments[3]))
+        }
+
+        registry.addAsyncFunction("sqlite.next") { [databases] arguments in
+            let database = try databases.database(named: arguments[0] as? String ?? "")
+
+            return try await database.next(cursorId: int(arguments[1]), chunkSize: int(arguments[2]))
+        }
+
+        registry.addAsyncFunction("sqlite.end") { [databases] arguments in
+            let database = try databases.database(named: arguments[0] as? String ?? "")
+            await database.end(cursorId: int(arguments[1]))
+
+            return nil
         }
 
         registry.addAsyncFunction("sqlite.batch") { [databases] arguments in
@@ -30,6 +50,10 @@ public final class SQLitePlugin: NativuePlugin {
             return nil
         }
     }
+}
+
+private func int(_ argument: Any?) -> Int {
+    (argument as? NSNumber)?.intValue ?? 0
 }
 
 struct SQLiteError: LocalizedError {
@@ -77,6 +101,10 @@ private final class Database: @unchecked Sendable {
     private var connection: OpaquePointer?
     /// One statement at a time, off the JS and main threads.
     private let queue = DispatchQueue(label: "dev.nativue.sqlite")
+    /// iterate()'s open statements, read a chunk at a time; only touched on the queue.
+    /// Limitation: A JS reload leaves the ones it was reading open until the database closes.
+    private var cursorsById: [Int: OpaquePointer] = [:]
+    private var nextCursorId = 1
 
     init(path: String) throws {
         guard sqlite3_open(path, &connection) == SQLITE_OK else {
@@ -91,25 +119,41 @@ private final class Database: @unchecked Sendable {
     }
 
     func query(_ sql: String, parameters: [Any]) async throws -> [String: Any] {
-        try await withCheckedThrowingContinuation { continuation in
-            queue.async {
-                continuation.resume(with: Result { try self.run(sql, parameters: parameters) })
-            }
-        }
+        try await onQueue { try self.run(sql, parameters: parameters) }
     }
 
     /// All the statements or none: a savepoint is a transaction of its own, or nests in the caller's.
     func batch(_ statements: [(sql: String, parameters: [Any])]) async throws -> [String: Any] {
-        try await withCheckedThrowingContinuation { continuation in
-            queue.async {
-                continuation.resume(with: Result { try self.runBatch(statements) })
-            }
+        try await onQueue { try self.runBatch(statements) }
+    }
+
+    /// `{ cursorId, columns, rows, done }`: the first chunk of rows; next() reads the others.
+    func iterate(_ sql: String, parameters: [Any], chunkSize: Int) async throws -> [String: Any] {
+        try await onQueue {
+            let statement = try self.prepare(sql, parameters: parameters)
+            let columns = self.columnNames(statement) // readChunk finalizes a statement it reads to the end
+            let cursorId = self.nextCursorId
+            self.nextCursorId += 1
+            self.cursorsById[cursorId] = statement
+
+            let chunk = try self.readChunk(cursorId: cursorId, chunkSize: chunkSize)
+
+            return chunk.merging(["cursorId": cursorId, "columns": columns]) { current, _ in current }
         }
+    }
+
+    func next(cursorId: Int, chunkSize: Int) async throws -> [String: Any] {
+        try await onQueue { try self.readChunk(cursorId: cursorId, chunkSize: chunkSize) }
+    }
+
+    func end(cursorId: Int) async {
+        _ = try? await onQueue { self.finalizeCursor(cursorId) }
     }
 
     func close() async {
         await withCheckedContinuation { continuation in
             queue.async {
+                self.cursorsById.keys.forEach(self.finalizeCursor)
                 sqlite3_close(self.connection)
                 self.connection = nil
                 continuation.resume()
@@ -117,32 +161,21 @@ private final class Database: @unchecked Sendable {
         }
     }
 
+    private func onQueue<Result>(_ work: @escaping () throws -> Result) async throws -> Result {
+        try await withCheckedThrowingContinuation { continuation in
+            queue.async { continuation.resume(with: Swift.Result { try work() }) }
+        }
+    }
+
     /// `{ columns, rows, changes, lastInsertId }`, rows as arrays of values in the columns' order.
     private func run(_ sql: String, parameters: [Any]) throws -> [String: Any] {
-        guard let connection else { throw SQLiteError(errorDescription: "The database is closed") }
-
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(connection, sql, -1, &statement, nil) == SQLITE_OK else { throw lastError() }
+        let statement = try prepare(sql, parameters: parameters)
         defer { sqlite3_finalize(statement) }
 
-        for (index, parameter) in parameters.enumerated() {
-            guard bind(parameter, at: Int32(index + 1), in: statement) == SQLITE_OK else { throw lastError() }
-        }
-
-        let columnCount = sqlite3_column_count(statement)
-        let columns = (0..<columnCount).map { String(cString: sqlite3_column_name(statement, $0)) }
-        var rows: [[Any]] = []
-
-        while true {
-            let result = sqlite3_step(statement)
-            if result == SQLITE_DONE { break }
-            guard result == SQLITE_ROW else { throw lastError() }
-
-            rows.append((0..<columnCount).map { value(at: $0, in: statement) })
-        }
+        let (rows, _) = try readRows(statement, limit: .max)
 
         return [
-            "columns": columns,
+            "columns": columnNames(statement),
             "rows": rows,
             "changes": Int(sqlite3_changes(connection)),
             "lastInsertId": sqlite3_last_insert_rowid(connection),
@@ -165,6 +198,62 @@ private final class Database: @unchecked Sendable {
             "changes": Int(sqlite3_total_changes(connection) - changesBefore),
             "lastInsertId": sqlite3_last_insert_rowid(connection),
         ]
+    }
+
+    private func prepare(_ sql: String, parameters: [Any]) throws -> OpaquePointer? {
+        guard let connection else { throw SQLiteError(errorDescription: "The database is closed") }
+
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(connection, sql, -1, &statement, nil) == SQLITE_OK else { throw lastError() }
+
+        for (index, parameter) in parameters.enumerated() {
+            guard bind(parameter, at: Int32(index + 1), in: statement) == SQLITE_OK else {
+                let error = lastError()
+                sqlite3_finalize(statement)
+                throw error
+            }
+        }
+
+        return statement
+    }
+
+    private func columnNames(_ statement: OpaquePointer?) -> [String] {
+        (0..<sqlite3_column_count(statement)).map { String(cString: sqlite3_column_name(statement, $0)) }
+    }
+
+    /// Up to `limit` rows; done when the statement has none left.
+    private func readRows(_ statement: OpaquePointer?, limit: Int) throws -> (rows: [[Any]], done: Bool) {
+        let columnCount = sqlite3_column_count(statement)
+        var rows: [[Any]] = []
+
+        while rows.count < limit {
+            let result = sqlite3_step(statement)
+            if result == SQLITE_DONE { return (rows, true) }
+            guard result == SQLITE_ROW else { throw lastError() }
+
+            rows.append((0..<columnCount).map { value(at: $0, in: statement) })
+        }
+
+        return (rows, false)
+    }
+
+    /// `{ rows, done }`: the statement is finalized once it's done or fails.
+    private func readChunk(cursorId: Int, chunkSize: Int) throws -> [String: Any] {
+        guard let statement = cursorsById[cursorId] else { throw SQLiteError(errorDescription: "The rows were already read") }
+
+        do {
+            let (rows, done) = try readRows(statement, limit: chunkSize)
+            if done { finalizeCursor(cursorId) }
+
+            return ["rows": rows, "done": done]
+        } catch {
+            finalizeCursor(cursorId)
+            throw error
+        }
+    }
+
+    private func finalizeCursor(_ cursorId: Int) {
+        sqlite3_finalize(cursorsById.removeValue(forKey: cursorId))
     }
 
     // JS numbers arrive as doubles: whole ones bind as integers, so `id = ?` matches an INTEGER column.

@@ -14,23 +14,37 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.abs
 
-/** sqlite.query, sqlite.batch and sqlite.close (src/index.ts), on the SQLite that ships with Android. */
+/** The sqlite.* functions src/index.ts calls, on the SQLite that ships with Android. */
 class SQLitePlugin : NativuePlugin {
     /** The open databases, by name: one connection each, kept across JS reloads. */
     private val databasesByName = ConcurrentHashMap<String, Database>()
 
     override fun register(registry: PluginRegistry) {
         val context = registry.context.applicationContext
+        fun database(arguments: List<Any?>): Database {
+            val name = arguments[0] as String
+
+            return databasesByName.computeIfAbsent(name) { Database(context, name) }
+        }
 
         registry.addAsyncFunction("sqlite.query") { arguments, promise ->
-            val name = arguments[0] as String
-            val database = databasesByName.computeIfAbsent(name) { Database(context, name) }
-            database.query(arguments[1] as String, arguments[2] as? List<*> ?: emptyList<Any?>(), promise)
+            database(arguments).query(arguments[1] as String, parametersAt(arguments, 2), promise)
+        }
+
+        registry.addAsyncFunction("sqlite.iterate") { arguments, promise ->
+            database(arguments).iterate(arguments[1] as String, parametersAt(arguments, 2), int(arguments[3]), promise)
+        }
+
+        registry.addAsyncFunction("sqlite.next") { arguments, promise ->
+            database(arguments).next(int(arguments[1]), int(arguments[2]), promise)
+        }
+
+        registry.addAsyncFunction("sqlite.end") { arguments, promise ->
+            database(arguments).end(int(arguments[1]), promise)
         }
 
         registry.addAsyncFunction("sqlite.batch") { arguments, promise ->
-            val name = arguments[0] as String
-            val database = databasesByName.computeIfAbsent(name) { Database(context, name) }
+            val database = database(arguments)
             val statements = (arguments[1] as? List<*> ?: emptyList<Any?>()).map { statement ->
                 val parts = statement as List<*>
                 parts[0] as String to (parts.getOrNull(1) as? List<*> ?: emptyList<Any?>())
@@ -45,9 +59,20 @@ class SQLitePlugin : NativuePlugin {
     }
 }
 
+private fun parametersAt(arguments: List<Any?>, index: Int) = arguments[index] as? List<*> ?: emptyList<Any?>()
+
+private fun int(argument: Any?) = (argument as Number).toInt()
+
 private class Database(context: Context, name: String) {
     /** One statement at a time, off the JS and main threads. */
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
+
+    /**
+     * iterate()'s open queries, read a chunk at a time; only touched on the executor.
+     * Limitation: A JS reload leaves the ones it was reading open until the database closes.
+     */
+    private val cursorsById = mutableMapOf<Int, Cursor>()
+    private var nextCursorId = 1
 
     // Opened on the executor with the first statement, so a failure rejects that statement. Without
     // localized collators, Android doesn't add its android_metadata table: the file is plain SQLite.
@@ -67,6 +92,27 @@ private class Database(context: Context, name: String) {
 
     fun batch(statements: List<Pair<String, List<*>>>, promise: Promise) = settle(promise) { runBatch(statements) }
 
+    // Android counts the rows before handing out the first: the query runs through once more.
+    fun iterate(sql: String, parameters: List<*>, chunkSize: Int, promise: Promise) = settle(promise) {
+        val cursorId = nextCursorId++
+        val cursor = openCursor(sql, parameters)
+        cursorsById[cursorId] = cursor
+
+        try {
+            mapOf("cursorId" to cursorId, "columns" to cursor.columnNames.toList()) + readChunk(cursorId, chunkSize)
+        } catch (error: Exception) {
+            cursorsById.remove(cursorId)?.close()
+            throw error
+        }
+    }
+
+    fun next(cursorId: Int, chunkSize: Int, promise: Promise) = settle(promise) { readChunk(cursorId, chunkSize) }
+
+    fun end(cursorId: Int, promise: Promise) = settle(promise) {
+        cursorsById.remove(cursorId)?.close()
+        emptyMap()
+    }
+
     private fun settle(promise: Promise, work: () -> Map<String, Any?>) = executor.execute {
         try {
             promise.resolve(work())
@@ -77,6 +123,8 @@ private class Database(context: Context, name: String) {
     }
 
     fun close(promise: Promise) = executor.execute {
+        cursorsById.values.forEach { it.close() }
+        cursorsById.clear()
         connection.close()
         executor.shutdown()
         promise.resolve()
@@ -107,12 +155,7 @@ private class Database(context: Context, name: String) {
      * Every statement goes through a cursor: it runs writes, BEGIN and COMMIT too, when it's read.
      */
     private fun run(sql: String, parameters: List<*>): Map<String, Any?> {
-        val cursor = connection.rawQueryWithFactory({ _, driver, editTable, query ->
-            parameters.forEachIndexed { index, parameter -> bind(query, index + 1, parameter) }
-            SQLiteCursor(driver, editTable, query)
-        }, sql, null, "")
-
-        val (columns, rows) = cursor.use { it.columnNames.toList() to readRows(it) }
+        val (columns, rows) = openCursor(sql, parameters).use { it.columnNames.toList() to readRows(it) }
 
         return mapOf(
             "columns" to columns,
@@ -122,9 +165,25 @@ private class Database(context: Context, name: String) {
         )
     }
 
-    private fun readRows(cursor: Cursor): List<List<Any?>> {
+    private fun openCursor(sql: String, parameters: List<*>): Cursor =
+        connection.rawQueryWithFactory({ _, driver, editTable, query ->
+            parameters.forEachIndexed { index, parameter -> bind(query, index + 1, parameter) }
+            SQLiteCursor(driver, editTable, query)
+        }, sql, null, "")
+
+    /** `{ rows, done }`: the cursor closes once its last row is read. */
+    private fun readChunk(cursorId: Int, chunkSize: Int): Map<String, Any?> {
+        val cursor = cursorsById[cursorId] ?: throw IllegalStateException("The rows were already read")
+        val rows = readRows(cursor, chunkSize)
+        val done = cursor.count == 0 || cursor.position >= cursor.count - 1
+        if (done) cursorsById.remove(cursorId)?.close()
+
+        return mapOf("rows" to rows, "done" to done)
+    }
+
+    private fun readRows(cursor: Cursor, limit: Int = Int.MAX_VALUE): List<List<Any?>> {
         val rows = mutableListOf<List<Any?>>()
-        while (cursor.moveToNext()) rows.add((0 until cursor.columnCount).map { value(cursor, it) })
+        while (rows.size < limit && cursor.moveToNext()) rows.add((0 until cursor.columnCount).map { value(cursor, it) })
 
         return rows
     }

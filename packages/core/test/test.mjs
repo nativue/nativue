@@ -45,15 +45,21 @@ function fakeSqliteQuery(callId, _database, sql, parameters) {
   setTimeout(() => globalThis.__asyncFunctionFinished(callId, result, null))
 }
 
+// An async plugin function that always settles with `value`.
+function resolvesWith(value) {
+  return (callId) => setTimeout(() => globalThis.__asyncFunctionFinished(callId, value, null))
+}
+
 globalThis.__native = {
   'plugin:haptics.impact': (style) => hapticsCalls.push(['impact', style]),
   'plugin:haptics.notification': (type) => hapticsCalls.push(['notification', type]),
   'plugin:haptics.selection': () => hapticsCalls.push(['selection']),
   'pluginAsync:sqlite.query': fakeSqliteQuery,
-  'pluginAsync:sqlite.batch': (callId) =>
-    setTimeout(() => globalThis.__asyncFunctionFinished(callId, { changes: 0, lastInsertId: 0 }, null)),
-  'pluginAsync:sqlite.close': (callId) =>
-    setTimeout(() => globalThis.__asyncFunctionFinished(callId, null, null)),
+  'pluginAsync:sqlite.batch': resolvesWith({ changes: 0, lastInsertId: 0 }),
+  'pluginAsync:sqlite.iterate': resolvesWith({ cursorId: 1, columns: [], rows: [], done: true }),
+  'pluginAsync:sqlite.next': resolvesWith({ rows: [], done: true }),
+  'pluginAsync:sqlite.end': resolvesWith(null),
+  'pluginAsync:sqlite.close': resolvesWith(null),
   windowSize: () => WINDOW,
   platform: () => 'ios',
   colorScheme: () => 'light',

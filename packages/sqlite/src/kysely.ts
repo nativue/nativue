@@ -50,9 +50,17 @@ class NativueSqliteConnection implements DatabaseConnection {
     return { rows: [], numAffectedRows: BigInt(changes), insertId: BigInt(lastInsertId) }
   }
 
-  // Limitation: No streaming; select in pages with limit and offset.
-  async *streamQuery<Row>(): AsyncIterableIterator<QueryResult<Row>> {
-    throw new Error('@nativue/sqlite does not stream query results')
+  async *streamQuery<Row>(
+    { sql, parameters }: CompiledQuery,
+    chunkSize?: number,
+  ): AsyncIterableIterator<QueryResult<Row>> {
+    for await (const rows of this.database.iterate<Row>(
+      sql,
+      parameters as Parameter[],
+      chunkSize,
+    )) {
+      yield { rows }
+    }
   }
 }
 

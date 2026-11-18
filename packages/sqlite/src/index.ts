@@ -33,6 +33,17 @@ interface NativeResult extends RunResult {
   rows: NativeValue[][]
 }
 
+interface NativeChunk {
+  rows: NativeValue[][]
+  /** No rows left: the native side has closed the cursor. */
+  done: boolean
+}
+
+interface NativeFirstChunk extends NativeChunk {
+  cursorId: number
+  columns: string[]
+}
+
 const nativeQuery =
   requireNativeFunction<
     (database: string, sql: string, parameters: NativeValue[]) => Promise<NativeResult>
@@ -41,6 +52,21 @@ const nativeBatch =
   requireNativeFunction<
     (database: string, statements: [string, NativeValue[]][]) => Promise<RunResult>
   >('sqlite.batch')
+const nativeIterate =
+  requireNativeFunction<
+    (
+      database: string,
+      sql: string,
+      parameters: NativeValue[],
+      chunkSize: number,
+    ) => Promise<NativeFirstChunk>
+  >('sqlite.iterate')
+const nativeNext =
+  requireNativeFunction<
+    (database: string, cursorId: number, chunkSize: number) => Promise<NativeChunk>
+  >('sqlite.next')
+const nativeEnd =
+  requireNativeFunction<(database: string, cursorId: number) => Promise<void>>('sqlite.end')
 const nativeClose = requireNativeFunction<(database: string) => Promise<void>>('sqlite.close')
 
 /** Statements run on a database: the Database itself, or the transaction it hands to `transaction()`. */
@@ -75,6 +101,33 @@ export class Statements {
     const { rows } = await this.query(sql, parameters)
 
     return rows.map((row) => row.map(value))
+  }
+
+  /**
+   * The rows in chunks of `chunkSize`, read as the loop asks for them: for results too large to hold at
+   * once. Breaking out of the loop closes the query.
+   *   for await (const todos of db.iterate<Todo>('SELECT * FROM todos')) …
+   */
+  async *iterate<Result = Row>(
+    sql: string,
+    parameters: QueryParameters = [],
+    chunkSize = 100,
+  ): AsyncGenerator<Result[], void, undefined> {
+    const [numberedSql, values] = nativeStatement(sql, parameters)
+    const first = await this.send(() => nativeIterate(this.name, numberedSql, values, chunkSize))
+    let chunk: NativeChunk = first
+
+    try {
+      while (true) {
+        if (chunk.rows.length > 0)
+          yield chunk.rows.map((row) => rowObject(first.columns, row) as Result)
+        if (chunk.done) return
+
+        chunk = await this.send(() => nativeNext(this.name, first.cursorId, chunkSize))
+      }
+    } finally {
+      if (!chunk.done) await this.send(() => nativeEnd(this.name, first.cursorId))
+    }
   }
 
   /**
