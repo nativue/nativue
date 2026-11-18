@@ -75,6 +75,10 @@ private final class Database: @unchecked Sendable {
             sqlite3_close(connection)
             throw SQLiteError(errorDescription: message)
         }
+
+        // A commit writes to the log without waiting for the disk to sync: much faster writes. Losing
+        // power (not the app crashing) can undo the last commits, but never corrupts the database.
+        sqlite3_exec(connection, "PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL", nil, nil, nil)
     }
 
     func query(_ sql: String, parameters: [Any]) async throws -> [String: Any] {

@@ -57,6 +57,10 @@ await db.transaction(async (transaction) => {
   `transaction` it gives you.
 - Files are kept in the app's private storage (Application Support on iOS, `databases` on Android)
   and are removed with the app.
+- Databases use write-ahead logging (`journal_mode = WAL`, `synchronous = NORMAL`): writes are many
+  times faster; losing power (not the app crashing) can undo the last commits, but never corrupts
+  the database. The log sits
+  next to the file (`app.db-wal`, `app.db-shm`): close the database before copying it.
 - Integers beyond `Number.MAX_SAFE_INTEGER` lose precision: store them as text.
 
 ## Drizzle

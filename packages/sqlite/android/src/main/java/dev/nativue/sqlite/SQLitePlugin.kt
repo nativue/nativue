@@ -44,7 +44,13 @@ private class Database(context: Context, name: String) {
     private val connection by lazy {
         val path = if (name == ":memory:") name else context.getDatabasePath(name).also { it.parentFile?.mkdirs() }.path
         val flags = SQLiteDatabase.CREATE_IF_NECESSARY or SQLiteDatabase.NO_LOCALIZED_COLLATORS
-        SQLiteDatabase.openDatabase(path, null, flags)
+
+        SQLiteDatabase.openDatabase(path, null, flags).apply {
+            // As on iOS: much faster writes; losing power can undo the last commits. Through PRAGMA, not
+            // enableWriteAheadLogging(), which opens more connections: changes() needs the one.
+            rawQuery("PRAGMA journal_mode = WAL", null).use { it.moveToFirst() }
+            execSQL("PRAGMA synchronous = NORMAL")
+        }
     }
 
     fun query(sql: String, parameters: List<*>, promise: Promise) = executor.execute {
