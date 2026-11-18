@@ -91,11 +91,14 @@ To keep fields visible above the keyboard, see
 ## Dimensions
 
 ```ts
-const { width, height } = Dimensions.get('window') // in points
+import { Dimensions, useWindowDimensions } from 'vue'
+
+const { width, height } = Dimensions.get('window') // in points, right now
+const window = useWindowDimensions() // a ref: follows rotation and split view
 ```
 
-The size when the app started: it doesn't update on rotation. For layouts, prefer flexbox and
-percentages.
+`Dimensions.get` reads the size once; use `useWindowDimensions()` in templates and `computed`s so
+they update when the window is resized. For layouts, prefer flexbox and percentages.
 
 ## Timers
 

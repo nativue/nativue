@@ -12,7 +12,7 @@ New to nativue? Start with [Getting started](getting-started.md).
   deep links
 - [Animations and gestures](animations.md): `Animated`, pan, pinch and rotate, `LayoutAnimation`
 - [APIs](apis.md): `AsyncStorage`, `fetch`, `Platform`, `Appearance`, `Keyboard`, `Dimensions`,
-  timers
+  `useWindowDimensions`, timers
 - [Packages](packages.md): icons, Tailwind, haptics, and writing a package with native code
 
 ## Components

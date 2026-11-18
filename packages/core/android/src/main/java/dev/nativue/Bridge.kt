@@ -130,6 +130,16 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     fun onConfigurationChanged() {
         updateFontScale()
         updateColorScheme()
+        updateWindowSize()
+    }
+
+    /** Rotation and split view resize the window. */
+    private fun updateWindowSize() {
+        val nextWindowSize = windowSize()
+        if (nextWindowSize == windowSize) return
+
+        windowSize = nextWindowSize
+        evaluate { runtime?.call("__windowSizeChanged", nextWindowSize) }
     }
 
     private var fontScale = activity.resources.configuration.fontScale
@@ -307,7 +317,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     private fun nativeFunctions(): Map<String, NativeFunction> = buildMap {
         put("log") { arguments -> Log.i(TAG, "[JS] ${arguments[0]}") }
         put("reportError") { arguments -> reportError(arguments[0] as String, arguments[1] as String) }
-        put("windowSize") { _ -> windowSize() }
+        put("windowSize") { _ -> windowSize }
         put("platform") { _ -> "android" }
         put("colorScheme") { _ -> colorScheme() }
         // Prefixed, so a plugin can't replace nativue's own functions.
@@ -344,11 +354,13 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         putAll(fetchFunctions())
     }
 
-    /** `windowSize` is read from JS, off the main thread: the display's size doesn't need the views. */
-    private fun windowSize(): Map<String, Float> {
-        val metrics = activity.resources.displayMetrics
+    /** Read from JS, off the main thread: the window's size doesn't need the views. */
+    @Volatile private var windowSize = windowSize()
 
-        return mapOf("width" to metrics.widthPixels / density, "height" to metrics.heightPixels / density)
+    private fun windowSize(): Map<String, Float> {
+        val bounds = activity.windowManager.currentWindowMetrics.bounds
+
+        return mapOf("width" to bounds.width() / density, "height" to bounds.height() / density)
     }
 
     /** A timer of a runtime that has since been reloaded doesn't fire. */

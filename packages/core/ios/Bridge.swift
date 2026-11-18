@@ -46,7 +46,7 @@ final class Bridge {
     // here and are laid out on every pass; drop the detached ones on remove if navigators come and go.
     // Likewise a sheet a <ScreenStack> presented stays up when a v-if removes the stack (a reload closes it).
     private var contentRootsByNodeId: [Int: ContentRoot] = [:]
-    /// Read on the main thread at start, for Dimensions.get('window').
+    /// For Dimensions.get('window'): the screen's at start, then the root view's, kept on the JS queue.
     private var windowSize: CGSize = .zero
     /// The bundle running now, for the error overlay's Reload.
     private var bundle = Data()
@@ -136,6 +136,7 @@ final class Bridge {
 
     func layout() {
         nodesById[0]?.calculateLayout(width: rootView.bounds.width, height: rootView.bounds.height)
+        windowSizeDidChange(to: rootView.bounds.size)
 
         for contentRoot in contentRootsByNodeId.values {
             (contentRoot as? ModalController)?.dismissIfDetached()
@@ -163,6 +164,18 @@ final class Bridge {
 
             colorScheme = nextColorScheme
             runtime?.call("__colorSchemeChanged", arguments: [nextColorScheme])
+        }
+    }
+
+    /// Rotation and split view resize the root view.
+    private func windowSizeDidChange(to nextWindowSize: CGSize) {
+        guard nextWindowSize != .zero else { return }
+
+        evaluate { [unowned self] in
+            guard nextWindowSize != windowSize else { return }
+
+            windowSize = nextWindowSize
+            runtime?.call("__windowSizeChanged", arguments: [["width": windowSize.width, "height": windowSize.height]])
         }
     }
 
@@ -229,7 +242,6 @@ final class Bridge {
             reportError(message: string(arguments[0]), details: string(arguments[1]))
         }
 
-        // Limitation: The size at launch; report rotation and split view changes if the app supports them.
         defineGetter("windowSize") { [unowned self] _ in
             ["width": windowSize.width, "height": windowSize.height]
         }

@@ -22,10 +22,13 @@ export * from '@vue/runtime-core'
 export { Animated } from './animated'
 export {
   Appearance,
+  Dimensions,
   Platform,
   useColorScheme,
+  useWindowDimensions,
   type ColorScheme,
   type PlatformOS,
+  type WindowSize,
 } from './appearance'
 export { requireNativeFunction } from './native-functions'
 export { AsyncStorage } from './storage'
@@ -377,13 +380,6 @@ export const LayoutAnimation = {
 export const StyleSheet = {
   create<Styles extends Record<string, Style>>(styles: Styles): Styles {
     return styles
-  },
-}
-
-// Dimensions.get('window') -> { width, height } in points.
-export const Dimensions = {
-  get(_dimension: 'window'): { width: number; height: number } {
-    return native.windowSize()
   },
 }
 
