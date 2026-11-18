@@ -7,11 +7,13 @@
 // Limitation: Integers beyond Number.MAX_SAFE_INTEGER lose precision; store them as TEXT.
 import { requireNativeFunction } from '@nativue/core'
 import { fromByteArray, toByteArray } from 'base64-js'
-import { splitStatements } from './statements'
+import { numberNamedParameters, splitStatements } from './statements'
 
 export type Value = number | string | null | Uint8Array
 export type Parameter = Value | boolean | undefined | ArrayBuffer
 export type Row = Record<string, Value>
+/** In order for `?`; by name for `$name`, `:name` and `@name`, with or without the prefix. */
+export type QueryParameters = Parameter[] | Record<string, Parameter>
 
 export interface RunResult {
   /** Rows changed by the last INSERT, UPDATE or DELETE. */
@@ -43,33 +45,37 @@ export class Statements {
     for (const statement of splitStatements(sql)) await this.query(statement, [])
   }
 
-  async run(sql: string, parameters: Parameter[] = []): Promise<RunResult> {
+  async run(sql: string, parameters: QueryParameters = []): Promise<RunResult> {
     const { changes, lastInsertId } = await this.query(sql, parameters)
 
     return { changes, lastInsertId }
   }
 
-  async all<Result = Row>(sql: string, parameters: Parameter[] = []): Promise<Result[]> {
+  async all<Result = Row>(sql: string, parameters: QueryParameters = []): Promise<Result[]> {
     const { columns, rows } = await this.query(sql, parameters)
 
     return rows.map((row) => rowObject(columns, row) as Result)
   }
 
-  async get<Result = Row>(sql: string, parameters: Parameter[] = []): Promise<Result | null> {
+  async get<Result = Row>(sql: string, parameters: QueryParameters = []): Promise<Result | null> {
     const [first] = await this.all<Result>(sql, parameters)
 
     return first ?? null
   }
 
   /** The rows as arrays, in the columns' order: for ORMs, where joined tables share column names. */
-  async values(sql: string, parameters: Parameter[] = []): Promise<Value[][]> {
+  async values(sql: string, parameters: QueryParameters = []): Promise<Value[][]> {
     const { rows } = await this.query(sql, parameters)
 
     return rows.map((row) => row.map(value))
   }
 
-  protected query(sql: string, parameters: Parameter[]): Promise<NativeResult> {
-    return nativeQuery(this.name, sql, parameters.map(nativeParameter))
+  protected query(sql: string, parameters: QueryParameters): Promise<NativeResult> {
+    const [numberedSql, values] = Array.isArray(parameters)
+      ? [sql, parameters]
+      : namedAsNumbered(sql, parameters)
+
+    return nativeQuery(this.name, numberedSql, values.map(nativeParameter))
   }
 }
 
@@ -102,7 +108,7 @@ export class Database extends Statements {
     return this.enqueue(() => nativeClose(this.name))
   }
 
-  protected override query(sql: string, parameters: Parameter[]): Promise<NativeResult> {
+  protected override query(sql: string, parameters: QueryParameters): Promise<NativeResult> {
     return this.enqueue(() => super.query(sql, parameters))
   }
 
@@ -122,6 +128,15 @@ export const SQLite = {
   open(name: string): Database {
     return new Database(name)
   },
+}
+
+function namedAsNumbered(
+  sql: string,
+  values: Record<string, Parameter>,
+): [sql: string, parameters: Parameter[]] {
+  const numbered = numberNamedParameters(sql, values)
+
+  return [numbered.sql, numbered.parameters]
 }
 
 function nativeParameter(parameter: Parameter): NativeValue {

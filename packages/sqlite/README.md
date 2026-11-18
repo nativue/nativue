@@ -47,7 +47,9 @@ await db.transaction(async (transaction) => {
 | `transaction(async (transaction) => …)` | commits when it resolves, rolls back when it throws                          |
 | `close()`                               | the next statement opens it again                                            |
 
-- Parameters are `?` placeholders, in order: never put values into the SQL text yourself.
+- Parameters are `?` placeholders with an array, in order, or `$name`, `:name` and `@name` ones
+  with an object: `db.get('SELECT * FROM todos WHERE id = $id', { id: 1 })`; a key may leave out
+  the prefix. Never put values into the SQL text yourself.
 - Values: numbers, strings, `null`, and `Uint8Array` for BLOBs. `true`/`false` are stored as
   `1`/`0`, `undefined` as `NULL`.
 - Each database runs its statements one at a time, off the UI thread. While a transaction runs,
