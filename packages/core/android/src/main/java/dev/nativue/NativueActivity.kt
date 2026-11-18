@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import com.facebook.soloader.SoLoader
@@ -18,10 +20,29 @@ open class NativueActivity : Activity() {
 
         val rootView = RootView(this)
         setContentView(rootView)
+        keepSplashScreenUntilFirstRender(rootView)
         bridge = Bridge(this, rootView)
         bridge.onCanGoBackChange = ::setHandlesBack
         bridge.start()
         intent.data?.let { bridge.openURL(it.toString()) }
+    }
+
+    /**
+     * The splash screen leaves on the window's first frame, which would be empty until JS renders: skip
+     * frames until the first screen (or the error overlay, added next to the root view) is in.
+     */
+    private fun keepSplashScreenUntilFirstRender(rootView: RootView) {
+        val content = rootView.parent as ViewGroup
+
+        rootView.viewTreeObserver.addOnPreDrawListener(object : ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                if (rootView.childCount == 0 && content.childCount == 1) return false
+
+                rootView.viewTreeObserver.removeOnPreDrawListener(this)
+
+                return true
+            }
+        })
     }
 
     /** Deep links while running: singleTask brings this activity back instead of starting another. */
