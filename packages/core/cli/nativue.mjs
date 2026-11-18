@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url'
 import { runOnAndroid, runOnIOS } from './run.mjs'
 import { createSymbolicator } from './symbolicate.mjs'
 
-const PORT = 42883 // #42b883, Vue's green
+const PORT = 40836 // 0x9F84, from #0E9F84, the nativue green
 const BUNDLE_DIRECTORY = 'ios/App'
 const BUNDLE_PATH = `${BUNDLE_DIRECTORY}/main.bundle.js`
 const SOURCE_MAP_PATH = `${BUNDLE_PATH}.map`

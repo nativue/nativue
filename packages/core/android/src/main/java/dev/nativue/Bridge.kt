@@ -392,7 +392,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
 
     /**
      * The emulator reaches the computer at 10.0.2.2. A device tries the computer's address on the local
-     * network (written by the debug build), then localhost, through `adb reverse tcp:42883 tcp:42883`.
+     * network (written by the debug build), then localhost, through `adb reverse tcp:40836 tcp:40836`.
      */
     private fun devServerURLs(): List<String> {
         if (Build.HARDWARE == "ranchu" || Build.FINGERPRINT.contains("generic")) return listOf("http://10.0.2.2:$DEV_SERVER_PORT")
@@ -890,7 +890,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
             "url" to (InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI),
         )
 
-        const val DEV_SERVER_PORT = 42883 // #42b883, Vue's green
+        const val DEV_SERVER_PORT = 40836 // 0x9F84, from #0E9F84, the nativue green
 
         fun int(value: Any?): Int = (value as Number).toInt()
 

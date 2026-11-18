@@ -19,7 +19,7 @@ final class Bridge {
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? "localhost"
         #endif
 
-        return URL(string: "http://\(host):42883")!
+        return URL(string: "http://\(host):40836")!
     }()
 
     // ponytail: GCD threads have a 512 KB stack; move to a Thread with a bigger stack if deep trees hit

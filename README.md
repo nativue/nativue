@@ -29,7 +29,7 @@ uses the JDK inside Android Studio.
 A debug build finds the dev server by itself: the simulator or emulator through the computer, a
 phone on the same Wi-Fi through the computer's local address (written into the app when it's built,
 so build again after switching networks). An Android phone on USB can also use
-`adb reverse tcp:42883 tcp:42883`.
+`adb reverse tcp:40836 tcp:40836`.
 
 ## Platforms
 
