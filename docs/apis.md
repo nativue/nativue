@@ -84,7 +84,7 @@ controller.abort() // a new query came in
 ## XMLHttpRequest
 
 The web's `XMLHttpRequest`, which `fetch` is built on, for what `fetch` doesn't do: upload and download
-progress, binary responses, timeouts. Libraries that use it work as they do in a browser.
+progress, binary responses, timeouts. Libraries that use it, like axios, work as they do in a browser.
 
 ```ts
 const xhr = new XMLHttpRequest()

@@ -80,7 +80,9 @@ docs/                     this documentation
 - **Events:** native views call `__dispatch(nodeId, eventName, payload)`, which runs the Vue
   handler.
 - **Bundling:** the CLI bundles the app with Vite into one script, `main.bundle.js`, which the dev
-  server sends to the app on every change. Production builds compile it to Hermes bytecode.
+  server sends to the app on every change. Production builds compile it to Hermes bytecode. Hermes
+  runs no async generators, so files that have them (some libraries do, like axios) are lowered to
+  ES2017; the rest of the bundle keeps its syntax.
 
 ## Tests
 

@@ -6,7 +6,7 @@
 //   nativue dev                    rebuilds on save and tells the app (via SSE) to reload the bundle
 //   nativue run <ios | android>    builds, installs and opens the app on a simulator or emulator, then
 //                                    keeps going as `nativue dev` (unless one is already running)
-import { build, loadConfigFromFile } from 'vite'
+import { build, loadConfigFromFile, transformWithOxc } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import http from 'node:http'
 import net from 'node:net'
@@ -110,6 +110,30 @@ function ignoreStyleBlocks() {
   }
 }
 
+// `async function*` or an `async *method()`.
+const ASYNC_GENERATOR = /\basync\s+function\s*\*|\basync\s*\*\s*[\w$[#"']/
+
+// Hermes runs no async generators (libraries like axios have them): a file that has one is lowered to
+// ES2017, where Oxc rewrites them on top of plain generators. Only those files, so the rest keeps its
+// modern syntax.
+function lowerAsyncGenerators() {
+  return {
+    name: 'nativue-lower-async-generators',
+    enforce: 'post',
+    async transform(code, id) {
+      if (!ASYNC_GENERATOR.test(code)) return null
+
+      const { code: lowered, map } = await transformWithOxc(code, id.split('?')[0], {
+        lang: 'js',
+        target: 'es2017',
+        sourcemap: true,
+      })
+
+      return { code: lowered, map }
+    },
+  }
+}
+
 const CONFIG_FILES = [
   'nativue.config.ts',
   'nativue.config.mts',
@@ -168,6 +192,7 @@ function viteConfig({ mode, plugins = [], watch = null, sourcemap = false }) {
         },
       }),
       ignoreStyleBlocks(),
+      lowerAsyncGenerators(),
       ...APP_VITE_PLUGINS,
       finishBundle(mode),
       ...plugins,
