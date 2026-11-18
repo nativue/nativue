@@ -7,8 +7,8 @@ iOS, the system's haptic feedback on Android. Both follow the user's settings.
 npm install @nativue/haptics
 ```
 
-Then rebuild the app (`npx nativue run ios`, `npx nativue run android`): its native code is linked
-when the app is built.
+Then rebuild the app (`npm run ios`, `npm run android`): its native code is linked when the app is
+built.
 
 ```ts
 import { Haptics } from '@nativue/haptics'

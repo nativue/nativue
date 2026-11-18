@@ -77,6 +77,8 @@ variants (`hover:`, `md:`, `group-*`...), `space-*` and `divide-*` (they style c
 At build time, quoted text in `src/` (`class="…"`, `:class="{ 'p-4': … }"`, strings in scripts) is
 scanned for class names. Tailwind generates CSS for them, and every `.class { … }` rule becomes a
 style object with its theme variables, `calc()` and colors (oklch included) resolved. Variants become
-conditions. At run time, a class string is resolved once per state (color scheme, pressed): the
+conditions. At run time, a class string is resolved once per state (color scheme, pressed, focused, disabled): the
 utilities whose conditions hold, merged in Tailwind's order, so `p-4 px-2` keeps
 `px-2`'s horizontal padding, as in CSS.
+
+Without Tailwind, see [Styling](https://github.com/nativue/nativue/blob/main/docs/styling.md).
