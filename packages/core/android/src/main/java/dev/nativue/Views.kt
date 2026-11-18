@@ -21,6 +21,7 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.Switch
 import java.io.File
+import java.io.IOException
 import java.net.URL
 import java.security.MessageDigest
 import java.util.concurrent.Executors
@@ -535,7 +536,7 @@ class RemoteImageView(context: Context) : ImageView(context) {
         if (cachePolicy == "none") return
 
         decodedImages.put(source, bitmap)
-        if (cachePolicy != "disk" || downloadedBytes == null || source.startsWith("data:")) return
+        if (cachePolicy != "disk" || downloadedBytes == null || isInMemory(source)) return
 
         loader.execute { diskCache.write(source, downloadedBytes) }
     }
@@ -578,8 +579,12 @@ class RemoteImageView(context: Context) : ImageView(context) {
         setMeasuredDimension(measuredWidth.roundToInt(), measuredHeight.roundToInt())
     }
 
+    /** data: and blob: images are already on the device: nothing to keep on disk. */
+    private fun isInMemory(source: String) = source.startsWith("data:") || source.startsWith("blob:")
+
     private fun download(source: String): ByteArray {
         if (source.startsWith("data:")) return Base64.decode(source.substringAfter(","), Base64.DEFAULT)
+        if (source.startsWith("blob:")) return BlobStore.shared.bytes(source) ?: throw IOException("The blob has been released")
 
         return URL(source).openStream().use { it.readBytes() }
     }

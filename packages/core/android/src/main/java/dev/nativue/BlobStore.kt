@@ -10,7 +10,7 @@ import java.util.concurrent.ConcurrentHashMap
  * collector collects the last Blob pointing to it. Used from the JS thread and from Networking's.
  * Mirrors ios/BlobStore.swift.
  */
-class BlobStore {
+class BlobStore private constructor() {
     private val bytesById = ConcurrentHashMap<String, ByteArray>()
 
     fun store(bytes: ByteArray): String {
@@ -35,6 +35,16 @@ class BlobStore {
         return bytes(blobId, (blob["offset"] as? Number)?.toInt() ?: 0, (blob["size"] as? Number)?.toInt() ?: 0)
     }
 
+    /** A `blob:<id>?offset=…&size=…` URL, from URL.createObjectURL. */
+    fun bytes(url: String): ByteArray? {
+        if (!url.startsWith("blob:")) return null
+
+        val blobId = url.removePrefix("blob:").substringBefore("?")
+        val parameters = url.substringAfter("?", "").split("&").associate { it.substringBefore("=") to it.substringAfter("=", "") }
+
+        return bytes(blobId, parameters["offset"]?.toIntOrNull() ?: 0, parameters["size"]?.toIntOrNull() ?: 0)
+    }
+
     fun remove(blobId: String) {
         bytesById.remove(blobId)
     }
@@ -53,5 +63,10 @@ class BlobStore {
         }
 
         return store(joined.toByteArray()) to joined.size()
+    }
+
+    companion object {
+        /** One for the app: <Image> reads `blob:` URLs from it too. */
+        val shared = BlobStore()
     }
 }

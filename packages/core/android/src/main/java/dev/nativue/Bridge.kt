@@ -70,7 +70,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     private val modalHostsByNodeId = HashMap<Int, ModalHost>()
     private val gestureReportersByNodeId = HashMap<Int, GestureReporter>()
     /** Views with @layout, and the box they last reported. */
-    private val blobStore = BlobStore()
+    private val blobStore = BlobStore.shared
     private val networking = Networking(activity, blobStore) { owner, requestId, eventName, payload ->
         callIfStillRunning(owner, "__networkEvent", requestId, eventName, payload)
     }

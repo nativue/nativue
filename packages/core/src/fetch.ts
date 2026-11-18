@@ -98,6 +98,10 @@ declare global {
   type EventTarget = import('./events').EventTarget
   var ProgressEvent: typeof import('./events').ProgressEvent
   type ProgressEvent = import('./events').ProgressEvent
+  var URL: typeof import('./url').URL
+  type URL = import('./url').URL
+  var URLSearchParams: typeof import('./url').URLSearchParams
+  type URLSearchParams = import('./url').URLSearchParams
   type RequestInit = import('./fetch').RequestInit
 }
 

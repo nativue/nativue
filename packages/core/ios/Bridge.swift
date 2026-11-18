@@ -44,7 +44,7 @@ final class Bridge {
     var nodesById: [Int: NativeNode] = [:]
     /// Views with @layout, and the box they last reported.
     private var reportedLayoutsByNodeId: [Int: CGRect] = [:]
-    private let blobStore = BlobStore()
+    private let blobStore = BlobStore.shared
     private lazy var networking = Networking(blobStore: blobStore)
     /// Modals and screens: their content is laid out as a separate Yoga root.
     private var contentRootsByNodeId: [Int: ContentRoot] = [:]

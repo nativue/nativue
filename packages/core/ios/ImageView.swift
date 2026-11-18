@@ -60,7 +60,7 @@ final class ImageView: UIImageView {
         let readsDisk = cachePolicy == "disk"
         loadingTask = Task { [weak self] in
             let cachedData = readsDisk ? await Task.detached { ImageDiskCache.data(for: source) }.value : nil
-            let downloadedData = cachedData == nil ? try? await Self.session.data(from: url).0 : nil
+            let downloadedData = cachedData == nil ? await Self.download(source, from: url) : nil
             guard
                 let data = cachedData ?? downloadedData,
                 let image = await UIImage(data: data)?.byPreparingForDisplay(), // decoded off the main thread
@@ -78,7 +78,7 @@ final class ImageView: UIImageView {
 
         Self.decodedImages.setObject(image, forKey: source as NSString, cost: Self.byteCount(of: image))
 
-        guard cachePolicy == "disk", let downloadedData, !source.hasPrefix("data:") else { return }
+        guard cachePolicy == "disk", let downloadedData, !Self.isInMemory(source) else { return }
         Task.detached(priority: .utility) { ImageDiskCache.store(downloadedData, for: source) }
     }
 
@@ -109,6 +109,18 @@ final class ImageView: UIImageView {
 
         image = nextImage
         onImageChange?()
+    }
+
+    /// A blob: URL's bytes are in the BlobStore; URLSession reads data: URLs itself.
+    private static func download(_ source: String, from url: URL) async -> Data? {
+        if source.hasPrefix("blob:") { return BlobStore.shared.data(forURL: source) }
+
+        return try? await session.data(from: url).0
+    }
+
+    /// data: and blob: images are already on the device: nothing to keep on disk.
+    private static func isInMemory(_ source: String) -> Bool {
+        source.hasPrefix("data:") || source.hasPrefix("blob:")
     }
 
     private static func byteCount(of image: UIImage) -> Int {

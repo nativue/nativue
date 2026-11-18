@@ -125,6 +125,30 @@ reader.readAsDataURL(photo)
 - `size`, `type`, `slice()`, `text()` and `arrayBuffer()`; no `stream()`.
 - `FileReader` reads as text (UTF-8 only), as a data URL, or as an `ArrayBuffer`.
 
+To show a Blob in an [`Image`](components/image.md), give it an object URL. The URL keeps the Blob alive
+until you revoke it:
+
+```ts
+const imageUrl = ref(URL.createObjectURL(photo))
+onUnmounted(() => URL.revokeObjectURL(imageUrl.value))
+```
+
+```vue
+<Image :source="{ uri: imageUrl }" :style="{ width: 200, height: 200 }" />
+```
+
+## URL and URLSearchParams
+
+The web's `URL` and `URLSearchParams`, to build and read URLs:
+
+```ts
+const url = new URL('/search', 'https://api.example.com')
+url.searchParams.set('q', 'café com leite')
+url.href // 'https://api.example.com/search?q=caf%C3%A9+com+leite'
+```
+
+They parse URLs more loosely than a browser: no international domain names (punycode).
+
 ## Platform
 
 ```ts

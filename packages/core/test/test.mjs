@@ -779,6 +779,30 @@ const dataUrl = await new Promise((resolve) => {
 })
 assert.equal(dataUrl, 'data:text/plain;base64,aGk=')
 
+// URL and URLSearchParams (Hermes has neither).
+const url = new URL('../b/./c?x=1&y=a+b#top', 'HTTPS://Example.com:443/a/z/index.html')
+assert.equal(url.href, 'https://example.com/a/b/c?x=1&y=a+b#top')
+assert.equal(url.origin, 'https://example.com')
+assert.equal(url.searchParams.get('y'), 'a b')
+url.searchParams.set('x', "it's 1")
+url.searchParams.append('z', '&')
+assert.equal(url.search, '?x=it%27s+1&y=a+b&z=%26')
+url.search = '?q=1'
+assert.deepEqual([...url.searchParams], [['q', '1']])
+assert.equal(new URL('/api?v=2', 'http://localhost:8765/x').href, 'http://localhost:8765/api?v=2')
+assert.equal(
+  new URL('//cdn.example.com/a.png', 'https://example.com').href,
+  'https://cdn.example.com/a.png',
+)
+assert.equal(new URLSearchParams({ a: '1', b: 'two words' }).toString(), 'a=1&b=two+words')
+assert.throws(() => new URL('not a url'), TypeError)
+
+// An object URL shows a Blob in <Image>; it keeps the Blob alive until revoked.
+const imageBlob = new Blob(['png bytes'], { type: 'image/png' })
+const objectUrl = URL.createObjectURL(imageBlob.slice(4))
+assert.equal(objectUrl, `blob:${imageBlob.data.blobId}?offset=4&size=5`)
+URL.revokeObjectURL(objectUrl)
+
 // fetch keeps the response a native Blob, read as UTF-8 text or as bytes.
 const blobResponse = await fetch('https://example.com/posts')
 assert.deepEqual(await blobResponse.clone().json(), POSTS)

@@ -3,6 +3,9 @@ import Foundation
 /// The bytes behind JS's Blobs, by id. JS holds only the id; the runtime releases it when the garbage
 /// collector collects the last Blob pointing to it. Used from the JS queue and from Networking's.
 final class BlobStore {
+    /// One for the app: <Image> reads `blob:` URLs from it too.
+    static let shared = BlobStore()
+
     private var dataById: [String: Data] = [:]
     private let lock = NSLock()
 
@@ -27,6 +30,15 @@ final class BlobStore {
         guard let blobId = blob["blobId"] as? String else { return nil }
 
         return data(blobId: blobId, offset: integer(blob["offset"]), size: integer(blob["size"]))
+    }
+
+    /// A `blob:<id>?offset=…&size=…` URL, from URL.createObjectURL.
+    func data(forURL url: String) -> Data? {
+        guard let components = URLComponents(string: url), components.scheme == "blob" else { return nil }
+
+        let number = { (name: String) in Int(components.queryItems?.first { $0.name == name }?.value ?? "") ?? 0 }
+
+        return data(blobId: components.path, offset: number("offset"), size: number("size"))
     }
 
     func remove(blobId: String) {
