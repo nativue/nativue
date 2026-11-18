@@ -57,7 +57,12 @@ interface Node {
   disabled?: boolean
   classStyle?: Style
   accessibility?: AccessibilityAttributes
+  /** <TextInput v-model.trim>: its modifiers, and the text typed last. */
+  modelModifiers?: ModelModifiers
+  typedText?: string
 }
+
+type ModelModifiers = { trim?: boolean; number?: boolean; lazy?: boolean }
 
 type ElementState = Pick<Node, 'pressed' | 'focused' | 'disabled'>
 
@@ -369,7 +374,36 @@ globalThis.__dispatch = (nodeId, eventName, payload) => {
   if (!handlers) return
 
   handlers[eventName]?.(payload)
-  handlers[MODEL_EVENT_BY_NATIVE_EVENT[eventName]]?.(payload)
+  updateModel(nodeId, eventName, payload, handlers['update:modelvalue'])
+}
+
+// v-model's modifiers, as on the web: .lazy updates when editing ends rather than on every keystroke;
+// .trim and .number change the value the model gets.
+function updateModel(nodeId: number, eventName: string, payload: unknown, update?: EventHandler) {
+  const textInput = textInputsById.get(nodeId)
+  if (textInput && eventName === 'changetext') textInput.typedText = payload as string
+  if (!update) return
+
+  const modifiers = textInput?.modelModifiers ?? {}
+  if (!modifiers.lazy) {
+    if (MODEL_EVENT_BY_NATIVE_EVENT[eventName]) update(modelValue(modifiers, payload))
+    return
+  }
+
+  const editingEnded = eventName === 'blur' || eventName === 'submitediting'
+  const typedText = textInput?.typedText
+  if (editingEnded && typedText !== undefined) update(modelValue(modifiers, typedText))
+}
+
+function modelValue(modifiers: ModelModifiers, value: unknown): unknown {
+  if (typeof value !== 'string') return value
+
+  const text = modifiers.trim ? value.trim() : value
+  if (!modifiers.number) return text
+
+  const number = parseFloat(text)
+
+  return Number.isNaN(number) ? text : number
 }
 
 // A <TextInput>'s focus, for its class's focus: styles and its focused-style.
@@ -414,15 +448,28 @@ export const Keyboard = {
 
 // Replaces Vue's DOM-only vModelText, which the template compiler emits for v-model on
 // <TextInput> and <Switch>.
-// Limitation: v-model modifiers (.trim, .number, .lazy) are not supported yet.
 export const vModelText: Directive<Node> = {
-  created(element, { value }) {
-    native.setProp(element.id, 'value', value ?? '')
+  created(element, { value, modifiers }) {
+    element.modelModifiers = modifiers
+    native.setProp(element.id, 'value', nativeModelValue(value))
   },
 
-  beforeUpdate(element, { value, oldValue }) {
-    if (value !== oldValue) native.setProp(element.id, 'value', value ?? '')
+  beforeUpdate(element, { value, oldValue, modifiers }) {
+    if (value === oldValue || showsModelValue(element, value, modifiers)) return
+
+    native.setProp(element.id, 'value', nativeModelValue(value))
   },
+}
+
+// The field keeps what was typed when it already gives the model's value: with .trim, "hello " stays
+// as typed instead of losing its space mid-word.
+function showsModelValue(element: Node, value: unknown, modifiers: ModelModifiers): boolean {
+  return element.typedText !== undefined && modelValue(modifiers, element.typedText) === value
+}
+
+// A <TextInput> shows text, so a v-model.number's number goes as text; a <Switch> takes its boolean.
+function nativeModelValue(value: unknown): unknown {
+  return typeof value === 'number' ? String(value) : (value ?? '')
 }
 
 const rootNode: Node = { id: 0, type: 'root', parent: null, children: [], text: '' }

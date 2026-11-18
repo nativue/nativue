@@ -21,6 +21,14 @@ const email = ref('')
 </template>
 ```
 
+`v-model` takes the web's modifiers:
+
+| Modifier         | The model gets                                                     |
+| ---------------- | ------------------------------------------------------------------ |
+| `v-model.trim`   | the text without surrounding spaces                                |
+| `v-model.number` | a number when the text parses as one (`parseFloat`), else the text |
+| `v-model.lazy`   | the text when editing ends (focus leaves or return), not per key   |
+
 ## Props
 
 | Prop                | Type                                                                                 | Description                                              |

@@ -297,9 +297,10 @@ globalThis.__dispatch(nameInputId, 'blur')
 await settle()
 assert.equal(inputBorderColor(), processColor('transparent'))
 assert.equal(viewsById[nameInputId].props.value, '')
-globalThis.__dispatch(nameInputId, 'changetext', 'Ana')
+globalThis.__dispatch(nameInputId, 'changetext', 'Ana ')
 await settle()
-assert.ok(renderedTexts(componentsId).includes('Hello, Ana 👋'))
+assert.ok(renderedTexts(componentsId).includes('Hello, Ana 👋')) // v-model.trim
+assert.equal(viewsById[nameInputId].props.value, '') // the field keeps what was typed
 
 globalThis.__dispatch(descendantOfType(componentsId, 'Switch'), 'valuechange', false)
 await settle()

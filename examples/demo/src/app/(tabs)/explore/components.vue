@@ -105,7 +105,7 @@ const styles = computed(() =>
 
     <Section title="Inputs">
       <TextInput
-        v-model="name"
+        v-model.trim="name"
         placeholder="Your name"
         :style="styles.input"
         :focused-style="styles.inputFocused"
