@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.pm.ApplicationInfo
+import android.content.res.Configuration
 import android.content.res.ColorStateList
 import android.os.Build
 import android.os.Handler
@@ -46,6 +47,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     private val isDebuggable = activity.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
     private val density = activity.resources.displayMetrics.density
     private val storage = activity.getSharedPreferences("dev.nativue.storage", Context.MODE_PRIVATE)
+    private val pluginRegistry = PluginRegistry(activity)
 
     // Only touched on the JS thread.
     private var runtime: JavaScriptRuntime? = null
@@ -100,6 +102,28 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
             runtime = null
             Looper.myLooper()?.quit()
         }
+    }
+
+    /** (callId, ...arguments): settles the call with __asyncFunctionFinished; a throw rejects it. */
+    private fun asyncCall(function: AsyncFunction): NativeFunction = { arguments ->
+        val callId = int(arguments[0])
+        val promise = Promise { value, errorMessage ->
+            evaluate { runtime?.call("__asyncFunctionFinished", callId, value, errorMessage) }
+        }
+
+        runCatching { function(arguments.drop(1), promise) }.onFailure { promise.reject(it.message ?: it.toString()) }
+        null
+    }
+
+    /** The system may have switched between light and dark: JS ignores a scheme it already has. */
+    fun onConfigurationChanged() {
+        evaluate { runtime?.call("__colorSchemeChanged", colorScheme()) }
+    }
+
+    private fun colorScheme(): String {
+        val nightMode = activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK
+
+        return if (nightMode == Configuration.UI_MODE_NIGHT_YES) "dark" else "light"
     }
 
     /** A URL the app was opened with (deep link), for the router (`__openURL`); after the bundle has run. */
@@ -231,6 +255,11 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         put("log") { arguments -> Log.i(TAG, "[JS] ${arguments[0]}") }
         put("reportError") { arguments -> reportError(arguments[0] as String, arguments[1] as String) }
         put("windowSize") { _ -> windowSize() }
+        put("platform") { _ -> "android" }
+        put("colorScheme") { _ -> colorScheme() }
+        // Prefixed, so a plugin can't replace nativue's own functions.
+        pluginRegistry.functions.forEach { (name, function) -> put("plugin:$name", function) }
+        pluginRegistry.asyncFunctions.forEach { (name, function) -> put("pluginAsync:$name", asyncCall(function)) }
         put("create") { arguments ->
             val id = int(arguments[0])
             val type = arguments[1] as String
@@ -537,7 +566,12 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
 
         "Svg" -> NativeNode(SvgView(activity), measuresContent = false)
 
-        else -> NativeNode(ContainerView(activity), measuresContent = false)
+        else -> {
+            val makeView = pluginRegistry.viewMakers[type]
+            val view = makeView?.invoke { eventName, payload -> dispatchEvent(eventName, id, payload) }
+
+            NativeNode(view ?: ContainerView(activity), measuresContent = false)
+        }
     }
 
     private fun makeTextView() = TextView(activity).apply {
@@ -605,6 +639,8 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     private fun setProp(key: String, value: Any?, id: Int) {
         val node = nodesById[id] ?: return
         val view = node.view
+
+        if (key != "style" && view is PluginView) return view.setProp(key, value)
 
         when (key) {
             "style" -> {

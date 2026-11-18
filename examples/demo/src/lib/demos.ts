@@ -7,7 +7,9 @@ import {
   DatabaseIcon,
   HandIcon,
   ListChecksIcon,
+  PaletteIcon,
   SparklesIcon,
+  VibrateIcon,
 } from '@nativue/icons/lucide'
 import { colors } from './theme'
 
@@ -41,6 +43,20 @@ export const demoSections: DemoSection[] = [
         subtitle: '1,000 virtualized rows with swipe actions',
         icon: ListChecksIcon,
         tint: colors.orange,
+      },
+      {
+        href: '/explore/tailwind',
+        title: 'Tailwind',
+        subtitle: 'Utility classes with @nativue/tailwind',
+        icon: PaletteIcon,
+        tint: colors.teal,
+      },
+      {
+        href: '/explore/haptics',
+        title: 'Haptics',
+        subtitle: 'A package with native code: @nativue/haptics',
+        icon: VibrateIcon,
+        tint: colors.red,
       },
     ],
   },

@@ -24,9 +24,16 @@ function detachEverywhere(childId) {
 }
 
 const reportedErrors = []
+// What @nativue/haptics' native side was called with (its functions come from a plugin).
+const hapticsCalls = []
 
 globalThis.__native = {
+  'plugin:haptics.impact': (style) => hapticsCalls.push(['impact', style]),
+  'plugin:haptics.notification': (type) => hapticsCalls.push(['notification', type]),
+  'plugin:haptics.selection': () => hapticsCalls.push(['selection']),
   windowSize: () => WINDOW,
+  platform: () => 'ios',
+  colorScheme: () => 'light',
 
   reportError: (message, details) => reportedErrors.push({ message, details }),
 
@@ -676,6 +683,74 @@ assert.equal(processColor('not-a-color'), null)
 
 assert.deepEqual(JSON.parse(storage.get('items')), []) // the list was emptied above
 assert.equal(storage.get('hideDoneItems'), 'false')
+
+// ---------- Tailwind (@nativue/tailwind) ----------
+
+// class="flex-1 items-center rounded-full border-2 py-2", plus the selected plan's colors (brand comes
+// from the demo's src/tailwind.css).
+const tailwindId = await open('explore/tailwind')
+const planStyle = (plan) => viewsById[pressableContaining(plan, tailwindId)].style
+const brandGreen = processColor('#0e9f84')
+assert.deepEqual(planStyle('Pro'), {
+  flex: 1,
+  alignItems: 'center',
+  borderRadius: 9999,
+  borderWidth: 2,
+  paddingVertical: 8,
+  borderColor: brandGreen,
+  backgroundColor: brandGreen,
+})
+
+press(pressableContaining('Team', tailwindId))
+await settle()
+assert.equal(planStyle('Team').backgroundColor, brandGreen)
+assert.equal(planStyle('Pro').backgroundColor, processColor('#ffffff'))
+assert.notEqual(planStyle('Pro').borderColor, brandGreen)
+
+// style wins over class.
+const styledBoxId = findViewId(
+  (view) =>
+    view.children.some((childId) => viewsById[childId].text === 'class="bg-sky-500", style purple'),
+  tailwindId,
+)
+assert.equal(viewsById[styledBoxId].style.backgroundColor, processColor('#af52de'))
+
+// Variants: active: while pressed, dark: with the system's scheme, ios: on the fake native's platform.
+const pressMeId = pressableContaining('Press me', tailwindId)
+const inkColor = processColor('#0b1220')
+globalThis.__dispatch(pressMeId, 'pressin')
+await settle()
+assert.equal(viewsById[pressMeId].style.backgroundColor, inkColor)
+assert.deepEqual(viewsById[pressMeId].style.transform, [{ scale: 0.95 }])
+globalThis.__dispatch(pressMeId, 'pressout')
+await settle()
+assert.equal(viewsById[pressMeId].style.backgroundColor, brandGreen)
+assert.equal(viewsById[pressMeId].style.transform, null)
+
+const darkCardId = findViewId(
+  (view) =>
+    view.children.some((childId) => viewsById[childId].text === 'This card follows dark mode'),
+  tailwindId,
+)
+assert.equal(viewsById[darkCardId].style.backgroundColor, processColor('#ffffff'))
+globalThis.__colorSchemeChanged('dark')
+assert.equal(viewsById[darkCardId].style.backgroundColor, inkColor)
+globalThis.__colorSchemeChanged('light')
+assert.equal(viewsById[darkCardId].style.backgroundColor, processColor('#ffffff'))
+
+const platformCardId = findViewId(
+  (view) => view.children.some((childId) => viewsById[childId].text === 'Blue on iOS'),
+  tailwindId,
+)
+assert.ok(viewsById[platformCardId].style.backgroundColor) // ios:bg-sky-100, not android:'s
+
+// ---------- Native plugins (@nativue/haptics) ----------
+
+const hapticsId = await open('explore/haptics')
+globalThis.__dispatch(pressableContaining('heavy', hapticsId), 'press')
+globalThis.__dispatch(pressableContaining('error', hapticsId), 'press')
+globalThis.__dispatch(pressableContaining('selection', hapticsId), 'press')
+assert.deepEqual(hapticsCalls, [['impact', 'heavy'], ['notification', 'error'], ['selection']])
 
 // ---------- Errors ----------
 

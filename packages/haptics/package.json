@@ -1,0 +1,49 @@
+{
+  "name": "@nativue/haptics",
+  "version": "0.1.0",
+  "description": "Haptic feedback for nativue apps",
+  "keywords": [
+    "vue",
+    "native",
+    "haptics",
+    "vibration",
+    "nativue"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/nativue/nativue#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nativue/nativue.git",
+    "directory": "packages/haptics"
+  },
+  "bugs": "https://github.com/nativue/nativue/issues",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "vue-tsc"
+  },
+  "peerDependencies": {
+    "@nativue/core": ">=0.3.0"
+  },
+  "nativue": {
+    "ios": {
+      "sources": "ios",
+      "plugin": "HapticsPlugin"
+    },
+    "android": {
+      "sources": "android",
+      "plugin": "dev.nativue.haptics.HapticsPlugin"
+    }
+  },
+  "files": [
+    "src",
+    "ios",
+    "android/build.gradle.kts",
+    "android/src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

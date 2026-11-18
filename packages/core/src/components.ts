@@ -13,7 +13,8 @@ import type { ScrollEvent, Style } from './types'
 type Listener = ((payload: unknown) => void) | undefined
 
 // Vue's template compiler normalizes `:style`, so it can't be a function of the pressed state: the pressed
-// look goes in `pressed-style`, merged over `style` while pressed. The slot also receives { pressed }.
+// look goes in `pressed-style`, merged over `style` while pressed. The slot also receives { pressed },
+// and the class its pressed styles (Tailwind's active:).
 export const Pressable = defineComponent({
   name: 'Pressable',
   inheritAttrs: false,
@@ -38,6 +39,7 @@ export const Pressable = defineComponent({
         {
           ...attrs,
           style,
+          pressed: pressed.value,
           onPressIn: setPressed(true, attrs.onPressIn as Listener),
           onPressOut: setPressed(false, attrs.onPressOut as Listener),
         },

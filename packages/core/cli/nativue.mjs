@@ -6,7 +6,7 @@
 //   nativue dev                    rebuilds on save and tells the app (via SSE) to reload the bundle
 //   nativue run <ios | android>    builds, installs and opens the app on a simulator or emulator, then
 //                                    keeps going as `nativue dev` (unless one is already running)
-import { build } from 'vite'
+import { build, loadConfigFromFile } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import http from 'node:http'
 import net from 'node:net'
@@ -15,6 +15,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync }
 import { createRequire } from 'node:module'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { linkIosPlugins } from './link.mjs'
 import { runOnAndroid, runOnIOS } from './run.mjs'
 import { createSymbolicator } from './symbolicate.mjs'
 
@@ -84,6 +85,49 @@ function finishBundle(mode) {
   }
 }
 
+const CONFIG_FILES = [
+  'nativue.config.ts',
+  'nativue.config.mts',
+  'nativue.config.js',
+  'nativue.config.mjs',
+]
+const PLUGIN_RUNTIMES_MODULE = 'virtual:nativue/plugin-runtimes'
+
+// nativue.config.ts, when the app has one (see config.d.mts).
+async function loadAppConfig() {
+  const configFile = CONFIG_FILES.find((file) => existsSync(file))
+  if (!configFile) return {}
+
+  const { config } = await loadConfigFromFile(
+    { command: 'build', mode: 'development' },
+    configFile,
+    process.cwd(),
+    'silent',
+  )
+
+  return config
+}
+
+// The entry imports this module first: it imports each plugin's runtime module.
+function pluginRuntimes(plugins) {
+  const resolvedId = `\0${PLUGIN_RUNTIMES_MODULE}`
+  const imports = plugins
+    .filter((plugin) => plugin.runtime)
+    .map((plugin) => `import ${JSON.stringify(plugin.runtime)}`)
+
+  return {
+    name: 'nativue-plugin-runtimes',
+    resolveId: (id) => (id === PLUGIN_RUNTIMES_MODULE ? resolvedId : null),
+    load: (id) => (id === resolvedId ? imports.join('\n') : null),
+  }
+}
+
+const { plugins: appPlugins = [] } = await loadAppConfig()
+const APP_VITE_PLUGINS = [
+  pluginRuntimes(appPlugins),
+  ...appPlugins.flatMap((plugin) => plugin.vite ?? []),
+]
+
 function viteConfig({ mode, plugins = [], watch = null, sourcemap = false }) {
   // Vite reads the mode from NODE_ENV: development builds keep each component's file (for errors).
   process.env.NODE_ENV = mode
@@ -98,6 +142,7 @@ function viteConfig({ mode, plugins = [], watch = null, sourcemap = false }) {
           compilerOptions: { isCustomElement: (tag) => NATIVE_COMPONENT_TAGS.includes(tag) },
         },
       }),
+      ...APP_VITE_PLUGINS,
       finishBundle(mode),
       ...plugins,
     ],
@@ -213,6 +258,8 @@ async function runApp(platform) {
 const [command, ...args] = process.argv.slice(2)
 
 try {
+  if (['dev', 'build', 'run'].includes(command)) linkIosPlugins(frameworkPath(''))
+
   if (command === 'dev') {
     await dev()
   } else if (command === 'build') {

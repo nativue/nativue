@@ -1,0 +1,10 @@
+/* Tailwind for the demo (@nativue/tailwind): Tailwind's defaults plus the nativue brand colors. */
+@import 'tailwindcss';
+
+@theme {
+  --color-ink: #0b1220;
+  --color-brand: #0e9f84;
+  --color-mint: #4af2ae;
+  --color-sea-green: #10b39b;
+  --color-mist: #f1f5f9;
+}

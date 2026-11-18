@@ -25,7 +25,11 @@
   "exports": {
     ".": "./src/renderer.ts",
     "./router": "./src/router.ts",
-    "./tsconfig.base.json": "./tsconfig.base.json"
+    "./tsconfig.base.json": "./tsconfig.base.json",
+    "./config": {
+      "types": "./cli/config.d.mts",
+      "default": "./cli/config.mjs"
+    }
   },
   "scripts": {
     "test": "(cd ../../examples/demo && nativue build) && node test/test.mjs",
@@ -50,6 +54,7 @@
     "tsconfig.base.json",
     "android/build.gradle.kts",
     "android/consumer-rules.pro",
+    "android/nativue.settings.gradle.kts",
     "android/src"
   ],
   "publishConfig": {

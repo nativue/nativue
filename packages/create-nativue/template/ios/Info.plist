@@ -20,8 +20,6 @@
 	</dict>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Connects to the Nativue dev server on your Mac for hot reload.</string>
-	<key>UIUserInterfaceStyle</key>
-	<string>Light</string>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

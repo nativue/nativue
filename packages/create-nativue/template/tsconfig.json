@@ -1,4 +1,4 @@
 {
   "extends": "@nativue/core/tsconfig.base.json",
-  "include": ["src"]
+  "include": ["src", "nativue.config.ts"]
 }

@@ -1,0 +1,44 @@
+{
+  "name": "@nativue/tailwind",
+  "version": "0.1.0",
+  "description": "Tailwind CSS classes for nativue apps, turned into native styles",
+  "keywords": [
+    "vue",
+    "native",
+    "tailwindcss",
+    "tailwind",
+    "nativue"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/nativue/nativue#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nativue/nativue.git",
+    "directory": "packages/tailwind"
+  },
+  "bugs": "https://github.com/nativue/nativue/issues",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.mts",
+      "default": "./src/index.mjs"
+    },
+    "./runtime": "./src/runtime.ts"
+  },
+  "scripts": {
+    "test": "node test/test.mjs",
+    "typecheck": "vue-tsc"
+  },
+  "dependencies": {
+    "tailwindcss": "^4.3.5"
+  },
+  "peerDependencies": {
+    "@nativue/core": ">=0.3.0"
+  },
+  "files": [
+    "src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

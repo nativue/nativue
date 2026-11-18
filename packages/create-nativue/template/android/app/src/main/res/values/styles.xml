@@ -1,7 +1,10 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Light or dark with the system: values-night/styles.xml makes the base dark. -->
+    <style name="AppTheme.Base" parent="@android:style/Theme.Material.Light.NoActionBar" />
+
     <!-- Dark status and navigation bar icons over the app's light screens. The splash screen (Android
          12+) matches the iOS launch screen: the logo, 120dp, on white. -->
-    <style name="AppTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+    <style name="AppTheme" parent="AppTheme.Base">
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
         <item name="android:windowSplashScreenBackground" tools:targetApi="31">@android:color/white</item>

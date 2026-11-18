@@ -14,11 +14,20 @@ import {
   type Directive,
 } from '@vue/runtime-core'
 import { animatedEventMapping, animatedStyleBinding, isAnimatedEvent } from './animated'
+import { Appearance } from './appearance'
 import { COLOR_PROPERTIES, processColor } from './colors'
 import { FlatList, Pressable, Swipeable } from './components'
 import type { LayoutAnimationConfig, Style } from './types'
 export * from '@vue/runtime-core'
 export { Animated } from './animated'
+export {
+  Appearance,
+  Platform,
+  useColorScheme,
+  type ColorScheme,
+  type PlatformOS,
+} from './appearance'
+export { requireNativeFunction } from './native-functions'
 export { AsyncStorage } from './storage'
 export type * from './types'
 export type { SvgElement, SvgIcon } from './native-components'
@@ -29,14 +38,31 @@ interface Node {
   parent: Node | null
   children: Node[]
   text: string
+  style?: Style | null
+  className?: string
+  /** A <Pressable>'s pressed state, for its class's pressed styles (Tailwind's active:). */
+  pressed?: boolean
+  classStyle?: Style
 }
 
 type EventHandler = (payload: unknown) => void
+type ClassStyleResolver = (className: string, state: { pressed: boolean }) => Style
 
 const native = globalThis.__native
 let nextNodeId = 1
 // ponytail: handlers of removed nodes are never cleaned up; clean them on remove when it matters.
 const eventHandlersByNodeId: Record<number, Record<string, EventHandler | undefined>> = {}
+let resolveClassStyle: ClassStyleResolver | null = null
+// ponytail: a removed node leaves the set, its descendants stay; track them if apps churn many.
+const nodesWithClass = new Set<Node>()
+
+/**
+ * Gives `class` its styles, for a nativue.config plugin (@nativue/tailwind). Class styles may depend
+ * on the color scheme: they're resolved again when it changes.
+ */
+export function setClassStyleResolver(resolver: ClassStyleResolver): void {
+  resolveClassStyle = resolver
+}
 
 function createNode(type: string): Node {
   return { id: nextNodeId++, type, parent: null, children: [], text: '' }
@@ -114,6 +140,34 @@ function withoutAnimatedProperties(
 
   return staticStyle
 }
+
+// The class's styles come first, so the style prop overrides them, as inline styles do on the web.
+function combinedStyle(element: Node): Style | null {
+  if (!element.classStyle) return element.style ?? null
+
+  return { ...element.classStyle, ...element.style }
+}
+
+function classStyleOf(element: Node): Style | undefined {
+  if (!element.className || !resolveClassStyle) return undefined
+
+  return resolveClassStyle(element.className, { pressed: element.pressed ?? false })
+}
+
+/** Applies a change to what makes up the style (style, class, pressed state), sending only the diff. */
+function updateStyle(element: Node, change: Pick<Node, 'style' | 'className' | 'pressed'>) {
+  const previousStyle = combinedStyle(element)
+
+  Object.assign(element, change)
+  element.classStyle = classStyleOf(element)
+
+  if (element.className) nodesWithClass.add(element)
+  else nodesWithClass.delete(element)
+
+  patchStyle(element, previousStyle, combinedStyle(element))
+}
+
+Appearance.addChangeListener(() => nodesWithClass.forEach((node) => updateStyle(node, {})))
 
 function patchStyle(element: Node, previousStyle: Style | null, nextStyle: Style | null) {
   const previousBinding = animatedStyleBinding(previousStyle)
@@ -215,6 +269,7 @@ const { createApp: createBaseApp } = createRenderer<Node, Node>({
 
   remove(child) {
     const parent = detachFromParent(child)
+    nodesWithClass.delete(child)
 
     if (isNativeNode(child)) native.remove(child.id)
     else syncTextContent(parent)
@@ -231,7 +286,9 @@ const { createApp: createBaseApp } = createRenderer<Node, Node>({
   },
 
   patchProp(element, key, previousValue, nextValue, _namespace, component) {
-    if (key === 'style') patchStyle(element, previousValue, nextValue)
+    if (key === 'style') updateStyle(element, { style: nextValue })
+    else if (key === 'class') updateStyle(element, { className: nextValue ?? undefined })
+    else if (key === 'pressed') updateStyle(element, { pressed: nextValue })
     // :on-pan="..." (v-bind, used for Animated.event) arrives kebab-case.
     else if (isEventProp(camelize(key))) {
       patchEventHandler(element, camelize(key), previousValue, nextValue, component ?? null)

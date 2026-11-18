@@ -3,18 +3,25 @@ import SwiftUI
 /// The whole app: runs main.bundle.js (or the dev server's bundle) and shows what it renders.
 /// It fills the whole screen; <SafeAreaView> opts into the safe area.
 public struct NativueView: View {
-    public init() {}
+    private let plugins: [NativuePlugin]
+
+    /// plugins: the native side of the app's packages, `nativuePlugins` from ios/NativuePlugins.
+    public init(plugins: [NativuePlugin] = []) {
+        self.plugins = plugins
+    }
 
     public var body: some View {
-        VueRoot()
+        VueRoot(plugins: plugins)
             .ignoresSafeArea()
             .onOpenURL { url in NotificationCenter.default.post(name: Bridge.openURLNotification, object: url) }
     }
 }
 
 struct VueRoot: UIViewRepresentable {
+    let plugins: [NativuePlugin]
+
     func makeCoordinator() -> Bridge {
-        Bridge()
+        Bridge(plugins: plugins)
     }
 
     func makeUIView(context: Context) -> RootView {

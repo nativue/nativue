@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		AA0000000000000000000010 /* Nativue in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000012 /* Nativue */; };
+		AA0000000000000000000010 /* NativuePlugins in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000012 /* NativuePlugins */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,7 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AA0000000000000000000010 /* Nativue in Frameworks */,
+				AA0000000000000000000010 /* NativuePlugins in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -71,7 +71,7 @@
 			);
 			name = App;
 			packageProductDependencies = (
-				AA0000000000000000000012 /* Nativue */,
+				AA0000000000000000000012 /* NativuePlugins */,
 			);
 			productName = App;
 			productReference = AA0000000000000000000001 /* App.app */;
@@ -97,7 +97,7 @@
 			mainGroup = AA0000000000000000000004;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				AA0000000000000000000011 /* XCLocalSwiftPackageReference "../../../packages/core" */,
+				AA0000000000000000000011 /* XCLocalSwiftPackageReference "NativuePlugins" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = AA0000000000000000000005 /* Products */;
@@ -233,16 +233,16 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		AA0000000000000000000011 /* XCLocalSwiftPackageReference "../../../packages/core" */ = {
+		AA0000000000000000000011 /* XCLocalSwiftPackageReference "NativuePlugins" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = "../node_modules/@nativue/core";
+			relativePath = NativuePlugins;
 		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		AA0000000000000000000012 /* Nativue */ = {
+		AA0000000000000000000012 /* NativuePlugins */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = Nativue;
+			productName = NativuePlugins;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -6,3 +6,6 @@
 -keep class com.facebook.hermes.** { *; }
 -keep class com.facebook.yoga.** { *; }
 -keep class com.facebook.jni.** { *; }
+
+# Plugins are created by class name (Plugins.kt).
+-keep class * implements dev.nativue.NativuePlugin { <init>(); }

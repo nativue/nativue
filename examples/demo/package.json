@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@nativue/core": "*",
-    "@nativue/icons": "*"
+    "@nativue/haptics": "*",
+    "@nativue/icons": "*",
+    "@nativue/tailwind": "*"
   }
 }

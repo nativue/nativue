@@ -104,6 +104,8 @@ export interface NativeModule {
   log(message: string): void
   reportError(message: string, details: string): void
   windowSize(): { width: number; height: number }
+  platform(): 'ios' | 'android'
+  colorScheme(): 'light' | 'dark'
   create(id: number, type: string): void
   insert(parentId: number, childId: number, index: number): void
   remove(id: number): void

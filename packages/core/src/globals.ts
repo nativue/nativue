@@ -1,5 +1,6 @@
 // What the JavaScript engine has globally: the bridge, the hooks native calls into, and the web APIs
 // prelude.ts (timers, console) and fetch.ts provide. No DOM.
+import type { ColorScheme } from './appearance'
 import type { NativeModule } from './types'
 
 declare global {
@@ -7,6 +8,8 @@ declare global {
   var __dispatch: (nodeId: number, eventName: string, payload: unknown) => void
   var __openURL: (url: string) => void
   var __fireTimer: (timerId: number) => void
+  var __colorSchemeChanged: (colorScheme: ColorScheme) => void
+  var __asyncFunctionFinished: (callId: number, value: unknown, errorMessage: string | null) => void
   var __animationFinished: (animationId: number, finished: boolean) => void
   var __fetchFinished: (
     requestId: number,

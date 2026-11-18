@@ -2,6 +2,7 @@ package dev.nativue
 
 import android.app.Activity
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
 import android.view.ViewGroup
@@ -49,6 +50,12 @@ open class NativueActivity : Activity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         intent.data?.let { bridge.openURL(it.toString()) }
+    }
+
+    /** The manifest's configChanges keep the activity (and the JS state) through uiMode changes. */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        bridge.onConfigurationChanged()
     }
 
     /**

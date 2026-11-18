@@ -34,6 +34,8 @@ final class Bridge {
     private lazy var storage = KeyValueStorage(javaScriptQueue: javaScriptQueue)
     /// Set by LayoutAnimation.configureNext in JS; animates the batch it's sent with.
     private var nextLayoutAnimation: LayoutAnimation?
+    /// Appearance.getColorScheme(): read on the main thread at start, then kept up to date.
+    private var colorScheme = "light"
 
     // Only touched on the main thread.
     var rootView: RootView!
@@ -47,11 +49,25 @@ final class Bridge {
     /// The bundle running now, for the error overlay's Reload.
     private var bundle = Data()
     private let errorOverlay = ErrorOverlay()
+    private let pluginRegistry: PluginRegistry
+
+    init(plugins: [NativuePlugin]) {
+        pluginRegistry = PluginRegistry(plugins: plugins)
+    }
 
     func start(rootView: RootView) {
         self.rootView = rootView
         rootView.onLayoutSubviews = { [unowned self] in layout() }
-        windowSize = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.bounds.size ?? .zero
+        let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene
+        windowSize = windowScene?.screen.bounds.size ?? .zero
+        colorScheme = Self.colorScheme(of: windowScene?.traitCollection ?? rootView.traitCollection)
+        // start runs on the main thread, from makeUIView.
+        MainActor.assumeIsolated {
+            _ = rootView.registerForTraitChanges([UITraitUserInterfaceStyle.self]) {
+                [unowned self] (rootView: RootView, _: UITraitCollection) in
+                colorSchemeDidChange(to: Self.colorScheme(of: rootView.traitCollection))
+            }
+        }
 
         NotificationCenter.default.addObserver(forName: Self.openURLNotification, object: nil, queue: .main) {
             [unowned self] notification in
@@ -117,6 +133,26 @@ final class Bridge {
         for contentRoot in contentRootsByNodeId.values {
             (contentRoot as? ModalController)?.dismissIfDetached()
             contentRoot.layoutContent()
+        }
+    }
+
+    private func finishAsyncFunction(_ callId: Int, value: Any?, errorMessage: String?) {
+        evaluate { [unowned self] in
+            let arguments: [Any] = [callId, value ?? NSNull(), errorMessage ?? NSNull()]
+            runtime?.call("__asyncFunctionFinished", arguments: arguments)
+        }
+    }
+
+    private static func colorScheme(of traits: UITraitCollection) -> String {
+        traits.userInterfaceStyle == .dark ? "dark" : "light"
+    }
+
+    private func colorSchemeDidChange(to nextColorScheme: String) {
+        evaluate { [unowned self] in
+            guard nextColorScheme != colorScheme else { return }
+
+            colorScheme = nextColorScheme
+            runtime?.call("__colorSchemeChanged", arguments: [nextColorScheme])
         }
     }
 
@@ -187,6 +223,31 @@ final class Bridge {
         defineGetter("windowSize") { [unowned self] _ in
             ["width": windowSize.width, "height": windowSize.height]
         }
+
+        defineGetter("platform") { _ in "ios" }
+
+        // Prefixed, so a plugin can't replace nativue's own functions.
+        for (name, function) in pluginRegistry.functions {
+            defineGetter("plugin:\(name)", function)
+        }
+
+        // (callId, ...arguments): settles the call with __asyncFunctionFinished.
+        for (name, function) in pluginRegistry.asyncFunctions {
+            define("pluginAsync:\(name)") { [unowned self] arguments in
+                let callId = int(arguments[0])
+
+                Task {
+                    do {
+                        let value = try await function(Array(arguments.dropFirst()))
+                        finishAsyncFunction(callId, value: value, errorMessage: nil)
+                    } catch {
+                        finishAsyncFunction(callId, value: nil, errorMessage: error.localizedDescription)
+                    }
+                }
+            }
+        }
+
+        defineGetter("colorScheme") { [unowned self] _ in colorScheme }
 
         define("create") { [unowned self] arguments in
             let (id, type) = (int(arguments[0]), string(arguments[1]))
@@ -420,7 +481,14 @@ final class Bridge {
             return node
 
         default:
-            return NativeNode(view: UIView(), measuresContent: false)
+            guard let makeView = pluginRegistry.viewMakers[type] else {
+                return NativeNode(view: UIView(), measuresContent: false)
+            }
+
+            let view = makeView { [unowned self] eventName, payload in
+                dispatchEvent(eventName, toNodeId: id, payload: payload)
+            }
+            return NativeNode(view: view, measuresContent: false)
         }
     }
 
@@ -589,6 +657,11 @@ final class Bridge {
 
     private func setProp(_ key: String, value: Any?, onNodeId id: Int) {
         guard let node = nodesById[id] else { return }
+
+        if key != "style", let pluginView = node.view as? PluginView {
+            pluginView.setProp(key, value: value is NSNull ? nil : value)
+            return
+        }
 
         switch key {
         case "title":
