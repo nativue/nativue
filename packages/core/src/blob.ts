@@ -3,9 +3,13 @@
 // the last Blob that points to them: __blobCollector gives an object whose collection frees them.
 import { fromByteArray, toByteArray } from 'base64-js'
 import { EventTarget, ProgressEvent } from './events'
+import { ReadableStream } from './streams'
 import type { NativeBlob, NativeBlobPart } from './types'
 
 const native = globalThis.__native
+
+/** What stream() reads from native at a time. */
+const STREAM_CHUNK_SIZE = 64 * 1024
 
 export type BlobPart = string | ArrayBuffer | ArrayBufferView | Blob
 
@@ -59,6 +63,21 @@ export class Blob {
 
   async arrayBuffer(): Promise<ArrayBuffer> {
     return toByteArray(this.read('base64')).buffer as ArrayBuffer
+  }
+
+  /** The bytes in chunks, each read from native when the stream is read. */
+  stream(): ReadableStream<Uint8Array> {
+    let offset = 0
+
+    return new ReadableStream({
+      pull: (controller) => {
+        if (offset >= this.size) return controller.close()
+
+        const chunk = this.slice(offset, offset + STREAM_CHUNK_SIZE)
+        offset += chunk.size
+        controller.enqueue(toByteArray(chunk.read('base64')))
+      },
+    })
   }
 
   /** Synchronous: the bytes are in native memory. */

@@ -2,6 +2,7 @@
 // whatwg-fetch: that one checks for Blob, FileReader, FormData and URLSearchParams as it loads.
 import { Blob, File, FileReader } from './blob'
 import { AbortController, AbortSignal, Event, EventTarget, ProgressEvent } from './events'
+import { ReadableStream, ReadableStreamDefaultReader } from './streams'
 import { URL, URLSearchParams } from './url'
 import { FormData, XMLHttpRequest } from './xhr'
 
@@ -18,4 +19,6 @@ Object.assign(globalThis, {
   ProgressEvent,
   URL,
   URLSearchParams,
+  ReadableStream,
+  ReadableStreamDefaultReader,
 })

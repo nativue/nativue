@@ -102,6 +102,10 @@ declare global {
   type URL = import('./url').URL
   var URLSearchParams: typeof import('./url').URLSearchParams
   type URLSearchParams = import('./url').URLSearchParams
+  var ReadableStream: typeof import('./streams').ReadableStream
+  type ReadableStream<Chunk = Uint8Array> = import('./streams').ReadableStream<Chunk>
+  var ReadableStreamDefaultReader: typeof import('./streams').ReadableStreamDefaultReader
+  type ReadableStreamDefaultReader<Chunk> = import('./streams').ReadableStreamDefaultReader<Chunk>
   type RequestInit = import('./fetch').RequestInit
 }
 

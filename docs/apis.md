@@ -122,8 +122,20 @@ reader.readAsDataURL(photo)
 ```
 
 - `new Blob(parts, { type })` joins strings, `ArrayBuffer`s, typed arrays and other Blobs.
-- `size`, `type`, `slice()`, `text()` and `arrayBuffer()`; no `stream()`.
+- `size`, `type`, `slice()`, `text()`, `arrayBuffer()` and `stream()`.
 - `FileReader` reads as text (UTF-8 only), as a data URL, or as an `ArrayBuffer`.
+
+`stream()` gives the bytes as a `ReadableStream` of 64 KB `Uint8Array`s, each read from native memory
+only when you ask for it, so a large file never sits whole in JavaScript:
+
+```ts
+for await (const chunk of photo.stream()) {
+  hash.update(chunk)
+}
+```
+
+`ReadableStream` has `getReader()` (`read`, `cancel`, `releaseLock`), `cancel()`, `locked` and
+`for await`; not `pipeTo`, `pipeThrough`, `tee` or byte readers.
 
 To show a Blob in an [`Image`](components/image.md), give it an object URL. The URL keeps the Blob alive
 until you revoke it:

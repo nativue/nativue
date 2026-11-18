@@ -779,6 +779,37 @@ const dataUrl = await new Promise((resolve) => {
 })
 assert.equal(dataUrl, 'data:text/plain;base64,aGk=')
 
+// Blob.stream(): 64 KB chunks, read from native as they're asked for.
+const bigBlob = new Blob(['é'.repeat(50 * 1024)]) // 100 KB
+const streamReader = bigBlob.stream().getReader()
+const firstChunk = await streamReader.read()
+assert.equal(firstChunk.value.length, 64 * 1024)
+assert.equal((await streamReader.read()).value.length, 100 * 1024 - 64 * 1024)
+assert.deepEqual(await streamReader.read(), { done: true, value: undefined })
+
+let streamedLength = 0
+for await (const chunk of new Blob(['abc']).stream()) streamedLength += chunk.length
+assert.equal(streamedLength, 3)
+
+// Breaking out of the loop cancels the stream; a source can enqueue ahead of reads, or fail.
+const pushed = new ReadableStream({
+  start(controller) {
+    controller.enqueue('a')
+    controller.enqueue('b')
+    controller.close()
+  },
+})
+const pushedChunks = []
+for await (const chunk of pushed) pushedChunks.push(chunk)
+assert.deepEqual(pushedChunks, ['a', 'b'])
+assert.equal(pushed.locked, false)
+const failing = new ReadableStream({
+  pull: () => {
+    throw new Error('boom')
+  },
+})
+await assert.rejects(failing.getReader().read(), /boom/)
+
 // URL and URLSearchParams (Hermes has neither).
 const url = new URL('../b/./c?x=1&y=a+b#top', 'HTTPS://Example.com:443/a/z/index.html')
 assert.equal(url.href, 'https://example.com/a/b/c?x=1&y=a+b#top')
