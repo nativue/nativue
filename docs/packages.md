@@ -95,3 +95,43 @@ export const CameraView = defineComponent(
       h('CameraView', attrs),
 )
 ```
+
+## Native code in your app
+
+An app's own native code goes in `native/`, one folder per feature, with the same plugins as a
+package, without a `package.json` or a `build.gradle.kts`:
+
+```
+native/
+  battery/
+    ios/BatteryPlugin.swift
+    android/BatteryPlugin.kt
+```
+
+Each folder's plugin is named after it (`battery` → `BatteryPlugin`, `face-id` → `FaceIdPlugin`), and a
+folder with only `ios/` or `android/` adds it on that platform only:
+
+- **iOS:** a public class with a public `init()`, as above. The folder becomes the Swift module
+  `App<Name>` (`AppBattery`), so a folder named like a system framework (`photos`) doesn't hide it.
+- **Android:** a Kotlin or Java class with no `package` line, compiled into the app: it can use the
+  app's dependencies.
+
+```kotlin
+import android.content.Context
+import android.os.BatteryManager
+import dev.nativue.NativuePlugin
+import dev.nativue.PluginRegistry
+
+class BatteryPlugin : NativuePlugin {
+    override fun register(registry: PluginRegistry) {
+        val batteryManager = registry.context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+
+        registry.addFunction("battery.level") {
+            batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) / 100.0
+        }
+    }
+}
+```
+
+Native changes need the app rebuilt with `npm run ios` or `npm run android`, not just a reload. To turn
+a folder into a package later, move it out and add a `package.json` with its `"nativue"` field.

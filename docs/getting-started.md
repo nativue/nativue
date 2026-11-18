@@ -75,6 +75,7 @@ ios/               the iOS app (App.xcodeproj): App.swift shows NativueView()
   NativuePlugins/  generated: nativue and the iOS side of your native packages
 android/           the Android app: MainActivity extends NativueActivity
 nativue.config.ts  plugins, e.g. @nativue/tailwind (optional)
+native/            your own native code, a folder per feature (optional; see packages.md)
 AGENTS.md          rules for coding agents; CLAUDE.md points Claude Code at it
 ```
 

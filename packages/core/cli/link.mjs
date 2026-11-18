@@ -3,6 +3,7 @@
 // ios/NativuePlugins becomes a Swift package with a target per package (a link to its sources) and
 // `nativuePlugins`, the list App.swift passes to NativueView. The app's Xcode project depends on it
 // alone; it re-exports Nativue. (Android finds them itself: android/nativue.settings.gradle.kts.)
+// The app's own native code links the same way: native/<name>/ios, whose plugin is <Name>Plugin.
 import {
   existsSync,
   mkdirSync,
@@ -18,6 +19,7 @@ import { dirname, join, relative, resolve } from 'node:path'
 const PLUGINS_DIRECTORY = 'ios/NativuePlugins'
 const SOURCES_DIRECTORY = `${PLUGINS_DIRECTORY}/Sources`
 const LIST_TARGET = 'NativuePlugins'
+const APP_NATIVE_DIRECTORY = 'native'
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'))
@@ -51,6 +53,18 @@ function iosPlugins() {
     if (!ios) return []
 
     return [{ module: moduleName(name), sources: join(directory, ios.sources), plugin: ios.plugin }]
+  })
+}
+
+/** native/<name>/ios: module App<Name> (not <Name>, which could hide a system module like Photos). */
+function appPlugins() {
+  if (!existsSync(APP_NATIVE_DIRECTORY)) return []
+
+  return readdirSync(APP_NATIVE_DIRECTORY).flatMap((name) => {
+    const sources = resolve(APP_NATIVE_DIRECTORY, name, 'ios')
+    if (!existsSync(sources)) return []
+
+    return [{ module: `App${moduleName(name)}`, sources, plugin: `${moduleName(name)}Plugin` }]
   })
 }
 
@@ -120,7 +134,7 @@ public let nativuePlugins: [NativuePlugin] = [${instances}]
 export function linkIosPlugins(coreDirectory) {
   if (!existsSync('ios') || !existsSync('package.json')) return
 
-  const plugins = iosPlugins()
+  const plugins = [...iosPlugins(), ...appPlugins()]
   const corePath = relative(resolve(PLUGINS_DIRECTORY), coreDirectory)
 
   linkSources(plugins)

@@ -231,8 +231,9 @@ to Logcat on Android.
 
 ## Native functions
 
-Packages with native code expose functions to JavaScript; see
-[Writing a package with native code](packages.md#writing-a-package-with-native-code).
+Packages with native code, and the app's own in `native/`, expose functions to JavaScript; see
+[Writing a package with native code](packages.md#writing-a-package-with-native-code) and
+[Native code in your app](packages.md#native-code-in-your-app).
 
 ```ts
 import { requireNativeFunction } from 'vue'

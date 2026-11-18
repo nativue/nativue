@@ -89,6 +89,9 @@ Import the runtime from `vue`: `ref`, `computed`, `StyleSheet`, `Animated`, `Lay
 - Commands: `npm run ios` / `npm run android` build and open the app, then reload on save;
   `npm run typecheck` checks scripts and templates; `npm run build` makes the release bundle;
   `npm run format` formats with Prettier.
+- Native code the app needs (a platform API no package covers) goes in `native/<name>/ios` and
+  `native/<name>/android`, as `<Name>Plugin` classes registering functions JavaScript calls with
+  `requireNativeFunction`; see the docs' "Native code in your app". Rebuild after changing it.
 - Check changes with `npm run typecheck`. `ios/` and `android/` are the native host apps: change them
   only for native settings (permissions in `Info.plist` or `AndroidManifest.xml`, the app's name and
   icon).

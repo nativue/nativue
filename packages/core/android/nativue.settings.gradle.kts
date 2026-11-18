@@ -2,7 +2,9 @@
 // package.json has
 //   "nativue": { "android": { "sources": "android", "plugin": "dev.nativue.haptics.HapticsPlugin" } }
 // becomes modules the app depends on (sources: the folder with build.gradle.kts, which depends on
-// project(":nativue")). The plugin classes reach the app as the string resource nativue_plugins.
+// project(":nativue")). The app's own native code, native/<name>/android, is compiled into the app;
+// its plugin is <Name>Plugin, with no package. The plugin classes reach the app as the string resource
+// nativue_plugins.
 import groovy.json.JsonSlurper
 import java.io.File
 
@@ -36,8 +38,18 @@ fun androidPlugin(name: String, appDirectory: File): AndroidPlugin? {
     return AndroidPlugin(projectPath, android["plugin"] as String)
 }
 
+/** 'face-id' -> 'FaceId', as the CLI names the iOS side. */
+fun pascalCase(name: String): String =
+    name.split(Regex("[^a-zA-Z0-9]+")).filter { it.isNotEmpty() }.joinToString("") { it.replaceFirstChar(Char::uppercaseChar) }
+
 val appDirectory: File = settingsDir.parentFile
 val androidPlugins = dependencyNames(appDirectory).mapNotNull { name -> androidPlugin(name, appDirectory) }
+val appSourceDirectories = File(appDirectory, "native").listFiles().orEmpty()
+    .sortedBy { it.name }
+    .map { File(it, "android") }
+    .filter { it.isDirectory }
+val appPluginClasses = appSourceDirectories.map { pascalCase(it.parentFile.name) + "Plugin" }
+val pluginClasses = androidPlugins.map { it.pluginClass } + appPluginClasses
 
 // Through Groovy's dynamic calls: the Android Gradle plugin's types aren't on a settings script's classpath.
 gradle.beforeProject {
@@ -49,7 +61,15 @@ gradle.beforeProject {
         extensions.getByName("android").withGroovyBuilder {
             "getBuildFeatures"()!!.withGroovyBuilder { "setResValues"(true) }
             "getDefaultConfig"()!!.withGroovyBuilder {
-                "resValue"("string", "nativue_plugins", androidPlugins.joinToString(",") { it.pluginClass })
+                "resValue"("string", "nativue_plugins", pluginClasses.joinToString(","))
+            }
+            "getSourceSets"()!!.withGroovyBuilder {
+                "getByName"("main")!!.withGroovyBuilder {
+                    // Kotlin and Java: each source set compiles only its own language.
+                    listOf("getKotlin", "getJava").forEach { sourceSet ->
+                        sourceSet()!!.withGroovyBuilder { appSourceDirectories.forEach { "srcDir"(it) } }
+                    }
+                }
             }
         }
     }
