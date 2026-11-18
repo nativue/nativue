@@ -84,6 +84,13 @@ function createNode(type: string): Node {
   return { id: nextNodeId++, type, parent: null, children: [], text: '' }
 }
 
+// What native forgets with a removed subtree: Vue removes only its root.
+function nativeIdsIn(node: Node): number[] {
+  const ownId = isNativeNode(node) ? [node.id] : []
+
+  return [...ownId, ...node.children.flatMap(nativeIdsIn)]
+}
+
 // '#text' and '#comment' nodes only exist in JS (Vue anchors / raw text); native never sees them.
 function isNativeNode(node: Node): boolean {
   return !node.type.startsWith('#')
@@ -317,7 +324,7 @@ const { createApp: createBaseApp } = createRenderer<Node, Node>({
     const parent = detachFromParent(child)
     forgetSubtree(child)
 
-    if (isNativeNode(child)) native.remove(child.id)
+    if (isNativeNode(child)) native.remove(child.id, nativeIdsIn(child))
     else syncTextContent(parent)
   },
 

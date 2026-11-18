@@ -41,12 +41,8 @@ final class Bridge {
     var rootView: RootView!
     private var gestureReportersByNodeId: [Int: GestureReporter] = [:]
     private let animatedGraph = AnimatedGraph()
-    // Limitation: Children of a removed node stay in the dictionary; clean up recursively if memory leaks.
     var nodesById: [Int: NativeNode] = [:]
     /// Modals and screens: their content is laid out as a separate Yoga root.
-    // Limitation: Vue removes only a subtree's root, so the modals and screens inside a removed subtree stay
-    // here and are laid out on every pass; drop the detached ones on remove if navigators come and go.
-    // Likewise a sheet a <ScreenStack> presented stays up when a v-if removes the stack (a reload closes it).
     private var contentRootsByNodeId: [Int: ContentRoot] = [:]
     /// For Dimensions.get('window'): the screen's at start, then the root view's, kept on the JS queue.
     private var windowSize: CGSize = .zero
@@ -300,7 +296,8 @@ final class Bridge {
 
         define("remove") { [unowned self] arguments in
             let id = int(arguments[0])
-            enqueue { [unowned self] in removeNode(id: id) }
+            let subtreeIds = (arguments[1] as? [Any] ?? []).map(int)
+            enqueue { [unowned self] in removeNode(id: id, subtreeIds: subtreeIds) }
         }
 
         define("setText") { [unowned self] arguments in
@@ -410,16 +407,24 @@ final class Bridge {
     }
 
     /// A screen leaves through its stack, so the navigation controller animates it out.
-    private func removeNode(id: Int) {
-        guard let node = nodesById.removeValue(forKey: id) else { return }
+    private func removeNode(id: Int, subtreeIds: [Int]) {
+        guard let node = nodesById[id] else { return }
 
-        guard let screen = screenController(id) else {
+        if let screen = screenController(id) {
+            screen.container?.removeScreen(screen)
+        } else {
             node.removeFromParent()
-            return
         }
+        subtreeIds.forEach(forgetNode)
+    }
 
+    /// Its view left the tree: what refers to it by id goes too, and a modal or sheet inside closes.
+    private func forgetNode(id: Int) {
+        let node = nodesById.removeValue(forKey: id)
+        (node?.view as? ScreenStackView)?.dismissPresentedScreens()
+        modalController(id)?.dismissIfDetached()
         contentRootsByNodeId[id] = nil
-        screen.container?.removeScreen(screen)
+        gestureReportersByNodeId[id] = nil
     }
 
     private func modalController(_ id: Int) -> ModalController? {

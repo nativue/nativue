@@ -170,6 +170,13 @@ final class ScreenStackView: UIView, ScreenContainer, UINavigationControllerDele
         }
     }
 
+    /// The stack left the tree: the screens it presented close with it.
+    func dismissPresentedScreens() {
+        guard !modalNavigationControllers.isEmpty else { return }
+
+        dismissModals(from: 0)
+    }
+
     private func dismissModals(from index: Int) {
         let presenter = modalNavigationControllers[index].presentingViewController
         modalNavigationControllers.removeSubrange(index...)

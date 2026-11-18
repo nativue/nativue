@@ -340,7 +340,8 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         }
         put("remove") { arguments ->
             val id = int(arguments[0])
-            enqueue { nodesById[id]?.let(::removeNode) }
+            val subtreeIds = (arguments[1] as List<*>).map(::int)
+            enqueue { removeNode(id, subtreeIds) }
         }
         put("setText") { arguments ->
             val id = int(arguments[0])
@@ -536,24 +537,19 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     // ---------- Main thread ----------
 
     /** Vue removes only a subtree's root: the nodes under it are forgotten with it. */
-    private fun removeNode(root: NativeNode) {
-        val removedViews = mutableSetOf<View>()
-        collectViews(root.view, removedViews)
-        root.contentNode?.let { collectViews(it.view, removedViews) }
-
-        // Limitation: A nested <Modal>'s content isn't under the root's views, so its nodes stay; walk the
-        // modal hosts too if apps nest many. Hosts stay: layout dismisses the detached ones.
-        val removedIds = nodesById.filterValues { it.view in removedViews }.keys
-        removedIds.forEach { id ->
-            nodesById.remove(id)
-            gestureReportersByNodeId.remove(id)
-        }
-        root.removeFromParent()
+    private fun removeNode(id: Int, subtreeIds: List<Int>) {
+        nodesById[id]?.removeFromParent()
+        subtreeIds.forEach(::forgetNode)
     }
 
-    private fun collectViews(view: View, views: MutableSet<View>) {
-        views.add(view)
-        if (view is ViewGroup) (0 until view.childCount).forEach { collectViews(view.getChildAt(it), views) }
+    /** Its view left the tree: what refers to it by id goes too, and a modal inside closes. */
+    private fun forgetNode(id: Int) {
+        nodesById.remove(id)
+        gestureReportersByNodeId.remove(id)
+        modalHostsByNodeId.remove(id)?.let {
+            it.onEvent = {} // its "dismiss" would reach a node JS has forgotten
+            it.setVisible(false)
+        }
     }
 
     private fun resetNodeTree() {

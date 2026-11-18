@@ -110,7 +110,8 @@ export interface NativeModule {
   announce(message: string): void
   create(id: number, type: string): void
   insert(parentId: number, childId: number, index: number): void
-  remove(id: number): void
+  /** Detaches the view `id`; `subtreeIds` (it and every native descendant) are forgotten. */
+  remove(id: number, subtreeIds: number[]): void
   setProp(id: number, key: string, value: unknown): void
   setText(id: number, text: string): void
   setTimer(timerId: number, delay: number): void

@@ -44,7 +44,10 @@ globalThis.__native = {
     viewsById[parentId].children.splice(index, 0, childId)
   },
 
-  remove: (id) => detachEverywhere(id),
+  remove: (id, subtreeIds) => {
+    assert.ok(subtreeIds.includes(id))
+    detachEverywhere(id)
+  },
 
   // Style arrives as a diff, so merge it like the native side does.
   setProp: (id, key, value) => {
