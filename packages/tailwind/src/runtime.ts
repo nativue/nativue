@@ -1,5 +1,5 @@
 // The run-time side: gives `class` the styles converted when the app was built (index.mjs). A class
-// string is resolved once per state (color scheme, pressed) and cached.
+// string is resolved once per state (color scheme, pressed, focused, disabled) and cached.
 import {
   Appearance,
   Platform,
@@ -8,7 +8,7 @@ import {
   type TransformStep,
 } from '@nativue/core'
 
-type Condition = 'dark' | 'pressed' | 'ios' | 'android'
+type Condition = 'dark' | 'pressed' | 'focused' | 'disabled' | 'ios' | 'android'
 /**
  * [order, style, conditions]: the order of the utility's rule in Tailwind's CSS, where later rules
  * win, and the variant's conditions (dark:active:… has two), all of which must hold.
@@ -33,15 +33,17 @@ function mergeStyles(styles: Style[]): Style {
 export function registerClassStyles(classStyles: Record<string, ClassStyle>): void {
   const stylesByKey = new Map<string, Style>()
 
-  setClassStyleResolver((className, { pressed }) => {
+  setClassStyleResolver((className, { pressed, focused, disabled }) => {
     const colorScheme = Appearance.getColorScheme()
-    const key = `${colorScheme} ${pressed} ${className}`
+    const key = `${colorScheme} ${pressed} ${focused} ${disabled} ${className}`
     const cachedStyle = stylesByKey.get(key)
     if (cachedStyle) return cachedStyle
 
     const holds: Record<Condition, boolean> = {
       dark: colorScheme === 'dark',
       pressed,
+      focused,
+      disabled,
       ios: Platform.OS === 'ios',
       android: Platform.OS === 'android',
     }

@@ -90,10 +90,20 @@ const selectedPlan = ref('Pro')
 
     <Section
       title="Variants"
-      footer="active: while pressed, dark: with the system's dark mode, ios: and android: per platform."
+      footer="active: while pressed, focus: while typing, disabled: when disabled, dark: with the system's dark mode, ios: and android: per platform."
     >
       <Pressable class="items-center rounded-xl bg-brand py-3 active:scale-95 active:bg-ink">
         <Text class="font-semibold text-white">Press me</Text>
+      </Pressable>
+      <TextInput
+        placeholder="Focus me"
+        class="h-11 rounded-xl border-2 border-slate-200 px-3 focus:border-brand dark:border-slate-700 dark:focus:border-brand"
+      />
+      <Pressable
+        disabled
+        class="items-center rounded-xl bg-brand py-3 disabled:bg-slate-300 dark:disabled:bg-slate-700"
+      >
+        <Text class="font-semibold text-white">Disabled</Text>
       </Pressable>
       <View class="rounded-xl border border-slate-200 bg-white p-4 dark:border-ink dark:bg-ink">
         <Text class="text-slate-900 dark:text-mint">This card follows dark mode</Text>

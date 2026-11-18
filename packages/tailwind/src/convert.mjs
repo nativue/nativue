@@ -1,6 +1,6 @@
 // Turns the CSS Tailwind generates into nativue styles: each `.class { … }` utility becomes a style
 // object, with theme variables, calc() and colors resolved at build time. The variants native apps
-// have (dark:, active:, ios:, android:) become conditions; other variants, and CSS properties the
+// have (dark:, active:, focus:, disabled:, ios:, android:) become conditions; other variants, and CSS properties the
 // native views don't have, are reported instead.
 
 const ROOT_FONT_SIZE = 16 // rem, in points
@@ -59,14 +59,32 @@ function unescapeCss(text) {
   )
 }
 
+// The element states native apps have, by the pseudo-class Tailwind's variant uses.
+const CONDITION_BY_PSEUDO_CLASS = {
+  ':active': 'pressed',
+  ':focus': 'focused',
+  ':disabled': 'disabled',
+}
+const UTILITY_SELECTOR = new RegExp(
+  String.raw`^\.((?:\\[\s\S]|[^\\\s.:#[\]>+~,()*])+)((?:` +
+    Object.keys(CONDITION_BY_PSEUDO_CLASS).join('|') +
+    ')*)$',
+)
+
 /**
- * `.w-1\/2` -> { className: 'w-1/2' }, `.active\:p-2:active` -> { className, pressed: true }; null
- * for anything else (`.hover\:x:hover`, `:root`, `*`).
+ * `.w-1\/2` -> { className: 'w-1/2', states: [] }, `.active\:p-2:active` -> { className, states:
+ * ['pressed'] }; null for anything else (`.hover\:x:hover`, `:root`, `*`).
  */
 function utilitySelector(selector) {
-  const match = /^\.((?:\\[\s\S]|[^\\\s.:#[\]>+~,()*])+)(:active)?$/.exec(selector)
+  const match = UTILITY_SELECTOR.exec(selector)
+  if (!match) return null
 
-  return match ? { className: unescapeCss(match[1]), pressed: Boolean(match[2]) } : null
+  const pseudoClasses = match[2].match(/:[a-z]+/g) ?? []
+
+  return {
+    className: unescapeCss(match[1]),
+    states: pseudoClasses.map((pseudoClass) => CONDITION_BY_PSEUDO_CLASS[pseudoClass]),
+  }
 }
 
 /**
@@ -670,9 +688,9 @@ function convertRule(rule, globalLookup) {
 
 /**
  * The styles of every utility in `css`, keyed by class name: [order, style] or, for variants,
- * [order, style, conditions] ('dark', 'pressed', 'ios', 'android', all of which must hold). order is
- * the rule's place in the stylesheet: later rules win, as in CSS. `ignored` explains the classes that
- * produced nothing.
+ * [order, style, conditions] ('dark', 'pressed', 'focused', 'disabled', 'ios', 'android', all of
+ * which must hold). order is the rule's place in the stylesheet: later rules win, as in CSS.
+ * `ignored` explains the classes that produced nothing.
  */
 export function stylesFromCss(css) {
   const { items } = parseBlock(stripComments(css))
@@ -689,12 +707,12 @@ export function stylesFromCss(css) {
       const ruleClassName = utilityClassName(item.prelude)
       if (ruleClassName)
         ignored[ruleClassName] =
-          'only dark:, active:, ios: and android: variants are supported, and no child selectors'
+          'only dark:, active:, focus:, disabled:, ios: and android: variants are supported, and no child selectors'
       continue
     }
 
     const { style, unsupported } = convertRule(item, globalLookup)
-    const ruleConditions = utility.pressed ? [...conditions, 'pressed'] : conditions
+    const ruleConditions = [...conditions, ...utility.states]
 
     if (Object.keys(style).length === 0) {
       ignored[utility.className] = `${unsupported.join(', ') || 'nothing'} has no native equivalent`

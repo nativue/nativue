@@ -40,21 +40,25 @@ interface Node {
   text: string
   style?: Style | null
   className?: string
-  /** A <Pressable>'s pressed state, for its class's pressed styles (Tailwind's active:). */
+  /** The states its class's styles may depend on (Tailwind's active:, focus:, disabled:). */
   pressed?: boolean
+  focused?: boolean
+  disabled?: boolean
   classStyle?: Style
 }
 
+type ElementState = Pick<Node, 'pressed' | 'focused' | 'disabled'>
+
 type EventHandler = (payload: unknown) => void
-type ClassStyleResolver = (className: string, state: { pressed: boolean }) => Style
+type ClassStyleResolver = (className: string, state: Required<ElementState>) => Style
 
 const native = globalThis.__native
 let nextNodeId = 1
-// ponytail: handlers of removed nodes are never cleaned up; clean them on remove when it matters.
 const eventHandlersByNodeId: Record<number, Record<string, EventHandler | undefined>> = {}
 let resolveClassStyle: ClassStyleResolver | null = null
-// ponytail: a removed node leaves the set, its descendants stay; track them if apps churn many.
 const nodesWithClass = new Set<Node>()
+// For their focus state (focus:), which arrives as events by id.
+const textInputsById = new Map<number, Node>()
 
 /**
  * Gives `class` its styles, for a nativue.config plugin (@nativue/tailwind). Class styles may depend
@@ -71,6 +75,19 @@ function createNode(type: string): Node {
 // '#text' and '#comment' nodes only exist in JS (Vue anchors / raw text); native never sees them.
 function isNativeNode(node: Node): boolean {
   return !node.type.startsWith('#')
+}
+
+// Vue removes only the root of an unmounted subtree: its descendants go with it.
+function forgetSubtree(node: Node) {
+  nodesWithClass.delete(node)
+  textInputsById.delete(node.id)
+  delete eventHandlersByNodeId[node.id]
+  node.children.forEach(forgetSubtree)
+}
+
+// As the native side reads boolean props: a bare attribute (`disabled`) is '', true.
+function isTruthyAttribute(value: unknown): boolean {
+  return typeof value === 'string' ? value !== 'false' : value === true
 }
 
 function isEventProp(key: string): boolean {
@@ -151,11 +168,15 @@ function combinedStyle(element: Node): Style | null {
 function classStyleOf(element: Node): Style | undefined {
   if (!element.className || !resolveClassStyle) return undefined
 
-  return resolveClassStyle(element.className, { pressed: element.pressed ?? false })
+  return resolveClassStyle(element.className, {
+    pressed: element.pressed ?? false,
+    focused: element.focused ?? false,
+    disabled: element.disabled ?? false,
+  })
 }
 
-/** Applies a change to what makes up the style (style, class, pressed state), sending only the diff. */
-function updateStyle(element: Node, change: Pick<Node, 'style' | 'className' | 'pressed'>) {
+/** Applies a change to what makes up the style (style, class, state), sending only the diff. */
+function updateStyle(element: Node, change: Pick<Node, 'style' | 'className'> & ElementState) {
   const previousStyle = combinedStyle(element)
 
   Object.assign(element, change)
@@ -231,6 +252,7 @@ const { createApp: createBaseApp } = createRenderer<Node, Node>({
   createElement(type) {
     const element = createNode(type)
     native.create(element.id, type)
+    if (type === 'TextInput') textInputsById.set(element.id, element)
 
     return element
   },
@@ -269,7 +291,7 @@ const { createApp: createBaseApp } = createRenderer<Node, Node>({
 
   remove(child) {
     const parent = detachFromParent(child)
-    nodesWithClass.delete(child)
+    forgetSubtree(child)
 
     if (isNativeNode(child)) native.remove(child.id)
     else syncTextContent(parent)
@@ -289,6 +311,10 @@ const { createApp: createBaseApp } = createRenderer<Node, Node>({
     if (key === 'style') updateStyle(element, { style: nextValue })
     else if (key === 'class') updateStyle(element, { className: nextValue ?? undefined })
     else if (key === 'pressed') updateStyle(element, { pressed: nextValue })
+    else if (key === 'disabled') {
+      updateStyle(element, { disabled: isTruthyAttribute(nextValue) })
+      native.setProp(element.id, key, nextValue ?? null)
+    }
     // :on-pan="..." (v-bind, used for Animated.event) arrives kebab-case.
     else if (isEventProp(camelize(key))) {
       patchEventHandler(element, camelize(key), previousValue, nextValue, component ?? null)
@@ -304,11 +330,21 @@ const MODEL_EVENT_BY_NATIVE_EVENT: Record<string, string> = {
 }
 
 globalThis.__dispatch = (nodeId, eventName, payload) => {
+  updateFocus(nodeId, eventName)
+
   const handlers = eventHandlersByNodeId[nodeId]
   if (!handlers) return
 
   handlers[eventName]?.(payload)
   handlers[MODEL_EVENT_BY_NATIVE_EVENT[eventName]]?.(payload)
+}
+
+// A <TextInput>'s focus, for its class's focus: styles.
+function updateFocus(nodeId: number, eventName: string) {
+  const textInput = textInputsById.get(nodeId)
+  if (!textInput || (eventName !== 'focus' && eventName !== 'blur')) return
+
+  updateStyle(textInput, { focused: eventName === 'focus' })
 }
 
 const LAYOUT_ANIMATION_PRESETS = {

@@ -131,7 +131,17 @@ assert.match(ignored['z-10'], /z-index/)
 const platformVariants = `@custom-variant ios (@media (nativue-platform: ios));
 @custom-variant android (@media (nativue-platform: android));`
 const { entries: variantEntries, ignored: variantIgnored } = await stylesOf(
-  ['dark:p-1', 'active:p-2', 'ios:p-3', 'android:p-4', 'dark:active:p-5', 'md:p-6', 'focus:p-7'],
+  [
+    'dark:p-1',
+    'active:p-2',
+    'ios:p-3',
+    'android:p-4',
+    'dark:active:p-5',
+    'md:p-6',
+    'focus:p-7',
+    'disabled:p-8',
+    'focus-visible:p-9',
+  ],
   platformVariants,
 )
 const conditionsOf = (className) => variantEntries[className][2]
@@ -140,8 +150,10 @@ assert.deepEqual(conditionsOf('active:p-2'), ['pressed'])
 assert.deepEqual(conditionsOf('ios:p-3'), ['ios'])
 assert.deepEqual(conditionsOf('android:p-4'), ['android'])
 assert.deepEqual(conditionsOf('dark:active:p-5'), ['dark', 'pressed'])
+assert.deepEqual(conditionsOf('focus:p-7'), ['focused'])
+assert.deepEqual(conditionsOf('disabled:p-8'), ['disabled'])
 assert.deepEqual(variantEntries['dark:p-1'][1], { padding: 4 })
-assert.deepEqual(Object.keys(variantIgnored).sort(), ['focus:p-7', 'md:p-6'])
+assert.deepEqual(Object.keys(variantIgnored).sort(), ['focus-visible:p-9', 'md:p-6'])
 
 // ---------- Order and theme ----------
 

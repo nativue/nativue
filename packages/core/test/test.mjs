@@ -727,6 +727,19 @@ await settle()
 assert.equal(viewsById[pressMeId].style.backgroundColor, brandGreen)
 assert.equal(viewsById[pressMeId].style.transform, null)
 
+// focus: while the input has focus, disabled: on a disabled Pressable (which the native view gets too).
+const focusInputId = findViewId((view) => view.type === 'TextInput', tailwindId)
+assert.equal(viewsById[focusInputId].style.borderColor, processColor('#e2e8f0'))
+globalThis.__dispatch(focusInputId, 'focus')
+await settle()
+assert.equal(viewsById[focusInputId].style.borderColor, brandGreen)
+globalThis.__dispatch(focusInputId, 'blur')
+await settle()
+assert.equal(viewsById[focusInputId].style.borderColor, processColor('#e2e8f0'))
+const disabledId = pressableContaining('Disabled', tailwindId)
+assert.equal(viewsById[disabledId].props.disabled, true)
+assert.equal(viewsById[disabledId].style.backgroundColor, processColor('#cad5e2'))
+
 const darkCardId = findViewId(
   (view) =>
     view.children.some((childId) => viewsById[childId].text === 'This card follows dark mode'),

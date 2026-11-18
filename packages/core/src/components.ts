@@ -4,6 +4,7 @@ import {
   defineComponent,
   h,
   ref,
+  watch,
   type PropType,
   type SlotsType,
   type VNode,
@@ -14,15 +15,27 @@ type Listener = ((payload: unknown) => void) | undefined
 
 // Vue's template compiler normalizes `:style`, so it can't be a function of the pressed state: the pressed
 // look goes in `pressed-style`, merged over `style` while pressed. The slot also receives { pressed },
-// and the class its pressed styles (Tailwind's active:).
+// and the class its pressed styles (Tailwind's active:). A disabled one ignores touches.
 export const Pressable = defineComponent({
   name: 'Pressable',
   inheritAttrs: false,
-  props: { style: Object as PropType<Style>, pressedStyle: Object as PropType<Style> },
+  props: {
+    style: Object as PropType<Style>,
+    pressedStyle: Object as PropType<Style>,
+    disabled: Boolean,
+  },
   slots: Object as SlotsType<{ default: { pressed: boolean } }>,
 
   setup(props, { attrs, slots }) {
     const pressed = ref(false)
+
+    // Disabled mid-press, the native view may never send the pressout.
+    watch(
+      () => props.disabled,
+      (disabled) => {
+        if (disabled) pressed.value = false
+      },
+    )
 
     function setPressed(value: boolean, listener: Listener) {
       return (payload: unknown) => {
@@ -40,6 +53,7 @@ export const Pressable = defineComponent({
           ...attrs,
           style,
           pressed: pressed.value,
+          disabled: props.disabled || undefined, // unset, nothing to send
           onPressIn: setPressed(true, attrs.onPressIn as Listener),
           onPressOut: setPressed(false, attrs.onPressOut as Listener),
         },
@@ -57,6 +71,8 @@ const OFFSCREEN_ROWS_RENDERED = 10
 // variable heights are ever needed. Vertical only. The window ignores the header's height, which the
 // offscreen rows absorb while the header is shorter than them; measure it if tall headers show gaps.
 // ponytail: items are `any` in the #item slot; make FlatList generic if typed rows are wanted.
+// ponytail: an Animated.event `:on-scroll` replaces the window's own scroll handler, and a mapped event
+// reaches JS only when a scroll starts and ends; report frames to both natively if that's needed.
 export const FlatList = defineComponent({
   name: 'FlatList',
   props: {

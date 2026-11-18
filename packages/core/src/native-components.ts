@@ -46,7 +46,10 @@ declare module '@vue/runtime-core' {
         keyboardType?: 'default' | 'numeric' | 'decimal-pad' | 'email-address' | 'phone-pad' | 'url'
         secureTextEntry?: boolean
         onChangeText?: (text: string) => void
+        disabled?: boolean
         onSubmitEditing?: (text: string) => void
+        onFocus?: () => void
+        onBlur?: () => void
       }
     >
     Image: NativeComponent<{

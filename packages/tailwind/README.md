@@ -37,6 +37,8 @@ export default defineConfig({
 ## Variants
 
 - `active:` while a `<Pressable>` is pressed: `class="bg-brand active:bg-ink active:scale-95"`
+- `focus:` while a `<TextInput>` has focus: `class="border-slate-200 focus:border-brand"`
+- `disabled:` on a disabled `<Pressable>` or `<TextInput>`: `disabled:bg-slate-300`
 - `dark:` in the system's dark mode, switching live with it
 - `ios:` and `android:` on one platform
 - combined: `dark:active:bg-black`
