@@ -4,6 +4,9 @@
 // `nativuePlugins`, the list App.swift passes to NativueView. The app's Xcode project depends on it
 // alone; it re-exports Nativue. (Android finds them itself: android/nativue.settings.gradle.kts.)
 // The app's own native code links the same way: native/<name>/ios, whose plugin is <Name>Plugin.
+// Swift packages the native code uses are listed in "ios": { "dependencies": [...] }, in the
+// package.json's "nativue" field or native/<name>/nativue.json:
+//   { "url": "https://github.com/stripe/stripe-ios-spm", "from": "24.0.0", "products": ["StripePaymentSheet"] }
 import {
   existsSync,
   mkdirSync,
@@ -52,7 +55,14 @@ function iosPlugins() {
     const ios = directory && readJson(join(directory, 'package.json')).nativue?.ios
     if (!ios) return []
 
-    return [{ module: moduleName(name), sources: join(directory, ios.sources), plugin: ios.plugin }]
+    return [
+      {
+        module: moduleName(name),
+        sources: join(directory, ios.sources),
+        plugin: ios.plugin,
+        dependencies: ios.dependencies ?? [],
+      },
+    ]
   })
 }
 
@@ -64,7 +74,17 @@ function appPlugins() {
     const sources = resolve(APP_NATIVE_DIRECTORY, name, 'ios')
     if (!existsSync(sources)) return []
 
-    return [{ module: `App${moduleName(name)}`, sources, plugin: `${moduleName(name)}Plugin` }]
+    const settingsPath = join(APP_NATIVE_DIRECTORY, name, 'nativue.json')
+    const settings = existsSync(settingsPath) ? readJson(settingsPath) : {}
+
+    return [
+      {
+        module: `App${moduleName(name)}`,
+        sources,
+        plugin: `${moduleName(name)}Plugin`,
+        dependencies: settings.ios?.dependencies ?? [],
+      },
+    ]
   })
 }
 
@@ -95,12 +115,37 @@ function linkSources(plugins) {
   }
 }
 
+/** SwiftPM's identity of a package: the last part of its URL, without .git, lowercased. */
+function packageIdentity(url) {
+  return url
+    .replace(/\.git$/, '')
+    .split('/')
+    .pop()
+    .toLowerCase()
+}
+
+/** One `.package` per URL: the first plugin to list a package sets its version. */
+function swiftPackages(plugins) {
+  const versionsByUrl = new Map()
+  plugins.forEach(({ dependencies }) =>
+    dependencies.forEach(({ url, from }) => versionsByUrl.has(url) || versionsByUrl.set(url, from)),
+  )
+
+  return [...versionsByUrl].map(
+    ([url, from]) => `        .package(url: "${url}", from: "${from}"),\n`,
+  )
+}
+
 function packageManifest(plugins, corePath) {
   const nativue = '.product(name: "Nativue", package: "core")'
-  const pluginTargets = plugins.map(
-    ({ module }) =>
-      `        .target(name: "${module}", dependencies: [${nativue}], path: "Sources/${module}"),\n`,
-  )
+  const pluginTargets = plugins.map(({ module, dependencies }) => {
+    const products = dependencies.flatMap(({ url, products }) =>
+      products.map((product) => `.product(name: "${product}", package: "${packageIdentity(url)}")`),
+    )
+    const targetDependencies = [nativue, ...products].join(', ')
+
+    return `        .target(name: "${module}", dependencies: [${targetDependencies}], path: "Sources/${module}"),\n`
+  })
   const listDependencies = [nativue, ...plugins.map(({ module }) => `"${module}"`)].join(', ')
 
   return `// swift-tools-version: 5.9
@@ -111,7 +156,9 @@ let package = Package(
     name: "NativuePlugins",
     platforms: [.iOS(.v17)],
     products: [.library(name: "NativuePlugins", targets: ["${LIST_TARGET}"])],
-    dependencies: [.package(path: "${corePath}")],
+    dependencies: [
+        .package(path: "${corePath}"),
+${swiftPackages(plugins).join('')}    ],
     targets: [
 ${pluginTargets.join('')}        .target(name: "${LIST_TARGET}", dependencies: [${listDependencies}], path: "Sources/${LIST_TARGET}"),
     ]

@@ -133,5 +133,27 @@ class BatteryPlugin : NativuePlugin {
 }
 ```
 
+Libraries the native code uses go in the folder's `nativue.json`: Swift packages for iOS, Maven
+libraries for Android (from Google's Maven and Maven Central).
+
+```json
+{
+  "ios": {
+    "dependencies": [
+      {
+        "url": "https://github.com/apple/swift-collections",
+        "from": "1.1.0",
+        "products": ["DequeModule"]
+      }
+    ]
+  },
+  "android": { "dependencies": ["com.google.code.gson:gson:2.11.0"] }
+}
+```
+
+A package lists its Swift packages the same way, in `"nativue": { "ios": { "dependencies": [...] } }`;
+its Android libraries go in its `build.gradle.kts`.
+
 Native changes need the app rebuilt with `npm run ios` or `npm run android`, not just a reload. To turn
-a folder into a package later, move it out and add a `package.json` with its `"nativue"` field.
+a folder into a package later, move it out and add a `package.json` with its `"nativue"` field (and,
+for Android libraries, a `build.gradle.kts`).

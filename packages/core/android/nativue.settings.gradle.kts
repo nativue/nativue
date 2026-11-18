@@ -3,8 +3,9 @@
 //   "nativue": { "android": { "sources": "android", "plugin": "dev.nativue.haptics.HapticsPlugin" } }
 // becomes modules the app depends on (sources: the folder with build.gradle.kts, which depends on
 // project(":nativue")). The app's own native code, native/<name>/android, is compiled into the app;
-// its plugin is <Name>Plugin, with no package. The plugin classes reach the app as the string resource
-// nativue_plugins.
+// its plugin is <Name>Plugin, with no package, and native/<name>/nativue.json can list the Maven
+// libraries it uses: { "android": { "dependencies": ["com.squareup.okhttp3:okhttp:4.12.0"] } }.
+// The plugin classes reach the app as the string resource nativue_plugins.
 import groovy.json.JsonSlurper
 import java.io.File
 
@@ -49,6 +50,12 @@ val appSourceDirectories = File(appDirectory, "native").listFiles().orEmpty()
     .map { File(it, "android") }
     .filter { it.isDirectory }
 val appPluginClasses = appSourceDirectories.map { pascalCase(it.parentFile.name) + "Plugin" }
+val appLibraries = appSourceDirectories
+    .map { File(it.parentFile, "nativue.json") }
+    .filter { it.isFile }
+    .flatMap { ((readJson(it)["android"] as? Map<*, *>)?.get("dependencies") as? List<*>).orEmpty() }
+    .map { it.toString() }
+    .distinct()
 val pluginClasses = androidPlugins.map { it.pluginClass } + appPluginClasses
 
 // Through Groovy's dynamic calls: the Android Gradle plugin's types aren't on a settings script's classpath.
@@ -57,6 +64,7 @@ gradle.beforeProject {
 
     pluginManager.withPlugin("com.android.application") {
         androidPlugins.forEach { plugin -> dependencies.add("implementation", project(plugin.projectPath)) }
+        appLibraries.forEach { library -> dependencies.add("implementation", library) }
 
         extensions.getByName("android").withGroovyBuilder {
             "getBuildFeatures"()!!.withGroovyBuilder { "setResValues"(true) }

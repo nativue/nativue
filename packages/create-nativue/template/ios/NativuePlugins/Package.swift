@@ -6,7 +6,9 @@ let package = Package(
     name: "NativuePlugins",
     platforms: [.iOS(.v17)],
     products: [.library(name: "NativuePlugins", targets: ["NativuePlugins"])],
-    dependencies: [.package(path: "../../node_modules/@nativue/core")],
+    dependencies: [
+        .package(path: "../../node_modules/@nativue/core"),
+    ],
     targets: [
         .target(name: "NativuePlugins", dependencies: [.product(name: "Nativue", package: "core")], path: "Sources/NativuePlugins"),
     ]
