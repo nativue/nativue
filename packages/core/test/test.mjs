@@ -169,7 +169,7 @@ for (const { svg } of tabBarItems) {
   assert.ok(svg.elements.length > 0)
 }
 assert.equal(tabBar.props.selectedIndex, 0)
-assert.equal(tabBar.props.activeTintColor, processColor('#42b883'))
+assert.equal(tabBar.props.activeTintColor, processColor('#0e9f84'))
 assert.equal(tabBar.props.inactiveTintColor, processColor('#6e6e73'))
 
 // A page tab gets a single-screen stack for its header, hidden here.
@@ -252,7 +252,7 @@ assert.ok(tapCount(2))
 const customPressableId = pressableContaining('Custom Pressable', componentsId)
 press(customPressableId, 'pressin')
 await settle()
-assert.equal(viewsById[customPressableId].style.backgroundColor, processColor('#42b8831f'))
+assert.equal(viewsById[customPressableId].style.backgroundColor, processColor('#0e9f841f'))
 assert.ok(renderedTexts(customPressableId).includes('Pressing…'))
 
 press(customPressableId, 'pressout')
@@ -301,7 +301,7 @@ assert.equal(remoteImage.props.source, 'https://picsum.photos/id/1018/800/400') 
 const largeIndicator = renderedViewIds(componentsId)
   .map((id) => viewsById[id])
   .find((view) => view.type === 'ActivityIndicator' && view.props.size === 'large')
-assert.equal(largeIndicator.props.color, processColor('#42b883'))
+assert.equal(largeIndicator.props.color, processColor('#0e9f84'))
 
 // Icons (@nativue/icons/lucide) render the native <Svg> with the icon's elements.
 const icons = renderedViewIds(componentsId)
@@ -501,7 +501,7 @@ assert.equal(rootScreenIds().length, 2)
 const modalProps = viewsById[topRootScreenId()].props
 assert.equal(modalProps.stackPresentation, 'modal') // from the root layout
 assert.equal(modalProps.title, 'Modal')
-assert.equal(modalProps.headerTintColor, processColor('#42b883')) // root screenOptions
+assert.equal(modalProps.headerTintColor, processColor('#0e9f84')) // root screenOptions
 assert.equal(focusCount(), '2')
 
 globalThis.__dispatch(topRootScreenId(), 'headeritempress', { side: 'right', index: 0 }) // Close
