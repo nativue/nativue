@@ -116,6 +116,12 @@ function descendantOfType(rootId, type) {
   return findViewId((view) => view.type === type && view !== viewsById[rootId], rootId)
 }
 
+// Pressable keeps a quick tap's pressed style for 130ms.
+async function waitForPressRelease() {
+  await new Promise((resolve) => setTimeout(resolve, 150))
+  await settle()
+}
+
 function press(viewId, eventName = 'press') {
   globalThis.__dispatch(viewId, eventName)
 }
@@ -265,6 +271,8 @@ assert.ok(renderedTexts(customPressableId).includes('Pressing…'))
 press(customPressableId, 'pressout')
 press(customPressableId)
 await settle()
+assert.ok(renderedTexts(customPressableId).includes('Pressing…')) // a quick tap stays visible
+await waitForPressRelease()
 assert.equal(viewsById[customPressableId].style.backgroundColor, null) // removed: native resets it
 assert.ok(tapCount(3))
 
@@ -723,7 +731,7 @@ await settle()
 assert.equal(viewsById[pressMeId].style.backgroundColor, inkColor)
 assert.deepEqual(viewsById[pressMeId].style.transform, [{ scale: 0.95 }])
 globalThis.__dispatch(pressMeId, 'pressout')
-await settle()
+await waitForPressRelease()
 assert.equal(viewsById[pressMeId].style.backgroundColor, brandGreen)
 assert.equal(viewsById[pressMeId].style.transform, null)
 

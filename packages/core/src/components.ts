@@ -3,6 +3,7 @@ import {
   computed,
   defineComponent,
   h,
+  onBeforeUnmount,
   ref,
   watch,
   type PropType,
@@ -12,6 +13,8 @@ import {
 import type { ScrollEvent, Style } from './types'
 
 type Listener = ((payload: unknown) => void) | undefined
+
+const MINIMUM_PRESSED_TIME = 130 // ms
 
 // Vue's template compiler normalizes `:style`, so it can't be a function of the pressed state: the pressed
 // look goes in `pressed-style`, merged over `style` while pressed. The slot also receives { pressed },
@@ -28,21 +31,38 @@ export const Pressable = defineComponent({
 
   setup(props, { attrs, slots }) {
     const pressed = ref(false)
+    let pressedAt = 0
+    let releaseTimeout: ReturnType<typeof setTimeout> | undefined
+
+    function release() {
+      clearTimeout(releaseTimeout)
+      pressed.value = false
+    }
 
     // Disabled mid-press, the native view may never send the pressout.
     watch(
       () => props.disabled,
       (disabled) => {
-        if (disabled) pressed.value = false
+        if (disabled) release()
       },
     )
 
-    function setPressed(value: boolean, listener: Listener) {
-      return (payload: unknown) => {
-        pressed.value = value
-        listener?.(payload)
-      }
+    function handlePressIn(payload: unknown) {
+      clearTimeout(releaseTimeout)
+      pressedAt = Date.now()
+      pressed.value = true
+      ;(attrs.onPressIn as Listener)?.(payload)
     }
+
+    // A quick tap would show the pressed style for less than a frame: keep it for a moment.
+    function handlePressOut(payload: unknown) {
+      const remainingTime = MINIMUM_PRESSED_TIME - (Date.now() - pressedAt)
+
+      releaseTimeout = setTimeout(release, Math.max(0, remainingTime))
+      ;(attrs.onPressOut as Listener)?.(payload)
+    }
+
+    onBeforeUnmount(() => clearTimeout(releaseTimeout))
 
     return () => {
       const style = pressed.value ? { ...props.style, ...props.pressedStyle } : props.style
@@ -54,8 +74,8 @@ export const Pressable = defineComponent({
           style,
           pressed: pressed.value,
           disabled: props.disabled || undefined, // unset, nothing to send
-          onPressIn: setPressed(true, attrs.onPressIn as Listener),
-          onPressOut: setPressed(false, attrs.onPressOut as Listener),
+          onPressIn: handlePressIn,
+          onPressOut: handlePressOut,
         },
         slots.default?.({ pressed: pressed.value }),
       )

@@ -47,6 +47,9 @@ final class VueScrollView: UIScrollView {
 
         contentInsetAdjustmentBehavior = .never // <SafeAreaView> handles it, or the prop
         alwaysBounceVertical = true
+        // UIKit holds a touch for 150ms to see if it scrolls: a quick tap on a device would send pressin and
+        // pressout together, and the pressed style never shows. touchesShouldCancel still lets drags scroll.
+        delaysContentTouches = false
 
         let tapRecognizer = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
         tapRecognizer.cancelsTouchesInView = false // buttons inside still receive their taps
