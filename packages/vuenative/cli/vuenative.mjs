@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 // The vuenative CLI, run from the app's folder:
 //   vuenative build                  bundles src/app/ into ios/App/main.bundle.js (and, with an android/
-//                                    folder, android/app/src/main/assets/main.bundle.js)
+//                                    folder, android/app/src/main/assets/main.bundle.js; Hermes bytecode
+//                                    with --production)
 //   vuenative dev                    rebuilds on save and tells the app (via SSE) to reload the bundle
 import { build } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import http from 'node:http'
+import { execFileSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { createSymbolicator } from './symbolicate.mjs'
 
@@ -36,15 +40,44 @@ function frameworkPath(relativePath) {
   return fileURLToPath(new URL(`../${relativePath}`, import.meta.url))
 }
 
-// The Android app packages its assets folder, so it gets a copy of the bundle.
-const copyBundleToAndroid = {
-  name: 'vuenative-android-bundle',
-  writeBundle() {
-    if (!existsSync('android')) return
+// hermesc ships with the hermes-compiler package, one binary per host system.
+const HERMESC_BY_PLATFORM = {
+  darwin: 'osx-bin/hermesc',
+  linux: 'linux64-bin/hermesc',
+  win32: 'win64-bin/hermesc.exe',
+}
 
-    mkdirSync(ANDROID_ASSETS_DIRECTORY, { recursive: true })
-    copyFileSync(BUNDLE_PATH, `${ANDROID_ASSETS_DIRECTORY}/main.bundle.js`)
-  },
+function hermescPath() {
+  const packageDirectory = dirname(
+    createRequire(import.meta.url).resolve('hermes-compiler/package.json'),
+  )
+
+  return `${packageDirectory}/hermesc/${HERMESC_BY_PLATFORM[process.platform]}`
+}
+
+// The Android app packages its assets folder, so it gets the bundle. A production one is compiled
+// to Hermes bytecode, which starts faster: no parsing when the app opens. The runtime tells
+// bytecode from source on its own, so the file keeps its name.
+function bundleForAndroid(mode) {
+  return {
+    name: 'vuenative-android-bundle',
+    writeBundle() {
+      if (!existsSync('android')) return
+
+      const androidBundlePath = `${ANDROID_ASSETS_DIRECTORY}/main.bundle.js`
+      mkdirSync(ANDROID_ASSETS_DIRECTORY, { recursive: true })
+
+      if (mode !== 'production') return copyFileSync(BUNDLE_PATH, androidBundlePath)
+
+      execFileSync(
+        hermescPath(),
+        ['-emit-binary', '-O', '-w', '-out', androidBundlePath, BUNDLE_PATH],
+        {
+          stdio: 'inherit',
+        },
+      )
+    },
+  }
 }
 
 function viteConfig({ mode, plugins = [], watch = null, sourcemap = false }) {
@@ -61,7 +94,7 @@ function viteConfig({ mode, plugins = [], watch = null, sourcemap = false }) {
           compilerOptions: { isCustomElement: (tag) => NATIVE_COMPONENT_TAGS.includes(tag) },
         },
       }),
-      copyBundleToAndroid,
+      bundleForAndroid(mode),
       ...plugins,
     ],
     // Compiled templates and app code import from 'vue': point them to the native renderer.

@@ -13,7 +13,8 @@ class JavaScriptRuntime(
     private val functionList = functions.values.toList()
     private var handle = create(functions.keys.toTypedArray())
 
-    fun evaluate(source: String, sourceURL: String) = evaluate(handle, source, sourceURL)
+    /** [bundle] is JavaScript (UTF-8) or Hermes bytecode; Hermes tells them apart. */
+    fun evaluate(bundle: ByteArray, sourceURL: String) = evaluate(handle, bundle, sourceURL)
 
     /** Calls a global function, if the bundle defined it. */
     fun call(functionName: String, vararg arguments: Any?) = call(handle, functionName, arrayOf(*arguments))
@@ -30,7 +31,7 @@ class JavaScriptRuntime(
 
     private external fun create(functionNames: Array<String>): Long
 
-    private external fun evaluate(handle: Long, source: String, sourceURL: String)
+    private external fun evaluate(handle: Long, bundle: ByteArray, sourceURL: String)
 
     private external fun call(handle: Long, functionName: String, arguments: Array<Any?>)
 

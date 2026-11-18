@@ -283,6 +283,26 @@ Runtime& runtimeOf(jlong handle) {
   return *reinterpret_cast<Runtime*>(handle);
 }
 
+// A copy of a Java byte[]: JavaScript source or Hermes bytecode. Hermes runs bytecode straight from
+// the buffer, so it keeps the buffer alive as long as it needs it.
+class ByteBuffer : public jsi::Buffer {
+ public:
+  ByteBuffer(JNIEnv* env, jbyteArray array) : bytes_(env->GetArrayLength(array)) {
+    env->GetByteArrayRegion(array, 0, static_cast<jsize>(bytes_.size()), reinterpret_cast<jbyte*>(bytes_.data()));
+  }
+
+  size_t size() const override {
+    return bytes_.size();
+  }
+
+  const uint8_t* data() const override {
+    return bytes_.data();
+  }
+
+ private:
+  std::vector<uint8_t> bytes_;
+};
+
 }  // namespace
 
 // ---------- JNI entry points (dev.vuenative.JavaScriptRuntime) ----------
@@ -338,9 +358,9 @@ Java_dev_vuenative_JavaScriptRuntime_create(JNIEnv* env, jobject owner, jobjectA
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_dev_vuenative_JavaScriptRuntime_evaluate(JNIEnv* env, jobject, jlong handle, jstring source, jstring sourceURL) {
+Java_dev_vuenative_JavaScriptRuntime_evaluate(JNIEnv* env, jobject, jlong handle, jbyteArray bundle, jstring sourceURL) {
   Runtime& runtime = runtimeOf(handle);
-  auto buffer = std::make_shared<jsi::StringBuffer>(toStdString(env, source));
+  auto buffer = std::make_shared<ByteBuffer>(env, bundle);
   std::string url = toStdString(env, sourceURL);
 
   runReportingErrors(runtime, [&] { runtime.hermes->evaluateJavaScript(buffer, url); });

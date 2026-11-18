@@ -17,6 +17,7 @@
   "dependencies": {
     "@vitejs/plugin-vue": "^6.0.11",
     "@vue/runtime-core": "^3.5.45",
+    "hermes-compiler": "260318099.0.8",
     "vite": "^8.3.8",
     "vue": "^3.5.45"
   },

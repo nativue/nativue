@@ -67,7 +67,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     var onCanGoBackChange: (canGoBack: Boolean) -> Unit = {}
     private var canGoBack = false
     /** The bundle running now, for the error screen's Reload. */
-    private var source = ""
+    private var bundle = ByteArray(0)
     private val errorOverlay = ErrorOverlay(activity)
 
     fun start() {
@@ -87,8 +87,8 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
             }
         })
 
-        val bundledSource = runCatching { activity.assets.open("main.bundle.js").reader().readText() }.getOrNull()
-        if (bundledSource != null) run(bundledSource)
+        val bundle = runCatching { activity.assets.open("main.bundle.js").use { it.readBytes() } }.getOrNull()
+        if (bundle != null) run(bundle)
         else check(isDebuggable) { "assets/main.bundle.js is missing: run `npm run build`, then build again" }
 
         if (isDebuggable) thread(isDaemon = true) { listenForReload() }
@@ -107,9 +107,12 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         evaluate { runtime?.call("__openURL", url) }
     }
 
-    /** Discards the current node tree and runtime, then runs the bundle from scratch. */
-    fun run(source: String) {
-        this.source = source
+    /**
+     * Discards the current node tree and runtime, then runs the bundle from scratch: JavaScript, or
+     * Hermes bytecode (production builds).
+     */
+    fun run(bundle: ByteArray) {
+        this.bundle = bundle
         errorOverlay.hide()
 
         evaluate {
@@ -117,7 +120,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
 
             runtime?.destroy()
             runtime = JavaScriptRuntime(nativeFunctions(), ::reportError)
-            runtime?.evaluate(source, "main.bundle.js")
+            runtime?.evaluate(bundle, "main.bundle.js")
         }
     }
 
@@ -369,7 +372,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
 
         thread {
             val symbolicatedDetails = symbolicated(details)
-            mainHandler.post { errorOverlay.show(message, symbolicatedDetails) { run(source) } }
+            mainHandler.post { errorOverlay.show(message, symbolicatedDetails) { run(bundle) } }
         }
     }
 
@@ -414,7 +417,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
 
                 connection.inputStream.bufferedReader().useLines { lines ->
                     lines.filter { it == "data: reload" }.forEach { _ ->
-                        val bundle = URL("$devServerURL/bundle.js").readText()
+                        val bundle = URL("$devServerURL/bundle.js").readBytes()
                         Log.i(TAG, "reload")
                         mainHandler.post { run(bundle) }
                     }

@@ -66,7 +66,8 @@ android {
 }
 
 dependencies {
-    // Same version as the vendored JSI headers in src/main/cpp/jsi.
+    // Same version as the vendored JSI headers in src/main/cpp/jsi, and as hermes-compiler in
+    // package.json: bytecode only runs on the Hermes that compiled it.
     implementation("com.facebook.hermes:hermes-android:260318099.0.8")
     implementation("com.facebook.yoga:yoga:3.2.1")
     implementation("com.facebook.soloader:soloader:0.10.5")
