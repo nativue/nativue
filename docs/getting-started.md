@@ -59,6 +59,7 @@ src/
   assets/          images and other files
   components/      shared components (optional)
   lib/             everything else: stores, theme, helpers (optional)
+  app.ts           sets the app up before it starts: Vue plugins like Pinia (optional)
   tailwind.css     the Tailwind theme, with @nativue/tailwind (optional)
 ios/               the iOS app (App.xcodeproj): App.swift shows NativueView()
   NativuePlugins/  generated: nativue and the iOS side of your native packages
@@ -74,6 +75,23 @@ nativue.config.ts  plugins, e.g. @nativue/tailwind (optional)
   `npm run typecheck` checks your templates too.
 - Images are imported like modules: `import logo from '@/assets/logo.png'`, then
   `<Image :source="logo" />`.
+
+### Vue plugins
+
+There's no `main.ts`: nativue creates the app from your routes. To install a Vue plugin (Pinia,
+TanStack Query, vue-i18n...), export a function from `src/app.ts`. It gets the app before it mounts:
+
+```ts
+// src/app.ts
+import type { App } from 'vue'
+import { createPinia } from 'pinia'
+import { VueQueryPlugin } from '@tanstack/vue-query'
+
+export default function setup(app: App) {
+  app.use(createPinia())
+  app.use(VueQueryPlugin)
+}
+```
 
 ## Errors
 
