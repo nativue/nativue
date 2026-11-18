@@ -43,6 +43,7 @@ await db.transaction(async (transaction) => {
 | `run(sql, parameters?)`                 | `{ changes, lastInsertId }`                                                  |
 | `all(sql, parameters?)`                 | the rows, as objects                                                         |
 | `get(sql, parameters?)`                 | the first row, or `null`                                                     |
+| `values(sql, parameters?)`              | the rows, as arrays in the columns' order: for ORMs                          |
 | `transaction(async (transaction) => …)` | commits when it resolves, rolls back when it throws                          |
 | `close()`                               | the next statement opens it again                                            |
 
@@ -55,3 +56,55 @@ await db.transaction(async (transaction) => {
 - Files are kept in the app's private storage (Application Support on iOS, `databases` on Android)
   and are removed with the app.
 - Integers beyond `Number.MAX_SAFE_INTEGER` lose precision: store them as text.
+
+## Drizzle
+
+[Drizzle ORM](https://orm.drizzle.team) works through its `sqlite-proxy` driver:
+
+```ts
+import { drizzle } from 'drizzle-orm/sqlite-proxy'
+import { SQLite } from '@nativue/sqlite'
+
+const database = SQLite.open('app.db')
+
+export const db = drizzle(async (sql, parameters, method) => {
+  if (method === 'run') {
+    await database.run(sql, parameters)
+    return { rows: [] }
+  }
+
+  const rows = await database.values(sql, parameters)
+  return { rows: method === 'get' ? rows[0] : rows }
+})
+```
+
+Queries, joins, `returning()`, and transactions (nested ones too) work as usual.
+
+Migrations from `drizzle-kit generate` (with `dialect: 'sqlite'`) go into the bundle with
+`import.meta.glob`; Drizzle's migrator for files needs `fs`, which apps don't have. This is what its
+migrator for bundled migrations does:
+
+```ts
+import journal from '../drizzle/meta/_journal.json'
+
+const files = import.meta.glob<string>('../drizzle/*.sql', {
+  query: '?raw',
+  import: 'default',
+  eager: true,
+})
+
+export async function migrate() {
+  const migrations = journal.entries.map((entry) => ({
+    sql: files[`../drizzle/${entry.tag}.sql`].split('--> statement-breakpoint'),
+    bps: entry.breakpoints,
+    folderMillis: entry.when,
+    hash: '',
+  }))
+
+  // `dialect` and `session` are left out of Drizzle's types
+  await (db as any).dialect.migrate(migrations, (db as any).session)
+}
+```
+
+Call `migrate()` before the first query, e.g. in `src/app.ts`. The pending migrations run once,
+together in a transaction.

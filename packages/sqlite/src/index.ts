@@ -61,6 +61,13 @@ export class Statements {
     return first ?? null
   }
 
+  /** The rows as arrays, in the columns' order: for ORMs, where joined tables share column names. */
+  async values(sql: string, parameters: Parameter[] = []): Promise<Value[][]> {
+    const { rows } = await this.query(sql, parameters)
+
+    return rows.map((row) => row.map(value))
+  }
+
   protected query(sql: string, parameters: Parameter[]): Promise<NativeResult> {
     return nativeQuery(this.name, sql, parameters.map(nativeParameter))
   }
