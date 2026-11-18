@@ -828,6 +828,26 @@ assert.equal(
 assert.equal(new URLSearchParams({ a: '1', b: 'two words' }).toString(), 'a=1&b=two+words')
 assert.throws(() => new URL('not a url'), TypeError)
 
+// A URLSearchParams body is sent as a form, with its Content-Type, from fetch and XMLHttpRequest.
+await fetch('https://example.com/login', {
+  method: 'POST',
+  body: new URLSearchParams({ user: 'ana', password: 'p&ss word' }),
+})
+assert.deepEqual(fetchRequests.at(-1).body, { string: 'user=ana&password=p%26ss+word' })
+assert.equal(
+  fetchRequests.at(-1).headers['content-type'],
+  'application/x-www-form-urlencoded;charset=UTF-8',
+)
+await sendXhr(() => {}, new URLSearchParams('a=1'))
+assert.deepEqual(fetchRequests.at(-1).headers, {
+  'content-type': 'application/x-www-form-urlencoded;charset=UTF-8',
+})
+await sendXhr(
+  (xhr) => xhr.setRequestHeader('Content-Type', 'text/plain'),
+  new URLSearchParams('a=1'),
+)
+assert.equal(fetchRequests.at(-1).headers['content-type'], 'text/plain')
+
 // An object URL shows a Blob in <Image>; it keeps the Blob alive until revoked.
 const imageBlob = new Blob(['png bytes'], { type: 'image/png' })
 const objectUrl = URL.createObjectURL(imageBlob.slice(4))

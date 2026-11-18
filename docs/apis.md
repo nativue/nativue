@@ -97,8 +97,8 @@ xhr.send(form)
 - `responseType`: `''` or `'text'`, `'json'`, `'arraybuffer'` or `'blob'`; not `'document'`.
 - `onprogress` gets the text as it arrives: `responseText` grows while the response downloads.
 - `timeout`, in milliseconds, fires `ontimeout`.
-- Bodies: text, `FormData`, a `Blob`, an `ArrayBuffer` or typed array, or `{ uri }` for a file on the
-  device.
+- Bodies: text, `FormData`, `URLSearchParams` (sent as a form), a `Blob`, an `ArrayBuffer` or typed
+  array, or `{ uri }` for a file on the device.
 - Cookies are sent and kept on the device, across launches (`withCredentials` is `true` by default;
   `false`, or fetch's `credentials: 'omit'`, neither sends nor keeps them). They're the same cookies
   as the app's web views.

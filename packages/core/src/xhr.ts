@@ -3,6 +3,7 @@
 import { fromByteArray, toByteArray } from 'base64-js'
 import { Blob, bytesOf, File } from './blob'
 import { Event, EventTarget, ProgressEvent } from './events'
+import { URLSearchParams } from './url'
 import type {
   NativeBlob,
   NativeFormDataPart,
@@ -91,12 +92,21 @@ export class FormData {
 }
 
 export type XMLHttpRequestBody =
-  string | FormData | Blob | ArrayBuffer | ArrayBufferView | { uri: string } | null | undefined
+  | string
+  | FormData
+  | URLSearchParams
+  | Blob
+  | ArrayBuffer
+  | ArrayBufferView
+  | { uri: string }
+  | null
+  | undefined
 
 function nativeBody(body: XMLHttpRequestBody): NativeRequestBody {
   if (body == null) return null
   if (typeof body === 'string') return { string: body }
   if (body instanceof FormData) return { formData: body.toNativeParts() }
+  if (body instanceof URLSearchParams) return { string: body.toString() }
   if (body instanceof Blob) return { blob: body.data }
   if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) {
     return { base64: fromByteArray(bytesOf(body)) }
@@ -239,6 +249,9 @@ export class XMLHttpRequest extends EventTarget {
 
     this.sent = true
     this.sentBody = body
+    if (body instanceof URLSearchParams && !('content-type' in this.requestHeaders)) {
+      this.requestHeaders['content-type'] = 'application/x-www-form-urlencoded;charset=UTF-8'
+    }
     const requestId = nextRequestId++
     this.requestId = requestId
     requestsById.set(requestId, this)
