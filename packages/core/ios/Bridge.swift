@@ -69,6 +69,11 @@ final class Bridge {
                 [unowned self] (rootView: RootView, _: UITraitCollection) in
                 colorSchemeDidChange(to: Self.colorScheme(of: rootView.traitCollection))
             }
+            _ = rootView.registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
+                [unowned self] (rootView: RootView, _: UITraitCollection) in
+                nodesById.values.forEach { $0.updateFont() }
+                rootView.setNeedsLayout()
+            }
         }
 
         NotificationCenter.default.addObserver(forName: Self.openURLNotification, object: nil, queue: .main) {
@@ -397,7 +402,18 @@ final class Bridge {
         contentRootsByNodeId[id] as? ScreenController
     }
 
+    /// Text views start at the platform's size, scaled to the system's text size like styled ones.
     private func makeNode(type: String, id: Int) -> NativeNode {
+        let node = makeUnstyledNode(type: type, id: id)
+        if let button = node.view as? UIButton, let systemFont = button.titleLabel?.font {
+            node.fontSize = systemFont.pointSize
+        }
+        node.updateFont()
+
+        return node
+    }
+
+    private func makeUnstyledNode(type: String, id: Int) -> NativeNode {
         switch type {
         case "Text":
             let label = UILabel()

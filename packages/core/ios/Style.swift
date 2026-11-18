@@ -96,9 +96,15 @@ extension NativeNode {
             fontWeight = fontWeights[String(describing: weightName)] ?? .regular
         }
 
-        // Limitation: A fixed size on both platforms, ignoring the system's text size; scale it (UIFontMetrics,
-        // sp on Android) when accessibility sizes matter.
-        let font = UIFont.systemFont(ofSize: fontSize, weight: fontWeight)
+        updateFont()
+    }
+
+    /// The node's font, scaled to the system's text size (Dynamic Type) like the platform's own text. Called
+    /// again when that size changes.
+    func updateFont() {
+        guard view is UILabel || view is UITextField || view is UIButton else { return }
+
+        let font = UIFontMetrics.default.scaledFont(for: UIFont.systemFont(ofSize: fontSize, weight: fontWeight))
         (view as? UILabel)?.font = font
         (view as? UITextField)?.font = font
         (view as? UIButton)?.titleLabel?.font = font

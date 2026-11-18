@@ -21,3 +21,7 @@ parts use separate `<Text>`s in a row.
 | `style` | `Style` | text styles: `color`, `fontSize`, `fontWeight`, `textAlign`, and any layout style |
 
 Without a `color`, text follows the system's light or dark appearance.
+
+`fontSize` follows the system's text size (Dynamic Type on iOS, font size on Android), like the
+platform's own text: at the default it's the size you set, and it grows or shrinks with the setting,
+live. Leave room for it: prefer flexbox to fixed heights around text.

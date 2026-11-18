@@ -111,8 +111,17 @@ private fun NativeNode.applyFont(changes: Map<String, Any?>) {
     changes["fontWeight"]?.let { weightName -> fontWeight = fontWeightOf(weightName) }
 
     val textView = view as? TextView ?: return
-    textView.setTextSize(TypedValue.COMPLEX_UNIT_DIP, fontSize)
     textView.typeface = Typeface.create(Typeface.DEFAULT, fontWeight, false)
+    updateFontSize()
+}
+
+/**
+ * In sp: scaled to the system's text size, like the platform's own text. Android converts sp when it's
+ * set, so this runs again when that size changes.
+ */
+fun NativeNode.updateFontSize() {
+    val textView = view as? TextView ?: return
+    textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSize)
 
     markContentChanged()
 }

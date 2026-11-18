@@ -647,7 +647,8 @@ private class TabItemView(context: Context) : LinearLayout(context) {
         clipChildren = false
 
         indicator.addView(icon, FrameLayout.LayoutParams(dp(24f), dp(24f), Gravity.CENTER))
-        badge.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+        // In dp: like iOS's, tab labels keep their size whatever the system's text size, so they fit the bar.
+        badge.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 11f)
         badge.setTextColor(0xFFFFFFFF.toInt())
         badge.gravity = Gravity.CENTER
         badge.setPadding(dp(4f), 0, dp(4f), 0)
@@ -663,7 +664,7 @@ private class TabItemView(context: Context) : LinearLayout(context) {
         indicator.clipChildren = false
         addView(indicator, LayoutParams(dp(64f), dp(32f)))
 
-        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f)
+        label.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 12f)
         label.typeface = Typeface.create(Typeface.DEFAULT, 500, false)
         label.gravity = Gravity.CENTER
         label.isSingleLine = true

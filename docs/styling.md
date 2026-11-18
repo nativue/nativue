@@ -86,7 +86,7 @@ inherit them from their parents.
 | Property     |                                                        |
 | ------------ | ------------------------------------------------------ |
 | `color`      | a color                                                |
-| `fontSize`   | a number                                               |
+| `fontSize`   | a number, scaled by the system's text size             |
 | `fontWeight` | `'normal'`, `'bold'`, `'100'` to `'900'`               |
 | `textAlign`  | `'auto'`, `'left'`, `'right'`, `'center'`, `'justify'` |
 

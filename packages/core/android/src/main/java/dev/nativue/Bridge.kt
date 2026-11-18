@@ -127,8 +127,40 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         null
     }
 
-    /** The system may have switched between light and dark: nativue's views repaint, then JS is told. */
     fun onConfigurationChanged() {
+        updateFontScale()
+        updateColorScheme()
+    }
+
+    private var fontScale = activity.resources.configuration.fontScale
+
+    /** The system's text size changed: text is sized again, and laid out again. */
+    private fun updateFontScale() {
+        val nextFontScale = activity.resources.configuration.fontScale
+        if (nextFontScale == fontScale) return
+
+        val nodeViews = nodesById.values.mapTo(HashSet()) { it.view }
+        rescaleText(activity.window.decorView, nodeViews, nextFontScale / fontScale)
+        fontScale = nextFontScale
+        nodesById.values.forEach { it.updateFontSize() }
+        rootView.requestLayout()
+    }
+
+    /**
+     * Headers set their text in sp once: scale it by as much as the system's text size changed. Text in dp
+     * (tab labels) keeps its size.
+     */
+    private fun rescaleText(view: View, nodeViews: Set<View>, ratio: Float) {
+        if (view is TextView && view !in nodeViews && view.textSizeUnit != TypedValue.COMPLEX_UNIT_DIP) {
+            view.setTextSize(TypedValue.COMPLEX_UNIT_PX, view.textSize * ratio)
+        }
+        if (view !is ViewGroup) return
+
+        for (index in 0 until view.childCount) rescaleText(view.getChildAt(index), nodeViews, ratio)
+    }
+
+    /** The system may have switched between light and dark: nativue's views repaint, then JS is told. */
+    private fun updateColorScheme() {
         if (!ThemeColors.update(activity)) return
 
         applyThemeColors(activity.window.decorView)
@@ -627,14 +659,14 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
 
     private fun makeTextView() = TextLabel(activity).apply {
         applyThemeColors()
-        setTextSize(TypedValue.COMPLEX_UNIT_DIP, 17f)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
         includeFontPadding = false
     }
 
     private fun makeTextInput(id: Int): TextInputView {
         val textInput = TextInputView(activity)
         textInput.background = null
-        textInput.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 17f)
+        textInput.setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
         textInput.applyThemeColors()
         textInput.isSingleLine = true
         textInput.gravity = Gravity.CENTER_VERTICAL
