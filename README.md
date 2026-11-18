@@ -1,11 +1,11 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset=".github/logo-horizontal-dark.svg" />
-    <img src=".github/logo-horizontal.svg" width="360" alt="vue-native" />
+    <img src=".github/logo-horizontal.svg" width="288" alt="nativue" />
   </picture>
 </p>
 
-# Vue Native
+# Nativue
 
 Vue rendering real native views on iOS and Android: a custom Vue renderer drives the platform's own
 views through a native bridge, with Yoga for flexbox layout. On iOS it runs in JavaScriptCore and
@@ -14,7 +14,7 @@ drives UIKit; on Android it runs in Hermes and drives Android views, with Materi
 ## Create an app
 
 ```sh
-npm create vue-native@latest my-app    # add -- --bundle-id com.company.myapp to set it now
+npm create nativue@latest my-app    # add -- --bundle-id com.company.myapp to set it now
 cd my-app
 npm install
 npm run dev                            # keep it running: rebuilds and reloads the app on save
@@ -39,25 +39,25 @@ The same code runs on both, and each looks native:
   iOS, a Material bottom sheet on Android.
 - Errors in development: the same red screen, with the stack mapped to your files.
 - SF Symbols (`tabBarIcon: 'house'`, `icon: 'gear'` on header items) are iOS-only; icons from
-  `vuenative-icons` draw on both.
+  `@nativue/icons` draw on both.
 - `tabBarBackgroundColor` applies on Android and iOS 18; iOS 26+ keeps its glass tab bar.
 
 ## Repository
 
 ```
-packages/vuenative/     the framework (npm package "vuenative")
+packages/core/          the framework (npm package "@nativue/core")
   src/                  runtime: renderer, router, Animated, AsyncStorage, fetch, types
   ios/ + Package.swift  iOS native side, a Swift Package (bridge, views, Yoga)
   android/              Android native side, a Gradle library (Hermes, JNI bridge, views, Yoga)
-  cli/                  `vuenative dev` and `vuenative build` (bundler + dev server)
+  cli/                  `nativue dev` and `nativue build` (bundler + dev server)
   test/                 runs the demo's bundle against a fake native side
-packages/vuenative-icons/  icon sets as components, drawn by the native <Svg>
-  src/lucide.ts         generated from lucide (`npm run generate -w vuenative-icons`)
-packages/create-vue-native/  `npm create vue-native`: copies template/ and fills in the app's names
-examples/demo/          an app, laid out like any Vue Native project
+packages/icons/         icon sets as components, drawn by the native <Svg>
+  src/lucide.ts         generated from lucide (`npm run generate -w @nativue/icons`)
+packages/create-nativue/ `npm create nativue`: copies template/ and fills in the app's names
+examples/demo/          an app, laid out like any Nativue project
 ```
 
-Icons: `import { HeartIcon } from 'vuenative-icons/lucide'`, then
+Icons: `import { HeartIcon } from '@nativue/icons/lucide'`, then
 `<HeartIcon :size="24" color="#ff3b30" :stroke-width="2" />`. Only the icons you import end up in
 the bundle.
 They also work as tab icons, `<Tabs.Screen :options="{ tabBarIcon: HouseIcon }" />`, and on header
@@ -72,14 +72,15 @@ src/
   assets/       images and other files
   components/   shared components (optional)
   lib/          everything else: stores, theme, helpers (optional)
-ios/            App.xcodeproj, the same in every app: App.swift shows VueNativeView()
-android/        the Android app, the same in every app: MainActivity extends VueNativeActivity
+ios/            App.xcodeproj, the same in every app: App.swift shows NativueView()
+android/        the Android app, the same in every app: MainActivity extends NativueActivity
 ```
 
 `@/` points at `src/` from anywhere: `import { colors } from '@/lib/theme'`.
 
 Code imports the runtime from `vue` (`ref`, `Animated`, `StyleSheet`...) and the router from
-`vuenative/router`. TypeScript is the default: `tsconfig.json` extends `vuenative/tsconfig.base.json`.
+`@nativue/core/router`. TypeScript is the default: `tsconfig.json` extends
+`@nativue/core/tsconfig.base.json`.
 
 ## Commands
 

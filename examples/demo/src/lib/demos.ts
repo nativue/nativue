@@ -8,7 +8,7 @@ import {
   HandIcon,
   ListChecksIcon,
   SparklesIcon,
-} from 'vuenative-icons/lucide'
+} from '@nativue/icons/lucide'
 import { colors } from './theme'
 
 export interface Demo {

@@ -1,0 +1,17 @@
+{
+  "name": "__PACKAGE_NAME__",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nativue dev",
+    "build": "nativue build --production",
+    "typecheck": "vue-tsc"
+  },
+  "dependencies": {
+    "@nativue/core": "__NATIVUE_VERSION__"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vue-tsc": "^3.3.14"
+  }
+}

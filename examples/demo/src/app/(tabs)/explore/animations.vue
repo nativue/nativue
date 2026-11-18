@@ -9,7 +9,7 @@ import {
   StyleSheet,
   type Style,
 } from 'vue'
-import { Stack } from 'vuenative/router'
+import { Stack } from '@nativue/core/router'
 import Page from '@/components/Page.vue'
 import PrimaryButton from '@/components/PrimaryButton.vue'
 import Section from '@/components/Section.vue'

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, StyleSheet } from 'vue'
-import { Stack, useFocusEffect, useRouter } from 'vuenative/router'
+import { Stack, useFocusEffect, useRouter } from '@nativue/core/router'
 import Page from '@/components/Page.vue'
 import PrimaryButton from '@/components/PrimaryButton.vue'
 import Section from '@/components/Section.vue'
@@ -37,7 +37,7 @@ const styles = StyleSheet.create({
     </Section>
 
     <Section title="Deep links" footer="The same path works as a URL from anywhere on the device.">
-      <Text :style="styles.code">vuenative://explore/gestures</Text>
+      <Text :style="styles.code">nativue://explore/gestures</Text>
       <Button title="Navigate to it" @press="router.navigate('/explore/gestures')" />
     </Section>
 

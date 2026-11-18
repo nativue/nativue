@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, LayoutAnimation, StyleSheet, watch, type Style } from 'vue'
-import { Link, Stack, useLocalSearchParams, useRouter } from 'vuenative/router'
+import { Link, Stack, useLocalSearchParams, useRouter } from '@nativue/core/router'
 import FieldRow from '@/components/FieldRow.vue'
 import Page from '@/components/Page.vue'
 import Section from '@/components/Section.vue'

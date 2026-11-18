@@ -1,11 +1,11 @@
 import SwiftUI
-import VueNative
+import Nativue
 
 @main
 struct MainApp: App {
     var body: some Scene {
         WindowGroup {
-            VueNativeView()
+            NativueView()
         }
     }
 }

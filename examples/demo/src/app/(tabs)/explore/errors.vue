@@ -1,7 +1,7 @@
 <!-- Each button breaks the app on purpose, to show the error screen of development builds. -->
 <script setup lang="ts">
 import { ref, StyleSheet } from 'vue'
-import { Stack } from 'vuenative/router'
+import { Stack } from '@nativue/core/router'
 import Page from '@/components/Page.vue'
 import PrimaryButton from '@/components/PrimaryButton.vue'
 import Section from '@/components/Section.vue'

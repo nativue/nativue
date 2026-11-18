@@ -15,5 +15,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "Demo"
 include(":app")
-include(":vuenative")
-project(":vuenative").projectDir = file("../../../packages/vuenative/android")
+include(":nativue")
+project(":nativue").projectDir = file("../../../packages/core/android")

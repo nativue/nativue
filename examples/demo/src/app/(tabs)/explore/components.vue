@@ -8,8 +8,8 @@ import {
   MessageCircleIcon,
   SettingsIcon,
   StarIcon,
-} from 'vuenative-icons/lucide'
-import { Stack } from 'vuenative/router'
+} from '@nativue/icons/lucide'
+import { Stack } from '@nativue/core/router'
 import logo from '@/assets/logo-mark.png'
 import FieldRow from '@/components/FieldRow.vue'
 import Page from '@/components/Page.vue'
@@ -106,7 +106,7 @@ const styles = StyleSheet.create({
       <Button title="Dismiss keyboard" @press="Keyboard.dismiss()" />
     </Section>
 
-    <Section title="Icons" footer="2,000+ Lucide icons from vuenative-icons, drawn natively.">
+    <Section title="Icons" footer="2,000+ Lucide icons from @nativue/icons, drawn natively.">
       <View :style="styles.iconRow">
         <component
           :is="coloredIcon.icon"

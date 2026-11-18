@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { StyleSheet } from 'vue'
-import { Stack, useLocalSearchParams, useRouter } from 'vuenative/router'
+import { Stack, useLocalSearchParams, useRouter } from '@nativue/core/router'
 import Page from '@/components/Page.vue'
 import PrimaryButton from '@/components/PrimaryButton.vue'
 import Section from '@/components/Section.vue'

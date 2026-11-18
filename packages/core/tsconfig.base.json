@@ -1,0 +1,20 @@
+{
+  "//": "Shared by apps: \"extends\": \"@nativue/core/tsconfig.base.json\". 'vue' is nativue's renderer.",
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "types": [],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "paths": {
+      "vue": ["./src/renderer.ts"],
+      "@nativue/core/router": ["./src/router.ts"],
+      "@/*": ["${configDir}/src/*"]
+    }
+  }
+}

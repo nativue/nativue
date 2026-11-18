@@ -1,0 +1,13 @@
+{
+  "name": "create-nativue",
+  "version": "0.1.0",
+  "description": "Creates a Nativue app: npm create nativue@latest my-app",
+  "type": "module",
+  "bin": {
+    "create-nativue": "index.mjs"
+  },
+  "files": [
+    "index.mjs",
+    "template"
+  ]
+}

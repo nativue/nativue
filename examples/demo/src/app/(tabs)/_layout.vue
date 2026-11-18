@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { LayoutGridIcon, SparklesIcon } from 'vuenative-icons/lucide'
-import { Tabs } from 'vuenative/router'
+import { LayoutGridIcon, SparklesIcon } from '@nativue/icons/lucide'
+import { Tabs } from '@nativue/core/router'
 import { colors } from '@/lib/theme'
 </script>
 

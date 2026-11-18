@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		AA0000000000000000000010 /* VueNative in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000012 /* VueNative */; };
+		AA0000000000000000000010 /* Nativue in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000012 /* Nativue */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,7 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				AA0000000000000000000010 /* VueNative in Frameworks */,
+				AA0000000000000000000010 /* Nativue in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -71,7 +71,7 @@
 			);
 			name = App;
 			packageProductDependencies = (
-				AA0000000000000000000012 /* VueNative */,
+				AA0000000000000000000012 /* Nativue */,
 			);
 			productName = App;
 			productReference = AA0000000000000000000001 /* App.app */;
@@ -97,7 +97,7 @@
 			mainGroup = AA0000000000000000000004;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				AA0000000000000000000011 /* XCLocalSwiftPackageReference "../../../packages/vuenative" */,
+				AA0000000000000000000011 /* XCLocalSwiftPackageReference "../../../packages/core" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = AA0000000000000000000005 /* Products */;
@@ -185,7 +185,7 @@
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Demo;
 				MARKETING_VERSION = 0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.vuenative.app;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.nativue.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -201,7 +201,7 @@
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Demo;
 				MARKETING_VERSION = 0.1;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.vuenative.app;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.nativue.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -231,16 +231,16 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		AA0000000000000000000011 /* XCLocalSwiftPackageReference "../../../packages/vuenative" */ = {
+		AA0000000000000000000011 /* XCLocalSwiftPackageReference "../../../packages/core" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = ../../../packages/vuenative;
+			relativePath = ../../../packages/core;
 		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		AA0000000000000000000012 /* VueNative */ = {
+		AA0000000000000000000012 /* Nativue */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = VueNative;
+			productName = Nativue;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

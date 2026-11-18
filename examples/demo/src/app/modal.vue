@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { StyleSheet } from 'vue'
-import { Stack, useRouter } from 'vuenative/router'
-import { AppWindowIcon } from 'vuenative-icons/lucide'
+import { Stack, useRouter } from '@nativue/core/router'
+import { AppWindowIcon } from '@nativue/icons/lucide'
 import IconTile from '@/components/IconTile.vue'
 import Page from '@/components/Page.vue'
 import PrimaryButton from '@/components/PrimaryButton.vue'

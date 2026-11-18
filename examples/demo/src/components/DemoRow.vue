@@ -1,8 +1,8 @@
 <!-- A row of the Explore catalog: opens its demo. -->
 <script setup lang="ts">
 import { StyleSheet } from 'vue'
-import { ChevronRightIcon } from 'vuenative-icons/lucide'
-import { Link } from 'vuenative/router'
+import { ChevronRightIcon } from '@nativue/icons/lucide'
+import { Link } from '@nativue/core/router'
 import type { Demo } from '@/lib/demos'
 import { colors, spacing } from '@/lib/theme'
 import IconTile from './IconTile.vue'

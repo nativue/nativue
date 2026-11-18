@@ -7,8 +7,8 @@ import {
   type PinchEvent,
   type RotateEvent,
 } from 'vue'
-import { MoveIcon, RotateCwIcon, ZoomInIcon } from 'vuenative-icons/lucide'
-import { Stack } from 'vuenative/router'
+import { MoveIcon, RotateCwIcon, ZoomInIcon } from '@nativue/icons/lucide'
+import { Stack } from '@nativue/core/router'
 import { cardShadow, colors, radius, spacing } from '@/lib/theme'
 
 // The gestures write these values natively, so the card follows the fingers without JS.

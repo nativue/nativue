@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    namespace = "dev.vuenative.demo"
+    namespace = "dev.nativue.demo"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "dev.vuenative.app"
+        applicationId = "dev.nativue.app"
         minSdk = 30
         targetSdk = 36
         versionCode = 1
@@ -21,5 +21,5 @@ android {
 }
 
 dependencies {
-    implementation(project(":vuenative"))
+    implementation(project(":nativue"))
 }

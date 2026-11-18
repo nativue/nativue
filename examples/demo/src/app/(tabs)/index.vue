@@ -14,8 +14,8 @@ import {
   SmartphoneIcon,
   SparklesIcon,
   ZapIcon,
-} from 'vuenative-icons/lucide'
-import { useRouter } from 'vuenative/router'
+} from '@nativue/icons/lucide'
+import { useRouter } from '@nativue/core/router'
 import logo from '@/assets/logo-mark.png'
 import IconTile from '@/components/IconTile.vue'
 import PrimaryButton from '@/components/PrimaryButton.vue'
@@ -208,7 +208,7 @@ onUnmounted(() => floatLoop.stop())
               <Image :source="logo" resize-mode="contain" :style="styles.logo" />
             </View>
           </View>
-          <Text :style="styles.kicker">WELCOME TO VUE NATIVE</Text>
+          <Text :style="styles.kicker">WELCOME TO NATIVUE</Text>
           <Text :style="styles.title">Vue, but truly native.</Text>
           <Text :style="styles.body">
             Write the Vue you already know. Ship real native apps for iOS and Android.

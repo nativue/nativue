@@ -3,12 +3,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vuenative dev",
-    "build": "vuenative build",
+    "dev": "nativue dev",
+    "build": "nativue build",
     "typecheck": "vue-tsc"
   },
   "dependencies": {
-    "vuenative": "*",
-    "vuenative-icons": "*"
+    "@nativue/core": "*",
+    "@nativue/icons": "*"
   }
 }

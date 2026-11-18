@@ -1,5 +1,5 @@
 {
-  "name": "vuenative-monorepo",
+  "name": "nativue-monorepo",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "npm run dev -w demo",
     "build": "npm run build -w demo",
-    "test": "npm test -w vuenative",
+    "test": "npm test -w @nativue/core",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "format": "prettier --write packages examples"
   },

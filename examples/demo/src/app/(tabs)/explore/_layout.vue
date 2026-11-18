@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Stack } from 'vuenative/router'
+import { Stack } from '@nativue/core/router'
 </script>
 
 <template>

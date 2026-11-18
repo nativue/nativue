@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, LayoutAnimation, ref, StyleSheet, type Style } from 'vue'
-import { CheckIcon, ChevronRightIcon, EyeIcon, EyeOffIcon, PlusIcon } from 'vuenative-icons/lucide'
-import { Stack, useRouter } from 'vuenative/router'
+import { CheckIcon, ChevronRightIcon, EyeIcon, EyeOffIcon, PlusIcon } from '@nativue/icons/lucide'
+import { Stack, useRouter } from '@nativue/core/router'
 import {
   createItem,
   createItems,

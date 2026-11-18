@@ -1,4 +1,4 @@
 {
-  "extends": "vuenative/tsconfig.base.json",
+  "extends": "@nativue/core/tsconfig.base.json",
   "include": ["src"]
 }

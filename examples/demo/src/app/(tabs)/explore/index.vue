@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { StyleSheet } from 'vue'
-import { Stack } from 'vuenative/router'
+import { Stack } from '@nativue/core/router'
 import logo from '@/assets/logo-horizontal.png'
 import DemoRow from '@/components/DemoRow.vue'
 import Page from '@/components/Page.vue'
@@ -13,7 +13,7 @@ const HIGHLIGHTS = [`${demoCount} demos`, '100% native', 'TypeScript']
 
 const styles = StyleSheet.create({
   brand: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  logo: { width: 101, height: 32 },
+  logo: { width: 81, height: 32 },
   platforms: {
     paddingHorizontal: 12,
     paddingVertical: 6,

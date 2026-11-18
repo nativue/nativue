@@ -1,7 +1,7 @@
 # App template
 
-`packages/create-vue-native/template/` is what every new app starts from. When a change to the
-framework (`packages/vuenative`, `packages/vuenative-icons`, the CLI) or to the demo's host app
+`packages/create-nativue/template/` is what every new app starts from. When a change to the
+framework (`packages/core`, `packages/icons`, the CLI) or to the demo's host app
 (`examples/demo/ios`, `package.json`, `tsconfig.json`) affects how an app is set up, update the
 template in the same change, for example:
 
@@ -12,8 +12,8 @@ template in the same change, for example:
 - a new platform folder (e.g. `android/`) or file every app needs
 
 Keep the demo's host app and the template's in step: they differ only in names and the path to the
-Swift package (`../../../packages/vuenative` in the demo, `../node_modules/vuenative` in the template).
+Swift package (`../../../packages/core` in the demo, `../node_modules/@nativue/core` in the template).
 
-After such a change, check a generated app still works end to end: `npm pack` vuenative, create an
-app with `node packages/create-vue-native/index.mjs` in the scratchpad, install the tarball, then
+After such a change, check a generated app still works end to end: `npm pack` @nativue/core, create an
+app with `node packages/create-nativue/index.mjs` in the scratchpad, install the tarball, then
 `npm run build`, `npm run typecheck` and an iOS build.

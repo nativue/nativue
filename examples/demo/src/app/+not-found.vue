@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { StyleSheet } from 'vue'
-import { Link, Stack, usePathname } from 'vuenative/router'
+import { Link, Stack, usePathname } from '@nativue/core/router'
 import Page from '@/components/Page.vue'
 import { colors } from '@/lib/theme'
 

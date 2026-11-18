@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { AsyncStorage, onMounted, onUnmounted, ref, StyleSheet } from 'vue'
-import { Stack } from 'vuenative/router'
+import { Stack } from '@nativue/core/router'
 import FieldRow from '@/components/FieldRow.vue'
 import Page from '@/components/Page.vue'
 import PrimaryButton from '@/components/PrimaryButton.vue'
