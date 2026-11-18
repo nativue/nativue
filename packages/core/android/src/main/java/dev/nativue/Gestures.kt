@@ -17,14 +17,14 @@ import kotlin.math.hypot
  * gesture's state ("began", "changed", "ended", "cancelled"), so it can move the view through its
  * style; with Animated.event the values move natively and JS only hears the start and the end.
  * Numbers are in dp (and dp per second); rotation in radians. Mirrors ios/GestureReporter.swift.
- * Limitation: Unlike on iOS, a parent doesn't see touches a child consumes (a <Pressable> inside a draggable
- * card); intercept moves past the touch slop if that's needed.
+ * It sees every touch on its view, children's included (see ContainerView.dispatchTouchEvent), so a
+ * <Pressable> inside a draggable card still lets the card be dragged.
  */
 class GestureReporter(
-    private val view: View,
+    private val view: ContainerView,
     private val report: (eventName: String, payload: Map<String, Any>) -> Unit,
     private val setAnimatedValue: (nodeId: Int, value: Double) -> Unit,
-) : View.OnTouchListener {
+) {
     private val reportedEvents = mutableSetOf<String>()
 
     /** From Animated.event: event field -> animated value id. */
@@ -50,17 +50,19 @@ class GestureReporter(
     private var lastRotation = 0f
     private var lastTime = 0L
 
+    /** Once a gesture is recognized, the view takes the touch from its children. */
+    val isRecognizing get() = isPanning || isPinching || isRotating
+
     fun setReporting(eventName: String, isReporting: Boolean) {
         if (isReporting) reportedEvents.add(eventName) else reportedEvents.remove(eventName)
-        view.setOnTouchListener(if (reportedEvents.isEmpty()) null else this)
+        view.gestureReporter = if (reportedEvents.isEmpty()) null else this
     }
 
     fun setAnimatedMapping(eventName: String, mapping: Map<String, Int>?) {
         if (mapping == null) animatedMappingsByEvent.remove(eventName) else animatedMappingsByEvent[eventName] = mapping
     }
 
-    @SuppressLint("ClickableViewAccessibility")
-    override fun onTouch(touchedView: View, event: MotionEvent): Boolean {
+    fun handle(event: MotionEvent) {
         val tracker = velocityTracker ?: VelocityTracker.obtain().also { velocityTracker = it }
         // Raw coordinates: moving the view with a transform doesn't skew the numbers.
         val rawEvent = MotionEvent.obtain(event).apply { setLocation(event.rawX, event.rawY) }
@@ -74,8 +76,6 @@ class GestureReporter(
             MotionEvent.ACTION_UP -> finish("ended")
             MotionEvent.ACTION_CANCEL -> finish("cancelled")
         }
-
-        return true
     }
 
     private fun track(event: MotionEvent) {

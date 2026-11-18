@@ -6,6 +6,7 @@ import {
   type PanEvent,
   type PinchEvent,
   type RotateEvent,
+  ref,
   StyleSheet,
 } from 'vue'
 import { MoveIcon, RotateCwIcon, ZoomInIcon } from '@nativue/icons/lucide'
@@ -17,6 +18,8 @@ const translationX = new Animated.Value(0)
 const translationY = new Animated.Value(0)
 const scale = new Animated.Value(1)
 const rotation = new Animated.Value(0)
+
+const tapCount = ref(0)
 
 const cardTransform = [
   { translateX: translationX },
@@ -53,7 +56,15 @@ const styles = computed(() =>
       shadowOpacity: 0.2,
     },
     cardTitle: { color: '#ffffff', fontSize: 34, fontWeight: '800' },
-    cardText: { color: '#ffffffcc', fontSize: 15, fontWeight: '600' },
+    cardButton: {
+      marginTop: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 6,
+      borderRadius: radius.medium,
+      backgroundColor: '#ffffff33',
+    },
+    cardButtonPressed: { backgroundColor: '#ffffff55' },
+    cardButtonText: { color: '#ffffff', fontSize: 15, fontWeight: '600' },
     hints: { flexDirection: 'row', gap: 10 },
     hint: {
       flexDirection: 'row',
@@ -110,11 +121,18 @@ const handleRotate = Animated.event<RotateEvent>(
       :on-rotate="handleRotate"
     >
       <Text :style="styles.cardTitle">Vue</Text>
-      <Text :style="styles.cardText">try me</Text>
+      <Pressable
+        :style="styles.cardButton"
+        :pressed-style="styles.cardButtonPressed"
+        @press="tapCount++"
+      >
+        <Text :style="styles.cardButtonText">Tapped {{ tapCount }}</Text>
+      </Pressable>
     </View>
 
     <Text :style="styles.footnote">
-      Gestures write into Animated values on the native side: no JS runs while you move it.
+      Gestures write into Animated values on the native side: no JS runs while you move it. A drag
+      that starts on the button moves the card too.
     </Text>
   </View>
 </template>

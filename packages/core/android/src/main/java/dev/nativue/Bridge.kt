@@ -781,7 +781,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
 
             "keyboardShouldPersistTaps" -> (view as? ScrollContainerView)?.dismissesKeyboardOnTap = (value as? String ?: "never") == "never"
 
-            "onPan", "onPinch", "onRotate" -> gestureReporter(id, view).setReporting(key.drop(2).lowercase(), isTruthyAttribute(value))
+            "onPan", "onPinch", "onRotate" -> gestureReporter(id, view)?.setReporting(key.drop(2).lowercase(), isTruthyAttribute(value))
 
             "animating" -> view.visibility = if (isTruthyAttribute(value)) View.VISIBLE else View.INVISIBLE
 
@@ -836,7 +836,8 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         val scrollView = view as? ScrollContainerView
         if (scrollView == null || eventName != "scroll") {
             val fieldsToNodeIds = mapping?.entries?.associate { (field, nodeId) -> field.toString() to int(nodeId) }
-            return gestureReporter(viewId, view).setAnimatedMapping(eventName, fieldsToNodeIds)
+            gestureReporter(viewId, view)?.setAnimatedMapping(eventName, fieldsToNodeIds)
+            return
         }
 
         if (mapping == null) {
@@ -852,13 +853,19 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         }
     }
 
-    private fun gestureReporter(id: Int, view: View): GestureReporter = gestureReportersByNodeId.getOrPut(id) {
+    /** Gestures are on <View>s, which are containers. */
+    private fun gestureReporter(id: Int, view: View): GestureReporter? {
+        if (view !is ContainerView) return null
+
+        return gestureReportersByNodeId.getOrPut(id) { makeGestureReporter(id, view) }
+    }
+
+    private fun makeGestureReporter(id: Int, view: ContainerView) =
         GestureReporter(
             view,
             report = { eventName, payload -> dispatchEvent(eventName, id, payload) },
             setAnimatedValue = { nodeId, value -> animatedGraph.setValue(value, nodeId) },
         )
-    }
 
     private fun reportScroll(node: NativeNode, id: Int): (Int, Int) -> Unit = { x, y ->
         val payload = mapOf(

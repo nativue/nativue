@@ -32,6 +32,35 @@ open class ContainerView(context: Context) : ViewGroup(context) {
         clipChildren = false
     }
 
+    /** Set while it reports @pan, @pinch or @rotate. */
+    var gestureReporter: GestureReporter? = null
+
+    /** A descendant took this touch (a scroll view scrolling, an inner gesture): its own gesture stands down. */
+    private var isTouchClaimedByChild = false
+
+    override fun requestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {
+        isTouchClaimedByChild = disallowIntercept
+        super.requestDisallowInterceptTouchEvent(disallowIntercept)
+    }
+
+    /**
+     * Children get each touch first, then the gesture sees it too, like iOS's gesture recognizers. Once
+     * the gesture is recognized, onInterceptTouchEvent takes the touch: the child gets a cancel (a
+     * <Pressable> doesn't fire @press).
+     */
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        val reporter = gestureReporter ?: return super.dispatchTouchEvent(event)
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) isTouchClaimedByChild = false
+
+        super.dispatchTouchEvent(event)
+        if (!isTouchClaimedByChild || reporter.isRecognizing) reporter.handle(event)
+
+        return true
+    }
+
+    override fun onInterceptTouchEvent(event: MotionEvent): Boolean =
+        gestureReporter?.isRecognizing == true || super.onInterceptTouchEvent(event)
+
     /** Without an exact size (inside a scroll view), the size set in its layout params. */
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
         setMeasuredDimension(
