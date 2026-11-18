@@ -39,10 +39,12 @@ private class Database(context: Context, name: String) {
     /** One statement at a time, off the JS and main threads. */
     private val executor: ExecutorService = Executors.newSingleThreadExecutor()
 
-    // Opened on the executor with the first statement, so a failure rejects that statement.
+    // Opened on the executor with the first statement, so a failure rejects that statement. Without
+    // localized collators, Android doesn't add its android_metadata table: the file is plain SQLite.
     private val connection by lazy {
-        if (name == ":memory:") SQLiteDatabase.create(null)
-        else SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(name).also { it.parentFile?.mkdirs() }, null)
+        val path = if (name == ":memory:") name else context.getDatabasePath(name).also { it.parentFile?.mkdirs() }.path
+        val flags = SQLiteDatabase.CREATE_IF_NECESSARY or SQLiteDatabase.NO_LOCALIZED_COLLATORS
+        SQLiteDatabase.openDatabase(path, null, flags)
     }
 
     fun query(sql: String, parameters: List<*>, promise: Promise) = executor.execute {
