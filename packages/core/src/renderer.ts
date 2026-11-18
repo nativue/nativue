@@ -21,7 +21,7 @@ import {
 import { animatedEventMapping, animatedStyleBinding, isAnimatedEvent } from './animated'
 import { Appearance } from './appearance'
 import { COLOR_PROPERTIES, processColor } from './colors'
-import { FlatList, ImageBackground, Pressable, Swipeable } from './components'
+import { FlatListComponent, ImageBackground, Pressable, Swipeable } from './components'
 import type { LayoutAnimationConfig, Style } from './types'
 export * from '@vue/runtime-core'
 export { AccessibilityInfo } from './accessibility'
@@ -509,7 +509,7 @@ export function createApp(rootComponent: Component) {
   app.config.errorHandler = reportVueError
 
   app.component('Pressable', Pressable)
-  app.component('FlatList', FlatList)
+  app.component('FlatList', FlatListComponent)
   app.component('Swipeable', Swipeable)
   app.component('ImageBackground', ImageBackground)
 

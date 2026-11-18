@@ -14,6 +14,10 @@ as smoothly as a short one.
 </FlatList>
 ```
 
+`item` (and the `key-extractor`'s argument) has the type of `data`'s elements: with `contacts` a
+`Contact[]`, `item` is a `Contact` in the template, and `npm run typecheck` catches a field it doesn't
+have.
+
 Rows size to their content: the list measures each one as it renders, and counts rows it hasn't
 rendered yet as the average of those it has. When every row has the same height, pass it as
 `item-height`, in points: the list then knows where each row is without measuring, and the scroll bar
@@ -34,7 +38,7 @@ It scrolls vertically, or sideways with `horizontal`: then rows are measured by 
 
 | Prop            | Type                                | Default   | Description                                                     |
 | --------------- | ----------------------------------- | --------- | --------------------------------------------------------------- |
-| `data`          | `any[]`                             | required  | the items                                                       |
+| `data`          | `Item[]`                            | required  | the items                                                       |
 | `horizontal`    | `boolean`                           | `false`   | scrolls sideways                                                |
 | `item-height`   | `number`                            | measured  | every row's height, when they're all the same                   |
 | `item-width`    | `number`                            | measured  | every row's width, when horizontal and they're all the same     |

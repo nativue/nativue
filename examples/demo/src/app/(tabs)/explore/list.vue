@@ -143,7 +143,7 @@ function refresh() {
     <FlatList
       :data="visibleItems"
       :item-height="ROW_HEIGHT"
-      :key-extractor="(item: Item) => item.id"
+      :key-extractor="(item) => item.id"
       :style="styles.list"
       :refreshing="refreshing"
       content-inset-adjustment-behavior="automatic"

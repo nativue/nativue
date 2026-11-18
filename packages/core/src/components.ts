@@ -8,6 +8,7 @@ import {
   ref,
   watch,
   type PropType,
+  type SetupContext,
   type SlotsType,
   type VNode,
 } from '@vue/runtime-core'
@@ -98,30 +99,32 @@ const ESTIMATED_ROW_LENGTH = 50
 // Limitation: Rows not rendered yet count as the average measured length, so jumping far (dragging the
 // scroll indicator) can shift the rows a few points once they're measured; anchor the scroll position
 // to the first visible row if that shows.
-// Limitation: Items are `any` in the #item slot; make FlatList generic if typed rows are wanted.
 // Limitation: An Animated.event `:on-scroll` replaces the window's own scroll handler, and a mapped event
 // reaches JS only when a scroll starts and ends; report frames to both natively if that's needed.
-export const FlatList = defineComponent({
-  name: 'FlatList',
-  props: {
-    data: { type: Array as PropType<any[]>, required: true },
-    horizontal: Boolean,
-    itemHeight: Number,
-    itemWidth: Number,
-    keyExtractor: {
-      type: Function as PropType<(item: any, index: number) => string | number>,
-      default: (_item: unknown, index: number) => index,
-    },
-    style: Object as PropType<Style>,
-  },
-  slots: Object as SlotsType<{
-    item: { item: any; index: number }
-    header?: {}
-    footer?: {}
-    empty?: {}
-  }>,
+// Generic: `item` in #item, and keyExtractor's, have the type of `data`'s elements.
+export interface FlatListProps<Item> {
+  data: Item[]
+  horizontal?: boolean
+  itemHeight?: number
+  itemWidth?: number
+  /** The row's key; its index by default. */
+  keyExtractor?: (item: Item, index: number) => string | number
+  style?: Style
+}
 
-  setup(props, { slots }) {
+type FlatListSlots<Item> = SlotsType<{
+  item: { item: Item; index: number }
+  header?: {}
+  footer?: {}
+  empty?: {}
+}>
+
+const defaultKey = (_item: unknown, index: number) => index
+
+/** FlatList as the renderer registers it; apps get the generic type below. */
+export const FlatListComponent = defineComponent(
+  <Item>(props: FlatListProps<Item>, { slots }: SetupContext<{}, FlatListSlots<Item>>) => {
+    const keyOf = (item: Item, index: number) => (props.keyExtractor ?? defaultKey)(item, index)
     const scrollPosition = ref(0)
     const viewportLength = ref(0)
     const headerLength = ref(0)
@@ -136,9 +139,7 @@ export const FlatList = defineComponent({
       const estimatedLength = averageOf(measuredLengths.values()) ?? ESTIMATED_ROW_LENGTH
       const lengths = props.data.map(
         (item, index) =>
-          fixedLength.value ??
-          measuredLengths.get(props.keyExtractor(item, index)) ??
-          estimatedLength,
+          fixedLength.value ?? measuredLengths.get(keyOf(item, index)) ?? estimatedLength,
       )
 
       return rowOffsets(lengths)
@@ -165,9 +166,9 @@ export const FlatList = defineComponent({
       viewportLength.value = length
     }
 
-    function renderRow(item: unknown, offset: number): VNode {
+    function renderRow(item: Item, offset: number): VNode {
       const index = start.value + offset
-      const key = props.keyExtractor(item, index)
+      const key = keyOf(item, index)
       const sizing = fixedLength.value
         ? { style: props.horizontal ? { width: fixedLength.value } : { height: fixedLength.value } }
         : { onLayout: (layout: LayoutEvent) => measuredLengths.set(key, lengthOf(layout)) }
@@ -217,7 +218,34 @@ export const FlatList = defineComponent({
       )
     }
   },
-})
+  {
+    name: 'FlatList',
+    // At runtime too: Boolean casting (a bare `horizontal` is true) and what isn't a prop falls through.
+    props: {
+      data: { type: Array as PropType<unknown[]>, required: true },
+      horizontal: Boolean,
+      itemHeight: Number,
+      itemWidth: Number,
+      keyExtractor: Function as PropType<(item: unknown, index: number) => string | number>,
+      style: Object as PropType<Style>,
+    },
+    slots: Object as FlatListSlots<unknown>,
+  },
+)
+
+type RowSlot<Scope> = (scope: Scope) => VNode[]
+
+// defineComponent settles Item when it's called (to unknown). Typed instead as a generic constructor,
+// which templates (vue-tsc) call with the props, inferring Item from `data`.
+export const FlatList = FlatListComponent as unknown as new <Item>(props: FlatListProps<Item>) => {
+  $props: FlatListProps<Item>
+  $slots: {
+    item: RowSlot<{ item: Item; index: number }>
+    header?: RowSlot<{}>
+    footer?: RowSlot<{}>
+    empty?: RowSlot<{}>
+  }
+}
 
 function averageOf(values: Iterable<number>): number | undefined {
   let sum = 0
