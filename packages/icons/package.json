@@ -1,6 +1,22 @@
 {
   "name": "@nativue/icons",
   "version": "0.1.0",
+  "description": "Icon sets for nativue apps, drawn natively",
+  "keywords": [
+    "vue",
+    "native",
+    "icons",
+    "lucide",
+    "nativue"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/nativue/nativue#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nativue/nativue.git",
+    "directory": "packages/icons"
+  },
+  "bugs": "https://github.com/nativue/nativue/issues",
   "type": "module",
   "exports": {
     "./lucide": "./src/lucide.ts"
@@ -14,5 +30,11 @@
   },
   "peerDependencies": {
     "@nativue/core": "*"
+  },
+  "files": [
+    "src"
+  ],
+  "publishConfig": {
+    "access": "public"
   }
 }

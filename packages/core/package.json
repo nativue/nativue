@@ -1,6 +1,23 @@
 {
   "name": "@nativue/core",
   "version": "0.1.0",
+  "description": "Vue rendering real native views on iOS and Android",
+  "keywords": [
+    "vue",
+    "native",
+    "ios",
+    "android",
+    "mobile",
+    "renderer"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/nativue/nativue#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nativue/nativue.git",
+    "directory": "packages/core"
+  },
+  "bugs": "https://github.com/nativue/nativue/issues",
   "type": "module",
   "bin": {
     "nativue": "cli/nativue.mjs"
@@ -24,5 +41,18 @@
   "devDependencies": {
     "typescript": "^5.9.3",
     "vue-tsc": "^3.3.14"
+  },
+  "files": [
+    "src",
+    "cli",
+    "ios",
+    "Package.swift",
+    "tsconfig.base.json",
+    "android/build.gradle.kts",
+    "android/consumer-rules.pro",
+    "android/src"
+  ],
+  "publishConfig": {
+    "access": "public"
   }
 }

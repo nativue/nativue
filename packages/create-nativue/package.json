@@ -2,6 +2,22 @@
   "name": "create-nativue",
   "version": "0.1.0",
   "description": "Creates a Nativue app: npm create nativue@latest my-app",
+  "keywords": [
+    "vue",
+    "native",
+    "ios",
+    "android",
+    "create",
+    "nativue"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/nativue/nativue#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nativue/nativue.git",
+    "directory": "packages/create-nativue"
+  },
+  "bugs": "https://github.com/nativue/nativue/issues",
   "type": "module",
   "bin": {
     "create-nativue": "index.mjs"
