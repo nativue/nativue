@@ -22,20 +22,25 @@ const sleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, mil
 
 // ---------- iOS ----------
 
+const iOSVersion = (device) => Number(device.runtime.match(/iOS-(\d+)/)?.[1] ?? 0)
+
+/** iOS simulators, the newest iOS first. */
 function simulators() {
   const { devices } = JSON.parse(run('xcrun', ['simctl', 'list', 'devices', 'available', '-j']))
 
-  return Object.entries(devices).flatMap(([runtime, runtimeDevices]) =>
-    runtimeDevices.map((device) => ({ ...device, runtime })),
-  )
+  return Object.entries(devices)
+    .flatMap(([runtime, runtimeDevices]) =>
+      runtimeDevices.map((device) => ({ ...device, runtime })),
+    )
+    .filter(iOSVersion)
+    .sort((first, second) => iOSVersion(second) - iOSVersion(first))
 }
 
-/** An iPhone, the newest iOS first: one already booted if there is one. */
+const iPhoneSimulators = () => simulators().filter((device) => device.name.startsWith('iPhone'))
+
+/** An iPhone on the newest iOS: one already booted if there is one. */
 function defaultSimulator() {
-  const iOSVersion = (device) => Number(device.runtime.match(/iOS-(\d+)/)?.[1] ?? 0)
-  const iPhones = simulators()
-    .filter((device) => device.name.startsWith('iPhone') && iOSVersion(device))
-    .sort((first, second) => iOSVersion(second) - iOSVersion(first))
+  const iPhones = iPhoneSimulators()
 
   if (iPhones.length === 0)
     throw new Error('No iPhone simulator found: add one in Xcode > Settings > Components.')
@@ -92,15 +97,17 @@ function pickIOSDevice(requested) {
     ...simulators().map((device) => ({ ...device, isSimulator: true })),
   ]
   const device = candidates.find(({ name, udid }) => name === requested || udid === requested)
-  if (!device)
-    throw new Error(
-      noDeviceMessage(
-        requested,
-        candidates.map(({ name, udid }) => `${name} (${udid})`),
-      ),
-    )
+  if (!device) throw new Error(noDeviceMessage(requested, suggestedIOSDevices(phones)))
 
   return device
+}
+
+/** The phones, and the iPhone simulators on the newest iOS: the whole list runs long. */
+function suggestedIOSDevices(phones) {
+  const iPhones = iPhoneSimulators()
+  const newestIPhones = iPhones.filter((device) => iOSVersion(device) === iOSVersion(iPhones[0]))
+
+  return [...phones, ...newestIPhones].map(({ name, udid }) => `${name} (${udid})`)
 }
 
 function noDeviceMessage(requested, available) {
