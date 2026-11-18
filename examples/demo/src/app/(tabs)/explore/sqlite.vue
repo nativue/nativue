@@ -99,7 +99,7 @@ onMounted(load)
         <Text
           :class="[
             'flex-1 text-base',
-            todo.done ? 'text-slate-400' : 'text-slate-900 dark:text-white',
+            todo.done ? 'text-slate-400 line-through' : 'text-slate-900 dark:text-white',
           ]"
         >
           {{ todo.title }}

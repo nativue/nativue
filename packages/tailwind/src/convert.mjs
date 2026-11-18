@@ -494,6 +494,10 @@ const KEYWORD_PROPERTIES = {
       end: 'right',
     },
   ],
+  'text-decoration-line': [
+    'textDecorationLine',
+    { none: 'none', underline: 'underline', 'line-through': 'line-through' },
+  ],
 }
 
 // Declarations Tailwind adds next to the ones that matter (border-style: solid with border-2).

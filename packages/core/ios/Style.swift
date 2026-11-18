@@ -80,9 +80,33 @@ extension NativeNode {
             (view as? UILabel)?.textAlignment = alignment
             (view as? UITextField)?.textAlignment = alignment
 
+        case "textDecorationLine":
+            textDecorationLine = value as? String ?? "none"
+            updateTextDecoration()
+
         default:
             break
         }
+    }
+
+    /// UILabel has no underline or strikethrough of its own: they're attributes of its text, which setting
+    /// `text` drops, so setText calls this again. Later font, color and alignment changes keep them.
+    func updateTextDecoration() {
+        guard let label = view as? UILabel, let text = label.text else { return }
+
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.alignment = label.textAlignment
+        paragraphStyle.lineBreakMode = label.lineBreakMode
+
+        var attributes: [NSAttributedString.Key: Any] = [
+            .font: label.font as Any,
+            .foregroundColor: label.textColor as Any,
+            .paragraphStyle: paragraphStyle,
+        ]
+        if textDecorationLine.contains("underline") { attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue }
+        if textDecorationLine.contains("line-through") { attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
+
+        label.attributedText = NSAttributedString(string: text, attributes: attributes)
     }
 
     /// Font size and weight can change independently, so the node remembers both.

@@ -24,6 +24,8 @@ final class NativeNode {
     var defaultFontSize: CGFloat = UIFont.labelFontSize
     var fontSize: CGFloat = UIFont.labelFontSize
     var fontWeight: UIFont.Weight = .regular
+    /// textDecorationLine: 'none', 'underline', 'line-through' or both.
+    var textDecorationLine = "none"
 
     /// Leaf nodes (Text, Button) measure their own content; containers are sized by their children.
     init(view: UIView, measuresContent: Bool) {

@@ -65,8 +65,8 @@ Spacing (`p-*`, `m-*`, `gap-*`, negative margins), sizing (`w-*`, `h-*`, `size-*
 `max-*`, fractions, `aspect-*`), flexbox (`flex-*`, `grow`, `shrink`, `basis-*`, `items-*`,
 `justify-*`, `self-*`, `content-*`), position (`absolute`, `inset-*`, `top-*`...), `hidden`,
 `overflow-*`, colors with opacity modifiers (`bg-*`, `text-*`, `border-*`), `border`,
-`rounded-*`, `opacity-*`, `text-{size}`, `font-{weight}`, `text-{align}`, `rotate-*`, `scale-*`,
-`translate-*`, `shadow-*` (its first shadow) and arbitrary values (`bg-[#ff0000]`, `w-[72px]`).
+`rounded-*`, `opacity-*`, `text-{size}`, `font-{weight}`, `text-{align}`, `underline`,
+`line-through`, `no-underline`, `rotate-*`, `scale-*`, `translate-*`, `shadow-*` (its first shadow) and arbitrary values (`bg-[#ff0000]`, `w-[72px]`).
 
 What native views have no equivalent for is left out, with a warning when the app is built: other
 variants (`hover:`, `md:`, `group-*`...), `space-*` and `divide-*` (they style children),

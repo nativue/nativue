@@ -83,12 +83,13 @@ Sizes are numbers (points), percentages (`'50%'`) or `'auto'`:
 These go on the [`<Text>`](components/text.md) (or the `<TextInput>`) itself: native views don't
 inherit them from their parents.
 
-| Property     |                                                        |
-| ------------ | ------------------------------------------------------ |
-| `color`      | a color                                                |
-| `fontSize`   | a number, scaled by the system's text size             |
-| `fontWeight` | `'normal'`, `'bold'`, `'100'` to `'900'`               |
-| `textAlign`  | `'auto'`, `'left'`, `'right'`, `'center'`, `'justify'` |
+| Property             |                                                                                      |
+| -------------------- | ------------------------------------------------------------------------------------ |
+| `color`              | a color                                                                              |
+| `fontSize`           | a number, scaled by the system's text size                                           |
+| `fontWeight`         | `'normal'`, `'bold'`, `'100'` to `'900'`                                             |
+| `textAlign`          | `'auto'`, `'left'`, `'right'`, `'center'`, `'justify'`                               |
+| `textDecorationLine` | `'none'`, `'underline'`, `'line-through'`, `'underline line-through'`; `<Text>` only |
 
 ## Colors
 

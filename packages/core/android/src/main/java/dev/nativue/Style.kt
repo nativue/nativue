@@ -1,5 +1,6 @@
 package dev.nativue
 
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.util.TypedValue
 import android.view.Gravity
@@ -65,7 +66,17 @@ private fun NativeNode.applyVisualProperty(property: String, value: Any?) {
             else -> androidColor(value)?.let { view?.setTextColor(it) }
         }
         "textAlign" -> textView?.gravity = textGravities[value] ?: Gravity.START
+        "textDecorationLine" -> textView?.let { it.paintFlags = decoratedPaintFlags(it.paintFlags, value as? String) }
     }
+}
+
+/** 'underline', 'line-through' or both: paint flags, which outlast text changes. */
+private fun decoratedPaintFlags(flags: Int, decorationLine: String?): Int {
+    val undecorated = flags and (Paint.UNDERLINE_TEXT_FLAG or Paint.STRIKE_THRU_TEXT_FLAG).inv()
+    val underline = if (decorationLine?.contains("underline") == true) Paint.UNDERLINE_TEXT_FLAG else 0
+    val lineThrough = if (decorationLine?.contains("line-through") == true) Paint.STRIKE_THRU_TEXT_FLAG else 0
+
+    return undecorated or underline or lineThrough
 }
 
 private fun NativeNode.updateBox(change: BoxDrawable.() -> Unit) {
