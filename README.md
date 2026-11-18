@@ -8,8 +8,8 @@
 # Nativue
 
 Vue rendering real native views on iOS and Android: a custom Vue renderer drives the platform's own
-views through a native bridge, with Yoga for flexbox layout. On iOS it runs in JavaScriptCore and
-drives UIKit; on Android it runs in Hermes and drives Android views, with Material 3 navigation.
+views through a native bridge, with Yoga for flexbox layout. The JavaScript runs in Hermes on both
+platforms, which drive UIKit on iOS and Android views, with Material 3 navigation, on Android.
 
 ## Create an app
 

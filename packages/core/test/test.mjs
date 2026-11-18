@@ -79,8 +79,8 @@ globalThis.__native = {
   readFileSync(new URL('../../../examples/demo/ios/App/main.bundle.js', import.meta.url), 'utf8'),
 )
 
-// Page options and the <Tabs.Screen> order apply on the next tick (JavaScriptCore drains it before
-// handing the batch to native).
+// Page options and the <Tabs.Screen> order apply on the next tick (the runtime drains it before handing
+// the batch to native).
 await new Promise((resolve) => setTimeout(resolve))
 
 // ---------- Helpers ----------
@@ -703,13 +703,7 @@ const symbolicate = createSymbolicator(
   },
   'ios/App',
 )
-assert.equal(
-  symbolicate(
-    'native event handler\nthrowInHandler@main.bundle.js:2:1\ncall@main.bundle.js:3:1\n@[native code]',
-  ),
-  'native event handler\nthrowInHandler@src/app/index.vue:2:1\n… 1 framework frame(s)\n@[native code]',
-)
-// Hermes' format; its native frames count as framework frames.
+// Hermes' native frames count as framework frames.
 assert.equal(
   symbolicate(
     'Error: boom\n    at throwInHandler (main.bundle.js:2:1)\n    at apply (native)\n    at call (main.bundle.js:3:1)',

@@ -1,5 +1,5 @@
 import UIKit
-import JavaScriptCore
+import JavaScriptRuntime
 import yoga
 
 /// Runs the JS bundle off the main thread and applies the operations sent by the Vue renderer
@@ -27,7 +27,7 @@ final class Bridge {
     private let javaScriptQueue = DispatchQueue(label: "dev.nativue.javascript", qos: .userInteractive)
 
     // Only touched on javaScriptQueue.
-    private(set) var context: JSContext!
+    private var runtime: JavaScriptRuntime?
     private var pendingOperations: [() -> Void] = []
     private var gestureReportersByNodeId: [Int: GestureReporter] = [:]
     private let animatedGraph = AnimatedGraph()
@@ -45,7 +45,7 @@ final class Bridge {
     /// Read on the main thread at start, for Dimensions.get('window').
     private var windowSize: CGSize = .zero
     /// The bundle running now, for the error overlay's Reload.
-    private var source = ""
+    private var bundle = Data()
     private let errorOverlay = ErrorOverlay()
 
     func start(rootView: RootView) {
@@ -63,29 +63,28 @@ final class Bridge {
         guard let bundleURL = Bundle.main.url(forResource: "main.bundle", withExtension: "js") else {
             fatalError("ios/App/main.bundle.js is missing: run `npm run dev` (or `npm run build`), then build again")
         }
-        let source = try! String(contentsOf: bundleURL, encoding: .utf8)
-
-        run(source)
+        run(try! Data(contentsOf: bundleURL))
         #if DEBUG
         Task { await listenForReload() }
         #endif
     }
 
-    /// Discards the current node tree and JSContext, then runs the bundle from scratch.
-    func run(_ source: String) {
-        self.source = source
+    /// Discards the current node tree and runtime, then runs the bundle from scratch: JavaScript, or
+    /// Hermes bytecode (production builds).
+    func run(_ bundle: Data) {
+        self.bundle = bundle
         errorOverlay.hide()
 
         evaluate { [unowned self] in
             enqueue { [unowned self] in resetNodeTree() }
 
-            context = makeContext()
-            context.evaluateScript(source, withSourceURL: URL(string: "main.bundle.js"))
+            runtime = makeRuntime()
+            runtime?.evaluate(bundle, sourceURL: "main.bundle.js")
         }
     }
 
     /// Runs `work` on the JS queue, then applies every native operation it produced, in one batch, on the
-    /// main thread. JavaScriptCore drains microtasks when `work` returns, so Vue's updates are included.
+    /// main thread. The runtime drains promise jobs after each call, so Vue's updates are included.
     func evaluate(_ work: @escaping () -> Void) {
         javaScriptQueue.async { [unowned self] in
             work()
@@ -124,9 +123,7 @@ final class Bridge {
     /// Queued on the JS queue, so a URL that opens the app arrives after the bundle has run.
     private func openURL(_ url: URL) {
         evaluate { [unowned self] in
-            guard let openURL = context.objectForKeyedSubscript("__openURL"), openURL.isObject else { return }
-
-            openURL.call(withArguments: [url.absoluteString])
+            runtime?.call("__openURL", arguments: [url.absoluteString])
         }
     }
 
@@ -147,7 +144,7 @@ final class Bridge {
                 for try await line in events.lines where line == "data: reload" {
                     let (data, _) = try await URLSession.shared.data(from: bundleURL)
                     print("[Nativue] reload")
-                    run(String(decoding: data, as: UTF8.self))
+                    run(data)
                 }
             } catch {}
 
@@ -162,78 +159,91 @@ final class Bridge {
         pendingOperations.append(operation)
     }
 
-    private func makeContext() -> JSContext {
-        let context = JSContext()!
-        // Errors outside Vue: timers, native callbacks, the bundle itself. Vue's go through reportError.
-        context.exceptionHandler = { [unowned self] _, exception in
-            reportError(
-                message: exception?.toString() ?? "",
-                details: exception?.objectForKeyedSubscript("stack")?.toString() ?? ""
-            )
+    private typealias NativeFunction = (_ arguments: [Any]) -> Any?
+    private typealias Define = (_ name: String, _ function: @escaping (_ arguments: [Any]) -> Void) -> Void
+    private typealias DefineGetter = (_ name: String, _ function: @escaping NativeFunction) -> Void
+
+    /// Errors outside Vue (timers, native callbacks, the bundle itself) come from the runtime; Vue's
+    /// through `__native.reportError`.
+    private func makeRuntime() -> JavaScriptRuntime {
+        var functions: [String: Any] = [:]
+        func defineGetter(_ name: String, _ function: @escaping NativeFunction) {
+            functions[name] = function as @convention(block) ([Any]) -> Any?
+        }
+        func define(_ name: String, _ function: @escaping (_ arguments: [Any]) -> Void) {
+            defineGetter(name) { arguments in
+                function(arguments)
+                return nil
+            }
         }
 
-        let nativeModule = JSValue(newObjectIn: context)!
-        func define(_ name: String, _ block: Any) {
-            nativeModule.setObject(block, forKeyedSubscript: name as NSString)
+        define("log") { arguments in print("[JS]", arguments[0]) }
+
+        define("reportError") { [unowned self] arguments in
+            reportError(message: string(arguments[0]), details: string(arguments[1]))
         }
-
-        define("log", { message in print("[JS]", message) } as @convention(block) (String) -> Void)
-
-        define("reportError", { [unowned self] message, details in
-            reportError(message: message, details: details)
-        } as @convention(block) (String, String) -> Void)
 
         // ponytail: the size at launch; report rotation and split view changes if the app supports them.
-        define("windowSize", { [unowned self] in
+        defineGetter("windowSize") { [unowned self] _ in
             ["width": windowSize.width, "height": windowSize.height]
-        } as @convention(block) () -> [String: Double])
+        }
 
-        define("create", { [unowned self] id, type in
+        define("create") { [unowned self] arguments in
+            let (id, type) = (int(arguments[0]), string(arguments[1]))
             enqueue { [unowned self] in nodesById[id] = makeNode(type: type, id: id) }
-        } as @convention(block) (Int, String) -> Void)
+        }
 
-        define("insert", { [unowned self] parentId, childId, index in
+        define("insert") { [unowned self] arguments in
+            let (parentId, childId, index) = (int(arguments[0]), int(arguments[1]), int(arguments[2]))
             enqueue { [unowned self] in insertNode(childId: childId, parentId: parentId, at: index) }
-        } as @convention(block) (Int, Int, Int) -> Void)
+        }
 
-        define("remove", { [unowned self] id in
+        define("remove") { [unowned self] arguments in
+            let id = int(arguments[0])
             enqueue { [unowned self] in removeNode(id: id) }
-        } as @convention(block) (Int) -> Void)
+        }
 
-        define("setText", { [unowned self] id, text in
+        define("setText") { [unowned self] arguments in
+            let (id, text) = (int(arguments[0]), string(arguments[1]))
             enqueue { [unowned self] in setText(text, onNodeId: id) }
-        } as @convention(block) (Int, String) -> Void)
+        }
 
-        define("setProp", { [unowned self] id, key, value in
-            let convertedValue = value.toObject() // JSValue must not leave the JS queue
-            enqueue { [unowned self] in setProp(key, value: convertedValue, onNodeId: id) }
-        } as @convention(block) (Int, String, JSValue) -> Void)
+        define("setProp") { [unowned self] arguments in
+            let (id, key, value) = (int(arguments[0]), string(arguments[1]), arguments[2])
+            enqueue { [unowned self] in setProp(key, value: value, onNodeId: id) }
+        }
 
         defineAnimatedFunctions(define)
-        defineStorageFunctions(define)
+        defineStorageFunctions(define, defineGetter)
         defineFetch(define)
 
-        define("setTimer", { [unowned self, weak context] timerId, delayInMilliseconds in
-            // Weak: after a hot reload, the old context's timers die with it instead of firing in the new
-            // context, where timer ids start over.
-            DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(delayInMilliseconds)) { [unowned self, weak context] in
-                evaluate {
-                    _ = context?.objectForKeyedSubscript("__fireTimer").call(withArguments: [timerId])
-                }
-            }
-        } as @convention(block) (Int, Int) -> Void)
+        define("setTimer") { [unowned self] arguments in
+            let (timerId, delayInMilliseconds) = (int(arguments[0]), int(arguments[1]))
+            setTimer(timerId, delayInMilliseconds: delayInMilliseconds)
+        }
 
-        define("configureNextLayoutAnimation", { [unowned self] config in
-            nextLayoutAnimation = LayoutAnimation(config: config)
-        } as @convention(block) ([String: Any]) -> Void)
+        define("configureNextLayoutAnimation") { [unowned self] arguments in
+            nextLayoutAnimation = LayoutAnimation(config: arguments[0] as? [String: Any] ?? [:])
+        }
 
-        define("dismissKeyboard", { [unowned self] in
+        define("dismissKeyboard") { [unowned self] _ in
             enqueue { [unowned self] in rootView.window?.endEditing(true) }
-        } as @convention(block) () -> Void)
+        }
 
-        context.setObject(nativeModule, forKeyedSubscript: "__native" as NSString)
+        return JavaScriptRuntime(functions: functions) { [unowned self] message, stack in
+            reportError(message: message, details: stack)
+        }
+    }
 
-        return context
+    /// A timer of a runtime that has since been reloaded doesn't fire: timer ids start over in the new one.
+    private func setTimer(_ timerId: Int, delayInMilliseconds: Int) {
+        let owner = runtime
+
+        javaScriptQueue.asyncAfter(deadline: .now() + .milliseconds(delayInMilliseconds)) { [unowned self] in
+            guard runtime === owner else { return }
+
+            evaluate { [unowned self] in runtime?.call("__fireTimer", arguments: [timerId]) }
+        }
     }
 
     /// Logged always; shown over the app in development builds.
@@ -243,7 +253,7 @@ final class Bridge {
         #if DEBUG
         Task { @MainActor [unowned self] in
             let details = await symbolicated(details)
-            errorOverlay.show(message: message, details: details) { [unowned self] in run(source) }
+            errorOverlay.show(message: message, details: details) { [unowned self] in run(bundle) }
         }
         #endif
     }
@@ -275,7 +285,7 @@ final class Bridge {
         animatedGraph.reset()
         animatedGraph.onAnimationEnd = { [unowned self] animationId, finished in
             evaluate { [unowned self] in
-                context.objectForKeyedSubscript("__animationFinished")?.call(withArguments: [animationId, finished])
+                runtime?.call("__animationFinished", arguments: [animationId, finished])
             }
         }
         nodesById = [0: NativeNode(view: rootView, measuresContent: false)]
@@ -436,33 +446,35 @@ final class Bridge {
     }
 
     /// AsyncStorage: synchronous on the JS queue (values are in memory); JS wraps them in promises.
-    private func defineStorageFunctions(_ define: (String, Any) -> Void) {
-        define("storageGet", { [unowned self] key in
-            storage.value(forKey: key)
-        } as @convention(block) (String) -> String?)
+    private func defineStorageFunctions(_ define: Define, _ defineGetter: DefineGetter) {
+        defineGetter("storageGet") { [unowned self] arguments in
+            storage.value(forKey: string(arguments[0]))
+        }
 
-        define("storageSet", { [unowned self] key, value in
-            storage.setValue(value, forKey: key)
-        } as @convention(block) (String, String) -> Void)
+        define("storageSet") { [unowned self] arguments in
+            storage.setValue(string(arguments[1]), forKey: string(arguments[0]))
+        }
 
-        define("storageRemove", { [unowned self] key in
-            storage.removeValue(forKey: key)
-        } as @convention(block) (String) -> Void)
+        define("storageRemove") { [unowned self] arguments in
+            storage.removeValue(forKey: string(arguments[0]))
+        }
 
-        define("storageKeys", { [unowned self] in
+        defineGetter("storageKeys") { [unowned self] _ in
             storage.keys
-        } as @convention(block) () -> [String])
+        }
 
-        define("storageClear", { [unowned self] in
+        define("storageClear") { [unowned self] _ in
             storage.removeAll()
-        } as @convention(block) () -> Void)
+        }
     }
 
     /// fetch: URLSession runs the request; JS hears back through __fetchFinished(requestId, response, error).
     /// ponytail: text bodies only (no binary, FormData or streaming) and no abort.
-    private func defineFetch(_ define: (String, Any) -> Void) {
-        define("fetch", { [unowned self] requestId, url, method, headers, body in
-            let bodyText = body.isNull || body.isUndefined ? nil : body.toString()
+    private func defineFetch(_ define: Define) {
+        define("fetch") { [unowned self] arguments in
+            let (requestId, url, method) = (int(arguments[0]), string(arguments[1]), string(arguments[2]))
+            let headers = arguments[3] as? [String: String] ?? [:]
+            let bodyText = arguments[4] as? String
 
             guard let url = URL(string: url) else {
                 return finishFetch(requestId, response: nil, error: "invalid URL \(url)")
@@ -484,48 +496,54 @@ final class Bridge {
                     "body": String(decoding: data ?? Data(), as: UTF8.self),
                 ], error: nil)
             }.resume()
-        } as @convention(block) (Int, String, String, [String: String], JSValue) -> Void)
+        }
     }
 
     private func finishFetch(_ requestId: Int, response: [String: Any]?, error: String?) {
         evaluate { [unowned self] in
             let arguments: [Any] = [requestId, response ?? NSNull(), error ?? NSNull()]
-            context.objectForKeyedSubscript("__fetchFinished")?.call(withArguments: arguments)
+            runtime?.call("__fetchFinished", arguments: arguments)
         }
     }
 
     /// Animated's native driver (see AnimatedGraph); queued like the view operations, so a value bound in
     /// a batch exists when that batch is applied.
-    private func defineAnimatedFunctions(_ define: (String, Any) -> Void) {
-        define("createAnimatedNode", { [unowned self] id, config in
+    private func defineAnimatedFunctions(_ define: Define) {
+        define("createAnimatedNode") { [unowned self] arguments in
+            let (id, config) = (int(arguments[0]), arguments[1] as? [String: Any] ?? [:])
             enqueue { [unowned self] in animatedGraph.createNode(id: id, config: config) }
-        } as @convention(block) (Int, [String: Any]) -> Void)
+        }
 
-        define("setAnimatedValue", { [unowned self] id, value in
+        define("setAnimatedValue") { [unowned self] arguments in
+            let (id, value) = (int(arguments[0]), double(arguments[1]))
             enqueue { [unowned self] in animatedGraph.setValue(value, ofNode: id) }
-        } as @convention(block) (Int, Double) -> Void)
+        }
 
-        define("startAnimation", { [unowned self] animationId, nodeId, config in
+        define("startAnimation") { [unowned self] arguments in
+            let (animationId, nodeId) = (int(arguments[0]), int(arguments[1]))
+            let config = arguments[2] as? [String: Any] ?? [:]
             enqueue { [unowned self] in animatedGraph.startAnimation(id: animationId, nodeId: nodeId, config: config) }
-        } as @convention(block) (Int, Int, [String: Any]) -> Void)
+        }
 
-        define("stopAnimation", { [unowned self] nodeId in
+        define("stopAnimation") { [unowned self] arguments in
+            let nodeId = int(arguments[0])
             enqueue { [unowned self] in animatedGraph.stopAnimation(ofNode: nodeId) }
-        } as @convention(block) (Int) -> Void)
+        }
 
-        define("setAnimatedStyle", { [unowned self] viewId, binding in
-            let binding = binding.toObject() as? [String: Any] // JSValue must not leave the JS queue
+        define("setAnimatedStyle") { [unowned self] arguments in
+            let (viewId, binding) = (int(arguments[0]), arguments[1] as? [String: Any])
             enqueue { [unowned self] in
                 guard let view = nodesById[viewId]?.view else { return }
 
                 animatedGraph.bind(view: view, viewId: viewId, binding: binding)
             }
-        } as @convention(block) (Int, JSValue) -> Void)
+        }
 
-        define("setAnimatedEvent", { [unowned self] viewId, event, mapping in
-            let mapping = mapping.toObject() as? [String: Int]
+        define("setAnimatedEvent") { [unowned self] arguments in
+            let (viewId, event) = (int(arguments[0]), string(arguments[1]))
+            let mapping = (arguments[2] as? [String: Any])?.compactMapValues { ($0 as? NSNumber)?.intValue }
             enqueue { [unowned self] in setAnimatedEvent(event, mapping: mapping, onNodeId: viewId) }
-        } as @convention(block) (Int, String, JSValue) -> Void)
+        }
     }
 
     private func setAnimatedEvent(_ event: String, mapping: [String: Int]?, onNodeId id: Int) {
@@ -558,7 +576,7 @@ final class Bridge {
     private func dispatchEvent(_ eventName: String, toNodeId id: Int, payload: Any? = nil) {
         evaluate { [unowned self] in
             let arguments: [Any] = [id, eventName, payload ?? NSNull()]
-            context.objectForKeyedSubscript("__dispatch").call(withArguments: arguments)
+            runtime?.call("__dispatch", arguments: arguments)
         }
     }
 
@@ -744,4 +762,18 @@ final class Bridge {
 
         return false
     }
+}
+
+// JS numbers arrive as NSNumber doubles; a missing or mistyped argument reads as 0 or "".
+
+private func int(_ argument: Any) -> Int {
+    (argument as? NSNumber)?.intValue ?? 0
+}
+
+private func double(_ argument: Any) -> Double {
+    (argument as? NSNumber)?.doubleValue ?? 0
+}
+
+private func string(_ argument: Any) -> String {
+    argument as? String ?? ""
 }

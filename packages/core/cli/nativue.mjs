@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // The nativue CLI, run from the app's folder:
 //   nativue build                  bundles src/app/ into ios/App/main.bundle.js (and, with an android/
-//                                    folder, android/app/src/main/assets/main.bundle.js; Hermes bytecode
-//                                    with --production)
+//                                    folder, android/app/src/main/assets/main.bundle.js); Hermes bytecode
+//                                    with --production
 //   nativue dev                    rebuilds on save and tells the app (via SSE) to reload the bundle
 //   nativue run <ios | android>    builds, installs and opens the app on a simulator or emulator, then
 //                                    keeps going as `nativue dev` (unless one is already running)
@@ -11,7 +11,7 @@ import vue from '@vitejs/plugin-vue'
 import http from 'node:http'
 import net from 'node:net'
 import { execFileSync } from 'node:child_process'
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -59,27 +59,27 @@ function hermescPath() {
   return `${packageDirectory}/hermesc/${HERMESC_BY_PLATFORM[process.platform]}`
 }
 
-// The Android app packages its assets folder, so it gets the bundle. A production one is compiled
-// to Hermes bytecode, which starts faster: no parsing when the app opens. The runtime tells
-// bytecode from source on its own, so the file keeps its name.
-function bundleForAndroid(mode) {
+// Hermes bytecode starts faster: no parsing when the app opens. The runtime tells bytecode from
+// source on its own, so the file keeps its name.
+function compileToBytecode(bundlePath) {
+  const bytecodePath = `${bundlePath}.hbc`
+
+  execFileSync(hermescPath(), ['-emit-binary', '-O', '-w', '-out', bytecodePath, bundlePath], {
+    stdio: 'inherit',
+  })
+  renameSync(bytecodePath, bundlePath)
+}
+
+// A production bundle becomes bytecode; the Android app packages its assets folder, so it gets a copy.
+function finishBundle(mode) {
   return {
-    name: 'nativue-android-bundle',
+    name: 'nativue-finish-bundle',
     writeBundle() {
+      if (mode === 'production') compileToBytecode(BUNDLE_PATH)
       if (!existsSync('android')) return
 
-      const androidBundlePath = `${ANDROID_ASSETS_DIRECTORY}/main.bundle.js`
       mkdirSync(ANDROID_ASSETS_DIRECTORY, { recursive: true })
-
-      if (mode !== 'production') return copyFileSync(BUNDLE_PATH, androidBundlePath)
-
-      execFileSync(
-        hermescPath(),
-        ['-emit-binary', '-O', '-w', '-out', androidBundlePath, BUNDLE_PATH],
-        {
-          stdio: 'inherit',
-        },
-      )
+      copyFileSync(BUNDLE_PATH, `${ANDROID_ASSETS_DIRECTORY}/main.bundle.js`)
     },
   }
 }
@@ -98,7 +98,7 @@ function viteConfig({ mode, plugins = [], watch = null, sourcemap = false }) {
           compilerOptions: { isCustomElement: (tag) => NATIVE_COMPONENT_TAGS.includes(tag) },
         },
       }),
-      bundleForAndroid(mode),
+      finishBundle(mode),
       ...plugins,
     ],
     // Compiled templates and app code import from 'vue': point them to the native renderer.

@@ -1,13 +1,11 @@
-// Maps stack frames of the bundle back to the app's files with the bundle's source map, in the
-// engine's format: JavaScriptCore's `name@main.bundle.js:8161:20` becomes `name@src/app/index.vue:22:9`,
-// Hermes' `at name (main.bundle.js:8161:20)` becomes `at name (src/app/index.vue:22:9)`. Consecutive
+// Maps stack frames of the bundle back to the app's files with the bundle's source map: Hermes'
+// `at name (main.bundle.js:8161:20)` becomes `at name (src/app/index.vue:22:9)`. Consecutive
 // frames from outside src/ (Vue, nativue, Hermes' native ones) collapse into one line, so the app's
 // own frames stand out. Other lines are kept.
 import { SourceMap } from 'node:module'
 import { relative, resolve } from 'node:path'
 
 // Groups: before the location, the location's line and column, after it.
-const JAVASCRIPTCORE_FRAME = /^(.*@)(?:.*main\.bundle\.js):(\d+):(\d+)()$/
 const HERMES_FRAME = /^(\s*at .* \()(?:.*main\.bundle\.js):(\d+):(\d+)(\))$/
 const HERMES_NATIVE_FRAME = /^\s*at .* \(native\)$/
 
@@ -28,7 +26,7 @@ export function createSymbolicator(sourceMapPayload, bundleDirectory) {
   function symbolicateLine(line) {
     if (HERMES_NATIVE_FRAME.test(line)) return { text: line, isInternal: true }
 
-    const frame = JAVASCRIPTCORE_FRAME.exec(line) ?? HERMES_FRAME.exec(line)
+    const frame = HERMES_FRAME.exec(line)
     if (!frame) return { text: line, isInternal: false }
 
     const [, before, lineNumber, columnNumber, after] = frame
