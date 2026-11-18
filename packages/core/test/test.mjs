@@ -29,11 +29,29 @@ function detachEverywhere(childId) {
 const reportedErrors = []
 // What @nativue/haptics' native side was called with (its functions come from a plugin).
 const hapticsCalls = []
+// The statements @nativue/sqlite sent, as [sql, parameters]: it gets no rows back, and a COUNT gets zeros.
+const sqliteQueries = []
+
+function fakeSqliteQuery(callId, _database, sql, parameters) {
+  sqliteQueries.push([sql, parameters])
+  const isCount = sql.includes('COUNT(*)')
+  const result = {
+    columns: isCount ? ['total', 'done'] : [],
+    rows: isCount ? [[0, 0]] : [],
+    changes: 0,
+    lastInsertId: 0,
+  }
+
+  setTimeout(() => globalThis.__asyncFunctionFinished(callId, result, null))
+}
 
 globalThis.__native = {
   'plugin:haptics.impact': (style) => hapticsCalls.push(['impact', style]),
   'plugin:haptics.notification': (type) => hapticsCalls.push(['notification', type]),
   'plugin:haptics.selection': () => hapticsCalls.push(['selection']),
+  'pluginAsync:sqlite.query': fakeSqliteQuery,
+  'pluginAsync:sqlite.close': (callId) =>
+    setTimeout(() => globalThis.__asyncFunctionFinished(callId, null, null)),
   windowSize: () => WINDOW,
   platform: () => 'ios',
   colorScheme: () => 'light',
@@ -1048,6 +1066,20 @@ globalThis.__dispatch(pressableContaining('heavy', hapticsId), 'press')
 globalThis.__dispatch(pressableContaining('error', hapticsId), 'press')
 globalThis.__dispatch(pressableContaining('selection', hapticsId), 'press')
 assert.deepEqual(hapticsCalls, [['impact', 'heavy'], ['notification', 'error'], ['selection']])
+
+// @nativue/sqlite: its async plugin function, and named parameters numbered before they're sent.
+const sqliteId = await open('explore/sqlite')
+await settle()
+assert.ok(renderedTexts(sqliteId).includes('Nothing yet: add one above.'))
+assert.ok(sqliteQueries.some(([sql]) => sql.startsWith('CREATE TABLE IF NOT EXISTS todos')))
+
+globalThis.__dispatch(descendantOfType(sqliteId, 'TextInput'), 'changetext', 'Buy milk')
+press(pressableContaining('Add', sqliteId))
+await settle()
+assert.deepEqual(
+  sqliteQueries.find(([sql]) => sql.startsWith('INSERT')),
+  ['INSERT INTO todos (title) VALUES (?1)', ['Buy milk']],
+)
 
 // ---------- Errors ----------
 
