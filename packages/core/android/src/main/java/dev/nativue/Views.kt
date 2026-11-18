@@ -219,6 +219,7 @@ class ScrollContainerView(context: Context) : ContainerView(context) {
     private var isPullingToRefresh = false
 
     init {
+        clipChildren = true // like a UIScrollView: scrolled content stays inside the list
         addView(scroller)
         addView(refreshIndicator)
     }
