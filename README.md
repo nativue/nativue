@@ -66,7 +66,7 @@ To run on a phone, see [Getting started](docs/getting-started.md#run-on-a-phone)
 - [Navigation](docs/navigation.md): routes, stacks, tabs, modals, deep links
 - [Animations and gestures](docs/animations.md)
 - [APIs](docs/apis.md): storage, fetch, platform, keyboard, dimensions
-- [Packages](docs/packages.md): icons, Tailwind, haptics, and writing your own with native code
+- [Packages](docs/packages.md): icons, Tailwind, haptics, SQLite, and writing your own with native code
 - [Developing nativue](docs/development.md): run the demo app and work on the framework
 
 ## Packages
@@ -78,6 +78,7 @@ To run on a phone, see [Getting started](docs/getting-started.md#run-on-a-phone)
 | [`@nativue/icons`](packages/icons)          | icon sets as components                         |
 | [`@nativue/tailwind`](packages/tailwind)    | Tailwind CSS classes, turned into native styles |
 | [`@nativue/haptics`](packages/haptics)      | haptic feedback                                 |
+| [`@nativue/sqlite`](packages/sqlite)        | SQLite databases                                |
 
 ## License
 

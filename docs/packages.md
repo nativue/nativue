@@ -5,6 +5,7 @@
 | [`@nativue/icons`](../packages/icons/README.md)       | 2,000+ Lucide icons as components, drawn natively; also tab and header icons |
 | [`@nativue/tailwind`](../packages/tailwind/README.md) | Tailwind CSS classes, turned into native styles when the app is built        |
 | [`@nativue/haptics`](../packages/haptics/README.md)   | haptic feedback                                                              |
+| [`@nativue/sqlite`](../packages/sqlite/README.md)     | SQLite databases                                                             |
 
 Any npm package written in plain JavaScript or Vue works too, as long as it doesn't use the browser's
 DOM.

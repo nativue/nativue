@@ -1,0 +1,53 @@
+{
+  "name": "@nativue/sqlite",
+  "version": "0.1.0",
+  "description": "SQLite databases for nativue apps",
+  "keywords": [
+    "vue",
+    "native",
+    "sqlite",
+    "database",
+    "nativue"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/nativue/nativue#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nativue/nativue.git",
+    "directory": "packages/sqlite"
+  },
+  "bugs": "https://github.com/nativue/nativue/issues",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "node test/statements.test.mjs",
+    "typecheck": "vue-tsc"
+  },
+  "dependencies": {
+    "base64-js": "^1.5.1"
+  },
+  "peerDependencies": {
+    "@nativue/core": ">=0.7.0"
+  },
+  "nativue": {
+    "ios": {
+      "sources": "ios",
+      "plugin": "SQLitePlugin"
+    },
+    "android": {
+      "sources": "android",
+      "plugin": "dev.nativue.sqlite.SQLitePlugin"
+    }
+  },
+  "files": [
+    "src",
+    "ios",
+    "android/build.gradle.kts",
+    "android/src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
