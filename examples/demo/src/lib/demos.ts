@@ -29,7 +29,7 @@ export interface DemoSection {
 
 export const demoSections: DemoSection[] = [
   {
-    title: 'Building blocks',
+    title: 'UI',
     demos: [
       {
         href: '/explore/components',
@@ -44,20 +44,6 @@ export const demoSections: DemoSection[] = [
         subtitle: '1,000 virtualized rows with swipe actions',
         icon: ListChecksIcon,
         tint: colors.orange,
-      },
-      {
-        href: '/explore/tailwind',
-        title: 'Tailwind',
-        subtitle: 'Utility classes with @nativue/tailwind',
-        icon: PaletteIcon,
-        tint: colors.teal,
-      },
-      {
-        href: '/explore/haptics',
-        title: 'Haptics',
-        subtitle: 'A package with native code: @nativue/haptics',
-        icon: VibrateIcon,
-        tint: colors.red,
       },
     ],
   },
@@ -81,7 +67,7 @@ export const demoSections: DemoSection[] = [
     ],
   },
   {
-    title: 'App essentials',
+    title: 'App',
     demos: [
       {
         href: '/explore/navigation',
@@ -98,18 +84,37 @@ export const demoSections: DemoSection[] = [
         tint: colors.teal,
       },
       {
-        href: '/explore/sqlite',
-        title: 'SQLite',
-        subtitle: 'Todos kept in a database: @nativue/sqlite',
-        icon: HardDriveIcon,
-        tint: colors.blue,
-      },
-      {
         href: '/explore/errors',
         title: 'Errors',
         subtitle: 'The error screen of development builds',
         icon: BugIcon,
         tint: colors.red,
+      },
+    ],
+  },
+  {
+    title: 'Packages',
+    demos: [
+      {
+        href: '/explore/tailwind',
+        title: 'Tailwind',
+        subtitle: 'Utility classes: @nativue/tailwind',
+        icon: PaletteIcon,
+        tint: colors.teal,
+      },
+      {
+        href: '/explore/haptics',
+        title: 'Haptics',
+        subtitle: 'Haptic feedback, with native code: @nativue/haptics',
+        icon: VibrateIcon,
+        tint: colors.red,
+      },
+      {
+        href: '/explore/sqlite',
+        title: 'SQLite',
+        subtitle: 'Todos kept in a database: @nativue/sqlite',
+        icon: HardDriveIcon,
+        tint: colors.blue,
       },
     ],
   },
