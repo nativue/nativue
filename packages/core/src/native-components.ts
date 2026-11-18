@@ -36,6 +36,8 @@ declare module '@vue/runtime-core' {
       keyboardDismissMode?: 'none' | 'on-drag' | 'interactive'
       keyboardShouldPersistTaps?: 'never' | 'always' | 'handled'
       contentInsetAdjustmentBehavior?: 'automatic' | 'scrollableAxes' | 'never' | 'always'
+      /** The keyboard insets the content, and the focused input scrolls above it. */
+      automaticallyAdjustKeyboardInsets?: boolean
       onScroll?: EventHandler<ScrollEvent>
       onRefresh?: () => void
     }>

@@ -30,12 +30,19 @@ final class KeyboardAvoidingView: UIView {
         let keyboardTopInView = convert(keyboardFrame, from: nil).minY
         let overlap = max(0, bounds.maxY - keyboardTopInView)
 
-        let duration = (userInfo[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double) ?? 0.25
-        let curve = (userInfo[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt) ?? 7
-        let options = UIView.AnimationOptions(rawValue: curve << 16)
-
-        UIView.animate(withDuration: duration, delay: 0, options: options) { [weak self] in
+        UIView.animateAlongsideKeyboard(notification) { [weak self] in
             self?.onKeyboardOverlapChange?(overlap)
         }
+    }
+}
+
+extension UIView {
+    /// Runs `animations` with the keyboard's own duration and curve, so the change moves in sync with it.
+    static func animateAlongsideKeyboard(_ notification: Notification, animations: @escaping () -> Void) {
+        let userInfo = notification.userInfo
+        let duration = (userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double) ?? 0.25
+        let curve = (userInfo?[UIResponder.keyboardAnimationCurveUserInfoKey] as? UInt) ?? 7
+
+        animate(withDuration: duration, delay: 0, options: UIView.AnimationOptions(rawValue: curve << 16), animations: animations)
     }
 }

@@ -19,6 +19,10 @@ final class VueScrollView: UIScrollView {
     /// "always" / "handled" turn it off.
     var dismissesKeyboardOnTap = true
 
+    /// automatically-adjust-keyboard-insets: the keyboard insets the content, and the focused input scrolls
+    /// above it.
+    var adjustsForKeyboard = false
+
     /// Set when JS listens to @scroll. Called on every scroll step and size change (FlatList windowing).
     // ponytail: one JS call per frame while scrolling; coalesce / add scrollEventThrottle if JS falls behind.
     var onScroll: ((CGRect) -> Void)? {
@@ -54,6 +58,13 @@ final class VueScrollView: UIScrollView {
         let tapRecognizer = UITapGestureRecognizer(target: self, action: #selector(handleTap(_:)))
         tapRecognizer.cancelsTouchesInView = false // buttons inside still receive their taps
         addGestureRecognizer(tapRecognizer)
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(keyboardWillChangeFrame(_:)),
+            name: UIResponder.keyboardWillChangeFrameNotification,
+            object: nil
+        )
     }
 
     required init?(coder: NSCoder) {
@@ -79,6 +90,41 @@ final class VueScrollView: UIScrollView {
     /// wouldn't scroll.
     override func touchesShouldCancel(in view: UIView) -> Bool {
         true
+    }
+
+    @objc private func keyboardWillChangeFrame(_ notification: Notification) {
+        guard
+            adjustsForKeyboard,
+            window != nil,
+            let keyboardFrame = (notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
+        else { return }
+
+        // In content coordinates, like bounds. The safe area the system already insets isn't counted twice.
+        let keyboardTop = convert(keyboardFrame, from: nil).minY
+        let systemBottomInset = adjustedContentInset.bottom - contentInset.bottom
+        let keyboardInset = max(0, bounds.maxY - keyboardTop - systemBottomInset)
+
+        UIView.animateAlongsideKeyboard(notification) { [self] in
+            contentInset.bottom = keyboardInset
+            verticalScrollIndicatorInsets.bottom = keyboardInset
+            contentOffset.y = offsetRevealing(focusedInput(in: self), above: keyboardTop)
+        }
+    }
+
+    /// Scrolls up just enough for `input` to sit above the keyboard; when the keyboard leaves, back within the content.
+    private func offsetRevealing(_ input: UIView?, above keyboardTop: CGFloat) -> CGFloat {
+        let maximumOffset = max(-adjustedContentInset.top, contentSize.height + adjustedContentInset.bottom - bounds.height)
+        guard let input else { return min(contentOffset.y, maximumOffset) }
+
+        let inputBottom = input.convert(input.bounds, to: self).maxY
+
+        return min(contentOffset.y + max(0, inputBottom - keyboardTop), maximumOffset)
+    }
+
+    private func focusedInput(in view: UIView) -> UIView? {
+        if view.isFirstResponder { return view }
+
+        return view.subviews.lazy.compactMap(focusedInput(in:)).first
     }
 
     @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {

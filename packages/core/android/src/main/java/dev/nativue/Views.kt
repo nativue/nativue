@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
@@ -267,8 +268,21 @@ class ScrollContainerView(context: Context) : ContainerView(context) {
         val (left, top, right, bottom) = contentInsets
         if (scroller.paddingLeft == left && scroller.paddingTop == top && scroller.paddingRight == right && scroller.paddingBottom == bottom) return
 
+        val bottomGrew = bottom > scroller.paddingBottom
         scroller.clipToPadding = false
         scroller.setPadding(left, top, right, bottom)
+        if (bottomGrew) revealFocusedInput()
+    }
+
+    /** When the keyboard pads the bottom, scrolls up just enough for the focused input to sit above it. */
+    private fun revealFocusedInput() {
+        val focusedView = scroller.findFocus() ?: return
+        val inputRect = Rect()
+        focusedView.getDrawingRect(inputRect)
+        scroller.offsetDescendantRectToMyCoords(focusedView, inputRect)
+
+        val visibleBottom = scroller.scrollY + scroller.height - scroller.paddingBottom
+        if (inputRect.bottom > visibleBottom) scroller.scrollBy(0, inputRect.bottom - visibleBottom)
     }
 
     fun setContentSize(width: Int, height: Int) {

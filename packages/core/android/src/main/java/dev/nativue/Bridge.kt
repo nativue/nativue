@@ -597,7 +597,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         }
 
         "KeyboardAvoidingView" -> NativeNode(KeyboardAvoidingView(activity), measuresContent = false).also {
-            it.insetTypes = WindowInsets.Type.ime()
+            it.insetTypes = IME
         }
 
         "TextInput" -> NativeNode(makeTextInput(id), measuresContent = true)
@@ -739,7 +739,14 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
 
             // A scroll view pads its scrollable area by the system bars it's under, unless "never".
             "contentInsetAdjustmentBehavior" -> if (view is ScrollContainerView) {
-                node.insetTypes = if (value == null || value == "never") 0 else SYSTEM_BARS
+                val systemBars = if (value == null || value == "never") 0 else SYSTEM_BARS
+                node.insetTypes = (node.insetTypes and IME) or systemBars
+            }
+
+            // The keyboard pads it too, and the focused input scrolls above it.
+            "automaticallyAdjustKeyboardInsets" -> if (view is ScrollContainerView) {
+                val keyboard = if (isTruthyAttribute(value)) IME else 0
+                node.insetTypes = (node.insetTypes and IME.inv()) or keyboard
             }
 
             "horizontal" -> setScrollDirection(node, isTruthyAttribute(value))
@@ -967,6 +974,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         const val BUTTON_TINT = 0xFF007AFF.toInt()
         val EDGES = listOf(YogaEdge.LEFT, YogaEdge.TOP, YogaEdge.RIGHT, YogaEdge.BOTTOM)
         val SYSTEM_BARS = WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()
+        val IME = WindowInsets.Type.ime()
         const val SHEET_TOP_GAP = 12f
 
         val keyboardInputTypes = mapOf(

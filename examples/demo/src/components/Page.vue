@@ -16,6 +16,7 @@ const styles = computed(() =>
     :style="styles.scroll"
     content-inset-adjustment-behavior="automatic"
     keyboard-dismiss-mode="on-drag"
+    automatically-adjust-keyboard-insets
   >
     <View :style="styles.content">
       <slot />

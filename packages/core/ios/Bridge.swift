@@ -745,6 +745,9 @@ final class Bridge {
         case "showsVerticalScrollIndicator":
             (node.view as? UIScrollView)?.showsVerticalScrollIndicator = isTruthyAttribute(value)
 
+        case "automaticallyAdjustKeyboardInsets":
+            (node.view as? VueScrollView)?.adjustsForKeyboard = isTruthyAttribute(value)
+
         case "value":
             (node.view as? TextInputView)?.setTextFromJavaScript(value as? String ?? "")
             (node.view as? UISwitch)?.setOn(isTruthyAttribute(value), animated: true)
