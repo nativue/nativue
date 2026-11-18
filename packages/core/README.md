@@ -18,4 +18,4 @@ nativue dev              # rebuilds on save and reloads the running app
 nativue build            # bundles the app into ios/ and android/ (--production for releases)
 ```
 
-Docs and source: https://github.com/nativue/nativue
+Docs: https://github.com/nativue/nativue/tree/main/docs

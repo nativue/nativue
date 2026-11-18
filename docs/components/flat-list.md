@@ -1,0 +1,46 @@
+# FlatList
+
+A list for many rows: it renders only the rows near the visible area, so a list of thousands scrolls
+as smoothly as a short one.
+
+```vue
+<FlatList
+  :data="contacts"
+  :item-height="64"
+  :key-extractor="(contact) => contact.id"
+  :style="{ flex: 1 }"
+>
+  <template #item="{ item, index }">
+    <ContactRow :contact="item" :position="index" />
+  </template>
+  <template #empty>
+    <Text>No contacts yet.</Text>
+  </template>
+</FlatList>
+```
+
+Every row has the same height, `item-height`, in points: the list uses it to know which rows are on
+screen without measuring them. It scrolls vertically.
+
+## Props
+
+| Prop            | Type                                | Default   | Description                                                     |
+| --------------- | ----------------------------------- | --------- | --------------------------------------------------------------- |
+| `data`          | `any[]`                             | required  | the items                                                       |
+| `item-height`   | `number`                            | required  | each row's height                                               |
+| `key-extractor` | `(item, index) => string \| number` | the index | a stable key per item, so rows keep their state when items move |
+| `style`         | `Style`                             |           | the list's own style; give it a bounded size, like `flex: 1`    |
+
+Other attributes go to the underlying [`ScrollView`](scroll-view.md): `refreshing` and `@refresh`
+add pull to refresh, `content-inset-adjustment-behavior` keeps it clear of the bars.
+
+## Slots
+
+| Slot      | Receives          | Shows                                     |
+| --------- | ----------------- | ----------------------------------------- |
+| `#item`   | `{ item, index }` | one row                                   |
+| `#header` |                   | above the rows                            |
+| `#footer` |                   | below the rows                            |
+| `#empty`  |                   | instead of the rows, when `data` is empty |
+
+For rows that slide to reveal actions, put a [`Swipeable`](swipeable.md) in `#item`.
