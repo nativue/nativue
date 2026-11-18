@@ -5,7 +5,8 @@
 //                                    with --production
 //   nativue dev                    rebuilds on save and tells the app (via SSE) to reload the bundle
 //   nativue run <ios | android>    builds, installs and opens the app on a simulator or emulator, then
-//                                    keeps going as `nativue dev` (unless one is already running)
+//                                    keeps going as `nativue dev` (unless one is already running);
+//                                    --device for a phone, --device <name or id> for a given one
 import { build, loadConfigFromFile, transformWithOxc } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import http from 'node:http'
@@ -312,9 +313,19 @@ function isPortFree(port) {
 
 const RUNNERS = { ios: runOnIOS, android: runOnAndroid }
 
-async function runApp(platform) {
+// `--device` alone is true; followed by a name or id, that.
+function deviceOption(args) {
+  const index = args.indexOf('--device')
+  if (index === -1) return undefined
+
+  const value = args[index + 1]
+
+  return value === undefined || value.startsWith('--') ? true : value
+}
+
+async function runApp(platform, args) {
   await build(viteConfig({ mode: 'development' }))
-  await RUNNERS[platform]()
+  await RUNNERS[platform]({ device: deviceOption(args), port: PORT })
 
   if (await isPortFree(PORT)) return dev()
 
@@ -335,9 +346,11 @@ try {
       }),
     )
   } else if (command === 'run' && RUNNERS[args[0]]) {
-    await runApp(args[0])
+    await runApp(args[0], args.slice(1))
   } else {
-    console.log('usage: nativue <dev | build [--production] | run <ios | android>>')
+    console.log(
+      'usage: nativue <dev | build [--production] | run <ios | android> [--device [name or id]]>',
+    )
     process.exitCode = 1
   }
 } catch (error) {

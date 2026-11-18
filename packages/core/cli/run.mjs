@@ -1,11 +1,13 @@
-// `nativue run ios | android`: builds the app's debug build, opens a simulator or emulator when none
-// is running, then installs and launches the app on it.
+// `nativue run ios | android [--device [name or id]]`: builds the app's debug build, opens a simulator
+// or emulator when none is running, then installs and launches the app on it. `--device` picks one by
+// name or id (a simulator, an emulator or a phone), or alone, the first phone connected.
 import { execFileSync, spawn } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 const IOS_BUILD_DIRECTORY = 'ios/build'
-const IOS_APP_PATH = `${IOS_BUILD_DIRECTORY}/Build/Products/Debug-iphonesimulator/App.app`
+const iOSAppPath = (sdk) => `${IOS_BUILD_DIRECTORY}/Build/Products/Debug-${sdk}/App.app`
 const BOOT_POLL_INTERVAL_MS = 2000
 
 function run(command, args, options = {}) {
@@ -29,7 +31,7 @@ function simulators() {
 }
 
 /** An iPhone, the newest iOS first: one already booted if there is one. */
-function pickSimulator() {
+function defaultSimulator() {
   const iOSVersion = (device) => Number(device.runtime.match(/iOS-(\d+)/)?.[1] ?? 0)
   const iPhones = simulators()
     .filter((device) => device.name.startsWith('iPhone') && iOSVersion(device))
@@ -55,45 +57,121 @@ function openSimulatorApp() {
   }
 }
 
-export function runOnIOS() {
-  const simulator = pickSimulator()
+/** iPhones and iPads paired with this Mac, by Xcode's devicectl. */
+function physicalIOSDevices() {
+  const outputFile = join(tmpdir(), `nativue-devices-${process.pid}.json`)
 
-  if (simulator.state !== 'Booted') {
-    step(`Booting ${simulator.name}`)
-    run('xcrun', ['simctl', 'boot', simulator.udid])
+  try {
+    run('xcrun', ['devicectl', 'list', 'devices', '--json-output', outputFile], { stdio: 'ignore' })
+    const { result } = JSON.parse(readFileSync(outputFile, 'utf8'))
+
+    return result.devices
+      .filter((device) => device.hardwareProperties.reality === 'physical')
+      .map((device) => ({
+        name: device.deviceProperties.name,
+        udid: device.hardwareProperties.udid,
+      }))
+  } finally {
+    rmSync(outputFile, { force: true })
   }
-  openSimulatorApp()
+}
 
+/** `--device` alone: the first phone. `--device <name or id>`: that simulator or phone. */
+function pickIOSDevice(requested) {
+  if (requested === undefined) return { ...defaultSimulator(), isSimulator: true }
+
+  const phones = physicalIOSDevices().map((device) => ({ ...device, isSimulator: false }))
+  if (requested === true) {
+    if (phones.length === 0) throw new Error('No iPhone connected: plug it in and trust this Mac.')
+
+    return phones[0]
+  }
+
+  const candidates = [
+    ...phones,
+    ...simulators().map((device) => ({ ...device, isSimulator: true })),
+  ]
+  const device = candidates.find(({ name, udid }) => name === requested || udid === requested)
+  if (!device)
+    throw new Error(
+      noDeviceMessage(
+        requested,
+        candidates.map(({ name, udid }) => `${name} (${udid})`),
+      ),
+    )
+
+  return device
+}
+
+function noDeviceMessage(requested, available) {
+  return `No device named or with the id "${requested}". Available:\n  ${available.join('\n  ')}`
+}
+
+function buildIOSApp(destination, isSimulator) {
   step('Building the iOS app')
-  run(
-    'xcodebuild',
-    [
-      '-project',
-      'ios/App.xcodeproj',
-      '-scheme',
-      'App',
-      '-configuration',
-      'Debug',
-      '-destination',
-      `id=${simulator.udid}`,
-      '-derivedDataPath',
-      IOS_BUILD_DIRECTORY,
-      '-quiet',
-      'build',
-    ],
-    { stdio: 'inherit' },
-  )
 
-  const bundleId = run('plutil', [
-    '-extract',
-    'CFBundleIdentifier',
-    'raw',
-    `${IOS_APP_PATH}/Info.plist`,
-  ]).trim()
+  try {
+    run(
+      'xcodebuild',
+      [
+        '-project',
+        'ios/App.xcodeproj',
+        '-scheme',
+        'App',
+        '-configuration',
+        'Debug',
+        '-destination',
+        `id=${destination}`,
+        '-derivedDataPath',
+        IOS_BUILD_DIRECTORY,
+        // A phone needs a signed app: Xcode creates its provisioning profile.
+        ...(isSimulator ? [] : ['-allowProvisioningUpdates']),
+        '-quiet',
+        'build',
+      ],
+      { stdio: 'inherit' },
+    )
+  } catch (error) {
+    if (isSimulator) throw error
 
-  step(`Opening ${bundleId} on ${simulator.name}`)
-  run('xcrun', ['simctl', 'install', simulator.udid, IOS_APP_PATH])
-  run('xcrun', ['simctl', 'launch', simulator.udid, bundleId])
+    throw new Error(
+      'The build for the phone failed. If it says signing needs a development team, open ios/App.xcodeproj in Xcode and pick your team under Signing & Capabilities.',
+    )
+  }
+}
+
+function bundleIdentifier(appPath) {
+  return run('plutil', ['-extract', 'CFBundleIdentifier', 'raw', `${appPath}/Info.plist`]).trim()
+}
+
+export function runOnIOS({ device: requested } = {}) {
+  const device = pickIOSDevice(requested)
+
+  if (device.isSimulator && device.state !== 'Booted') {
+    step(`Booting ${device.name}`)
+    run('xcrun', ['simctl', 'boot', device.udid])
+  }
+  if (device.isSimulator) openSimulatorApp()
+
+  buildIOSApp(device.udid, device.isSimulator)
+
+  const appPath = iOSAppPath(device.isSimulator ? 'iphonesimulator' : 'iphoneos')
+  const bundleId = bundleIdentifier(appPath)
+  step(`Opening ${bundleId} on ${device.name}`)
+
+  if (device.isSimulator) {
+    run('xcrun', ['simctl', 'install', device.udid, appPath])
+    run('xcrun', ['simctl', 'launch', device.udid, bundleId])
+    return
+  }
+
+  const devicectl = (subcommand, ...args) =>
+    run('xcrun', ['devicectl', 'device', ...subcommand, '--device', device.udid, ...args], {
+      stdio: 'ignore',
+    })
+
+  devicectl(['install', 'app'], appPath)
+  devicectl(['process', 'launch'], '--terminate-existing', bundleId)
 }
 
 // ---------- Android ----------
@@ -125,17 +203,44 @@ function javaHome() {
   return existsSync(androidStudioJdk) ? androidStudioJdk : undefined
 }
 
+/** Serials and models of what adb sees: emulators and phones. */
 function connectedDevices(adb) {
-  return run(adb, ['devices'])
+  return run(adb, ['devices', '-l'])
     .split('\n')
-    .filter((line) => line.endsWith('\tdevice'))
-    .map((line) => line.split('\t')[0])
+    .filter((line) => /\sdevice\s/.test(`${line} `))
+    .map((line) => ({ serial: line.split(/\s+/)[0], model: line.match(/model:(\S+)/)?.[1] ?? '' }))
 }
 
-// Limitation: The first device or emulator wins; a --device option when people run several at once.
-async function pickDevice(sdkPath, adb) {
+const isEmulator = (serial) => serial.startsWith('emulator-')
+
+/** `--device` alone: the first phone. `--device <serial or model>`: that one. */
+function pickRequestedDevice(adb, requested) {
+  const devices = connectedDevices(adb)
+
+  if (requested === true) {
+    const phone = devices.find(({ serial }) => !isEmulator(serial))
+    if (!phone) throw new Error('No Android phone connected: plug it in with USB debugging on.')
+
+    return phone.serial
+  }
+
+  const device = devices.find(({ serial, model }) => serial === requested || model === requested)
+  if (!device)
+    throw new Error(
+      noDeviceMessage(
+        requested,
+        devices.map(({ serial, model }) => `${model} (${serial})`),
+      ),
+    )
+
+  return device.serial
+}
+
+async function pickDevice(sdkPath, adb, requested) {
+  if (requested !== undefined) return pickRequestedDevice(adb, requested)
+
   const [device] = connectedDevices(adb)
-  if (device) return device
+  if (device) return device.serial
 
   const emulator = `${sdkPath}/emulator/emulator`
   const [emulatorName] = run(emulator, ['-list-avds']).split('\n').filter(Boolean)
@@ -150,7 +255,7 @@ async function pickDevice(sdkPath, adb) {
     await sleep(BOOT_POLL_INTERVAL_MS)
   }
 
-  return connectedDevices(adb)[0]
+  return connectedDevices(adb)[0].serial
 }
 
 function applicationId() {
@@ -159,10 +264,13 @@ function applicationId() {
   return gradleFile.match(/applicationId\s*=\s*"([^"]+)"/)[1]
 }
 
-export async function runOnAndroid() {
+export async function runOnAndroid({ device: requested, port } = {}) {
   const sdkPath = androidSdkPath()
   const adb = `${sdkPath}/platform-tools/adb`
-  const device = await pickDevice(sdkPath, adb)
+  const device = await pickDevice(sdkPath, adb, requested)
+
+  // A phone on USB reaches the dev server on this computer through adb, whatever its network.
+  if (!isEmulator(device)) run(adb, ['-s', device, 'reverse', `tcp:${port}`, `tcp:${port}`])
 
   step('Building the Android app')
   const gradlew = process.platform === 'win32' ? 'gradlew.bat' : './gradlew'

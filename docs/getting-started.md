@@ -42,14 +42,23 @@ built.
 
 ### Run on a phone
 
-1. Start the dev server: `npm run dev`.
-2. Open the app's native project and press Run:
-   - iOS: `ios/App.xcodeproj` in Xcode. Pick your team under Signing & Capabilities first.
-   - Android: the `android` folder in Android Studio.
+Connect the phone with USB, then:
 
-A debug build finds the dev server by itself. A phone on the same Wi-Fi as your computer reaches it
-through the computer's local address, which is written into the app when it's built: build again
-after switching networks. An Android phone on USB can also use `adb reverse tcp:40836 tcp:40836`.
+```sh
+npm run ios -- --device        # the first iPhone connected
+npm run android -- --device    # the first Android phone, with USB debugging on
+```
+
+`--device <name or id>` picks a given phone, simulator or emulator, e.g.
+`npm run ios -- --device "iPhone 16"`; an unknown one lists what's available.
+
+On iOS, open `ios/App.xcodeproj` in Xcode once and pick your team under Signing & Capabilities: a
+phone only runs signed apps. You can also press Run in Xcode, or in Android Studio for the `android`
+folder, with `npm run dev` running.
+
+A debug build finds the dev server by itself. An iPhone reaches it through the computer's local
+address on the same Wi-Fi, which is written into the app when it's built: build again after switching
+networks. An Android phone on USB reaches it through `adb reverse`, which `--device` sets up.
 
 ## Project structure
 
