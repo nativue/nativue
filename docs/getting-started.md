@@ -30,7 +30,7 @@ Each one builds the app, opens it on a simulator or emulator (starting one if no
 then runs the dev server. Save a file and the app reloads with your change.
 
 If a dev server is already running, they only build and open the app, and it connects to that
-server. To run the dev server alone:
+server. `--no-dev` never starts one: `npm run ios -- --no-dev`. To run the dev server alone:
 
 ```sh
 npm run dev

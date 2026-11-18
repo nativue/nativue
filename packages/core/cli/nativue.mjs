@@ -6,7 +6,8 @@
 //   nativue dev                    rebuilds on save and tells the app (via SSE) to reload the bundle
 //   nativue run <ios | android>    builds, installs and opens the app on a simulator or emulator, then
 //                                    keeps going as `nativue dev` (unless one is already running);
-//                                    --device for a phone, --device <name or id> for a given one
+//                                    --device for a phone, --device <name or id> for a given one;
+//                                    --no-dev only opens the app
 import { build, loadConfigFromFile, transformWithOxc } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import http from 'node:http'
@@ -327,6 +328,7 @@ async function runApp(platform, args) {
   await build(viteConfig({ mode: 'development' }))
   await RUNNERS[platform]({ device: deviceOption(args), port: PORT })
 
+  if (args.includes('--no-dev')) return
   if (await isPortFree(PORT)) return dev()
 
   console.log('\nA dev server is already running: the app reloads from it.')
@@ -349,7 +351,7 @@ try {
     await runApp(args[0], args.slice(1))
   } else {
     console.log(
-      'usage: nativue <dev | build [--production] | run <ios | android> [--device [name or id]]>',
+      'usage: nativue <dev | build [--production] | run <ios | android> [--device [name or id]] [--no-dev]>',
     )
     process.exitCode = 1
   }
