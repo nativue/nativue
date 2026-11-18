@@ -2,7 +2,7 @@
 // Events are listed as on* props: @press is onPress, @change-text is onChangeText.
 import type { DefineComponent } from '@vue/runtime-core'
 import type { AnimatedEvent } from './animated'
-import type { FlatList, Pressable, Swipeable } from './components'
+import type { FlatList, ImageBackground, Pressable, Swipeable } from './components'
 import type { LayoutEvent, PanEvent, PinchEvent, RotateEvent, ScrollEvent, Style } from './types'
 
 type NativeComponent<Props = {}> = DefineComponent<
@@ -108,5 +108,6 @@ declare module '@vue/runtime-core' {
     Pressable: typeof Pressable
     FlatList: typeof FlatList
     Swipeable: typeof Swipeable
+    ImageBackground: typeof ImageBackground
   }
 }

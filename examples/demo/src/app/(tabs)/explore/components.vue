@@ -71,6 +71,14 @@ const styles = computed(() =>
       backgroundColor: colors.background,
     },
     remoteImage: { flex: 1, height: 96, borderRadius: radius.small },
+    cover: {
+      height: 140,
+      justifyContent: 'flex-end',
+      padding: spacing.medium,
+      borderRadius: radius.small,
+      overflow: 'hidden',
+    },
+    coverTitle: { fontSize: 22, fontWeight: '700', color: '#ffffff' },
     sheet: { flex: 1, padding: spacing.large, gap: spacing.medium },
     sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   }),
@@ -145,7 +153,10 @@ const styles = computed(() =>
       </View>
     </Section>
 
-    <Section title="Images" footer="A bundled asset and an image loaded over the network.">
+    <Section
+      title="Images"
+      footer="A bundled asset, an image loaded over the network, and text over a photo."
+    >
       <View :style="styles.images">
         <Image :source="logo" alt="nativue logo" resize-mode="contain" :style="styles.localImage" />
         <Image
@@ -154,6 +165,9 @@ const styles = computed(() =>
           :style="styles.remoteImage"
         />
       </View>
+      <ImageBackground :source="{ uri: REMOTE_IMAGE_URL }" :style="styles.cover">
+        <Text :style="styles.coverTitle">Text over a photo</Text>
+      </ImageBackground>
     </Section>
 
     <Section title="Sheets">

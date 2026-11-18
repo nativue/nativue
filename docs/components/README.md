@@ -7,6 +7,7 @@ The components are global in every template: no import needed. Each one is a rea
 | [`View`](view.md)                                   | the building block: a container laid out with flexbox |
 | [`Text`](text.md)                                   | text                                                  |
 | [`Image`](image.md)                                 | a bundled or remote image                             |
+| [`ImageBackground`](image-background.md)            | an image behind other content                         |
 | [`Pressable`](pressable.md)                         | anything tappable, with a pressed state               |
 | [`Button`](button.md)                               | the platform's text button                            |
 | [`TextInput`](text-input.md)                        | a single-line text field                              |

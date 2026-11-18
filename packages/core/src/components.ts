@@ -230,6 +230,33 @@ function averageOf(values: Iterable<number>): number | undefined {
   return count === 0 ? undefined : sum / count
 }
 
+const FILL_STYLE: Style = { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0 }
+
+// An <Image> behind its children: it fills the box, which `style` sizes. Takes the Image's props; other
+// attributes (role, aria-*, @layout...) go to the box.
+export const ImageBackground = defineComponent({
+  name: 'ImageBackground',
+  props: {
+    source: { type: [String, Object] as PropType<string | { uri: string }>, required: true },
+    resizeMode: String as PropType<'cover' | 'contain' | 'stretch' | 'center'>,
+    cache: String as PropType<'disk' | 'memory' | 'none'>,
+    alt: String,
+    style: Object as PropType<Style>,
+  },
+  slots: Object as SlotsType<{ default?: {} }>,
+
+  setup(props, { slots }) {
+    return () => {
+      const { style, ...imageProps } = props
+
+      return h('View', { style }, [
+        h('Image', { ...imageProps, style: FILL_STYLE }),
+        slots.default?.({}),
+      ])
+    }
+  },
+})
+
 const SWIPE_ACTIONS_STYLE: Style = { position: 'absolute', top: 0, bottom: 0, flexDirection: 'row' }
 const SWIPE_LEFT_ACTIONS_STYLE: Style = { ...SWIPE_ACTIONS_STYLE, left: 0 }
 const SWIPE_RIGHT_ACTIONS_STYLE: Style = { ...SWIPE_ACTIONS_STYLE, right: 0 }

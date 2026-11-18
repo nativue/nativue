@@ -271,6 +271,16 @@ const componentsId = topExploreScreenId()
 const tapCount = (count) => renderedTexts(componentsId).includes(`Tapped ${count} times`)
 assert.ok(tapCount(0))
 
+// <ImageBackground>: a box whose first child is the image, filling it, under the content.
+const coverId = findViewId(
+  (view) => view.children.some((id) => viewsById[id].text === 'Text over a photo'),
+  componentsId,
+)
+const coverImage = viewsById[viewsById[coverId].children[0]]
+assert.equal(coverImage.type, 'Image')
+assert.equal(coverImage.style.position, 'absolute')
+assert.match(coverImage.props.source, /^https:/)
+
 press(pressableContaining('Primary button', componentsId))
 press(buttonTitled('System button', componentsId))
 await settle()

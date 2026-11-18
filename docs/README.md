@@ -23,6 +23,7 @@ New to nativue? Start with [Getting started](getting-started.md).
 | [`View`](components/view.md)                                   | the building block: a container laid out with flexbox |
 | [`Text`](components/text.md)                                   | text                                                  |
 | [`Image`](components/image.md)                                 | a bundled or remote image                             |
+| [`ImageBackground`](components/image-background.md)            | an image behind other content                         |
 | [`Pressable`](components/pressable.md)                         | anything tappable, with a pressed state               |
 | [`Button`](components/button.md)                               | the platform's text button                            |
 | [`TextInput`](components/text-input.md)                        | a single-line text field                              |
