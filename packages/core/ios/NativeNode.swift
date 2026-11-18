@@ -20,6 +20,8 @@ final class NativeNode {
     /// The view's own, before role and aria-* change them: read the first time they're applied.
     lazy var defaultAccessibility = (isElement: view.isAccessibilityElement, traits: view.accessibilityTraits)
 
+    /// The view's own size, which a removed fontSize goes back to.
+    var defaultFontSize: CGFloat = UIFont.labelFontSize
     var fontSize: CGFloat = UIFont.labelFontSize
     var fontWeight: UIFont.Weight = .regular
 

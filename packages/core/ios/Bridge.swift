@@ -434,6 +434,7 @@ final class Bridge {
     private func makeNode(type: String, id: Int) -> NativeNode {
         let node = makeUnstyledNode(type: type, id: id)
         if let button = node.view as? UIButton, let systemFont = button.titleLabel?.font {
+            node.defaultFontSize = systemFont.pointSize
             node.fontSize = systemFont.pointSize
         }
         node.updateFont()

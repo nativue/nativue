@@ -1,16 +1,15 @@
 import UIKit
 import yoga
 
-// Limitation: Removed layout properties arrive as null and keep their last value; reset them to Yoga's
-// defaults when it matters. Visual properties already fall back to UIKit's defaults on null.
 extension NativeNode {
-    /// Receives only the properties that changed: the JS renderer diffs style objects before sending.
+    /// Receives only the properties that changed: the JS renderer diffs style objects before sending. A
+    /// removed property arrives as null and goes back to its default, as in CSS.
     func applyStyle(_ changes: [String: Any]) {
         for (property, value) in changes {
             if isDrivenByNativeView(property) { continue }
 
-            if let applyLayoutProperty = layoutPropertySetters[property], !(value is NSNull) {
-                applyLayoutProperty(yogaNode, value)
+            if let applyLayoutProperty = layoutPropertySetters[property] {
+                applyLayoutProperty(yogaNode, value is NSNull ? layoutDefaults[property] ?? undefinedLayoutValue : value)
             }
             // Some properties are both: overflow also clips the view.
             applyVisualProperty(property, value)
@@ -88,11 +87,11 @@ extension NativeNode {
 
     /// Font size and weight can change independently, so the node remembers both.
     private func applyFont(_ changes: [String: Any]) {
-        if let size = number(changes["fontSize"] as Any) {
-            fontSize = CGFloat(size)
+        if let size = changes["fontSize"] {
+            fontSize = number(size).map { CGFloat($0) } ?? defaultFontSize
         }
 
-        if let weightName = changes["fontWeight"], !(weightName is NSNull) {
+        if let weightName = changes["fontWeight"] {
             fontWeight = fontWeights[String(describing: weightName)] ?? .regular
         }
 
@@ -116,6 +115,23 @@ extension NativeNode {
 // MARK: - Layout properties (Yoga)
 
 private typealias LayoutPropertySetter = (YGNodeRef, Any) -> Void
+
+/// What a removed property goes back to: Yoga's defaults. The others are undefined (unset).
+private let layoutDefaults: [String: Any] = [
+    "flexDirection": "column",
+    "justifyContent": "flex-start",
+    "alignItems": "stretch",
+    "alignSelf": "auto",
+    "alignContent": "flex-start",
+    "flexWrap": "nowrap",
+    "position": "relative",
+    "display": "flex",
+    "overflow": "visible",
+    "flexBasis": "auto",
+    "width": "auto",
+    "height": "auto",
+]
+private let undefinedLayoutValue = NSNumber(value: Float.nan)
 
 private let layoutPropertySetters: [String: LayoutPropertySetter] = {
     var setters: [String: LayoutPropertySetter] = [

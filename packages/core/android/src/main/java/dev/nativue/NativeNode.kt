@@ -21,7 +21,7 @@ class NativeNode(val view: View, measuresContent: Boolean) {
     /** Where children go when it isn't this node: a <Modal>'s live in a separate Yoga root. */
     var contentNode: NativeNode? = null
 
-    var fontSize = 17f
+    var fontSize = DEFAULT_FONT_SIZE
     var fontWeight = 400
 
     /** WindowInsets types that pad this node (safe area, keyboard), 0 for none, and the last padding. */
@@ -154,3 +154,6 @@ class NativeNode(val view: View, measuresContent: Boolean) {
         fun setPixelDensity(density: Float) = yogaConfig.setPointScaleFactor(density)
     }
 }
+
+/** The platform's body text size, which a removed fontSize goes back to. */
+const val DEFAULT_FONT_SIZE = 17f

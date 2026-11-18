@@ -17,14 +17,15 @@ import com.facebook.yoga.YogaOverflow
 import com.facebook.yoga.YogaPositionType
 import com.facebook.yoga.YogaWrap
 
-// Limitation: Removed layout properties arrive as null and keep their last value, like on iOS.
-
-/** Receives only the properties that changed: the JS renderer diffs style objects before sending. */
+/**
+ * Receives only the properties that changed: the JS renderer diffs style objects before sending. A removed
+ * property arrives as null and goes back to its default, as in CSS.
+ */
 fun NativeNode.applyStyle(changes: Map<String, Any?>) {
     for ((property, value) in changes) {
         if (isDrivenByInsets(property)) continue
 
-        if (value != null) layoutPropertySetters[property]?.invoke(yogaNode, value)
+        layoutPropertySetters[property]?.invoke(yogaNode, value ?: layoutDefaults[property] ?: Float.NaN)
         // Some properties are both: overflow also clips the view.
         applyVisualProperty(property, value)
     }
@@ -107,8 +108,8 @@ private fun degrees(value: Any?): Float {
 
 /** Font size and weight can change independently, so the node remembers both. */
 private fun NativeNode.applyFont(changes: Map<String, Any?>) {
-    number(changes["fontSize"])?.let { fontSize = it }
-    changes["fontWeight"]?.let { weightName -> fontWeight = fontWeightOf(weightName) }
+    if ("fontSize" in changes) fontSize = number(changes["fontSize"]) ?: DEFAULT_FONT_SIZE
+    if ("fontWeight" in changes) fontWeight = changes["fontWeight"]?.let(::fontWeightOf) ?: 400
 
     val textView = view as? TextView ?: return
     textView.typeface = Typeface.create(Typeface.DEFAULT, fontWeight, false)
@@ -219,6 +220,22 @@ private val textGravities = mapOf(
 // ---------- Layout properties (Yoga) ----------
 
 private typealias LayoutPropertySetter = (YogaNode, Any) -> Unit
+
+/** What a removed property goes back to: Yoga's defaults. The others are undefined (NaN, unset). */
+private val layoutDefaults = mapOf(
+    "flexDirection" to "column",
+    "justifyContent" to "flex-start",
+    "alignItems" to "stretch",
+    "alignSelf" to "auto",
+    "alignContent" to "flex-start",
+    "flexWrap" to "nowrap",
+    "position" to "relative",
+    "display" to "flex",
+    "overflow" to "visible",
+    "flexBasis" to "auto",
+    "width" to "auto",
+    "height" to "auto",
+)
 
 private val layoutPropertySetters: Map<String, LayoutPropertySetter> = buildMap {
     put("flexDirection", enumSetter(flexDirections, YogaNode::setFlexDirection))
