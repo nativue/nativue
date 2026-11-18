@@ -381,7 +381,8 @@ export class XMLHttpRequest extends EventTarget {
 
   private parseResponse(): unknown {
     if (this.chosenResponseType === 'blob') return this.blobResponse
-    if (this.chosenResponseType === 'arraybuffer') return (this.bytesResponse ?? new Uint8Array()).buffer
+    if (this.chosenResponseType === 'arraybuffer')
+      return (this.bytesResponse ?? new Uint8Array()).buffer
 
     try {
       return JSON.parse(this.rawResponse)
