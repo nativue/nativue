@@ -185,9 +185,10 @@ private final class Database: @unchecked Sendable {
     private func runBatch(_ statements: [(sql: String, parameters: [Any])]) throws -> [String: Any] {
         let changesBefore = sqlite3_total_changes(connection)
         _ = try run("SAVEPOINT nativue_batch", parameters: [])
+        var rows: [Any] = []
 
         do {
-            for statement in statements { _ = try run(statement.sql, parameters: statement.parameters) }
+            for statement in statements { rows.append(try run(statement.sql, parameters: statement.parameters)["rows"] ?? []) }
             _ = try run("RELEASE nativue_batch", parameters: [])
         } catch {
             sqlite3_exec(connection, "ROLLBACK TO nativue_batch; RELEASE nativue_batch", nil, nil, nil)
@@ -197,6 +198,7 @@ private final class Database: @unchecked Sendable {
         return [
             "changes": Int(sqlite3_total_changes(connection) - changesBefore),
             "lastInsertId": sqlite3_last_insert_rowid(connection),
+            "rows": rows,
         ]
     }
 

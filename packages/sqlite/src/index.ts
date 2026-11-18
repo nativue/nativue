@@ -24,6 +24,11 @@ export interface RunResult {
 /** A statement and its parameters, for `batch()`. */
 export type BatchStatement = [sql: string, parameters?: QueryParameters]
 
+export interface BatchResult extends RunResult {
+  /** Each statement's rows (from a SELECT or RETURNING), as arrays in the columns' order. */
+  rows: Value[][][]
+}
+
 interface NativeResult extends RunResult {
   columns: string[]
   rows: Value[][]
@@ -45,9 +50,9 @@ const nativeQuery =
     (database: string, sql: string, parameters: Value[]) => Promise<NativeResult>
   >('sqlite.query')
 const nativeBatch =
-  requireNativeFunction<(database: string, statements: [string, Value[]][]) => Promise<RunResult>>(
-    'sqlite.batch',
-  )
+  requireNativeFunction<
+    (database: string, statements: [string, Value[]][]) => Promise<BatchResult>
+  >('sqlite.batch')
 const nativeIterate =
   requireNativeFunction<
     (
@@ -128,9 +133,9 @@ export class Statements {
 
   /**
    * The statements in one native call, all or none: much faster than awaiting each one. `changes` counts
-   * every statement's rows.
+   * every statement's changed rows; `rows` has each statement's rows.
    */
-  async batch(statements: BatchStatement[]): Promise<RunResult> {
+  async batch(statements: BatchStatement[]): Promise<BatchResult> {
     const nativeStatements = statements.map(([sql, parameters = []]) =>
       nativeStatement(sql, parameters),
     )

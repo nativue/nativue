@@ -133,9 +133,10 @@ private class Database(context: Context, name: String) {
     private fun runBatch(statements: List<Pair<String, List<*>>>): Map<String, Any?> {
         val changesBefore = longQuery("SELECT total_changes()")
         run("SAVEPOINT nativue_batch", emptyList<Any?>())
+        val rows = mutableListOf<Any?>()
 
         try {
-            for ((sql, parameters) in statements) run(sql, parameters)
+            for ((sql, parameters) in statements) rows.add(run(sql, parameters)["rows"])
             run("RELEASE nativue_batch", emptyList<Any?>())
         } catch (error: Exception) {
             run("ROLLBACK TO nativue_batch", emptyList<Any?>())
@@ -146,6 +147,7 @@ private class Database(context: Context, name: String) {
         return mapOf(
             "changes" to longQuery("SELECT total_changes()") - changesBefore,
             "lastInsertId" to longQuery("SELECT last_insert_rowid()"),
+            "rows" to rows,
         )
     }
 

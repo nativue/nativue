@@ -48,7 +48,7 @@ await db.batch(titles.map((title) => ['INSERT INTO todos (title) VALUES (?)', [t
 | `get(sql, parameters?)`                 | the first row, or `null`                                                     |
 | `values(sql, parameters?)`              | the rows, as arrays in the columns' order: for ORMs                          |
 | `transaction(async (transaction) => …)` | commits when it resolves, rolls back when it throws                          |
-| `batch([[sql, parameters?], …])`        | the statements in one call, all or none; `{ changes, lastInsertId }`         |
+| `batch([[sql, parameters?], …])`        | the statements in one call, all or none; `{ changes, lastInsertId, rows }`   |
 | `iterate(sql, parameters?, chunkSize?)` | the rows in chunks (100 by default), read as you loop: for large results     |
 | `close()`                               | the next statement opens it again                                            |
 
@@ -84,18 +84,28 @@ import { SQLite } from '@nativue/sqlite'
 
 const database = SQLite.open('app.db')
 
-export const db = drizzle(async (sql, parameters, method) => {
-  if (method === 'run') {
-    await database.run(sql, parameters)
-    return { rows: [] }
-  }
+export const db = drizzle(
+  async (sql, parameters, method) => {
+    if (method === 'run') {
+      await database.run(sql, parameters)
+      return { rows: [] }
+    }
 
-  const rows = await database.values(sql, parameters)
-  return { rows: method === 'get' ? rows[0] : rows }
-})
+    const rows = await database.values(sql, parameters)
+    return { rows: method === 'get' ? rows[0] : rows }
+  },
+  // db.batch([...]): the queries in one native call, all or none
+  async (queries) => {
+    const { rows } = await database.batch(queries.map(({ sql, params }) => [sql, params]))
+
+    return queries.map(({ method }, index) => ({
+      rows: method === 'get' ? rows[index][0] : rows[index],
+    }))
+  },
+)
 ```
 
-Queries, joins, `returning()`, and transactions (nested ones too) work as usual.
+Queries, joins, `returning()`, transactions (nested ones too) and `db.batch()` work as usual.
 
 Migrations from `drizzle-kit generate` (with `dialect: 'sqlite'`) go into the bundle with
 `import.meta.glob`; Drizzle's migrator for files needs `fs`, which apps don't have. This is what its
