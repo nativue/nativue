@@ -1,6 +1,5 @@
 package dev.nativue
 
-import android.util.Base64
 import java.io.ByteArrayOutputStream
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -52,13 +51,13 @@ class BlobStore private constructor() {
     /** On reload: the Blobs' JS is gone. */
     fun removeAll() = bytesById.clear()
 
-    /** Joins `{ string }`, `{ base64 }` and `{ blob }` parts into a new blob; null if a part's blob was released. */
+    /** Joins `{ string }`, `{ bytes }` and `{ blob }` parts into a new blob; null if a part's blob was released. */
     fun create(parts: List<*>): Pair<String, Int>? {
         val joined = ByteArrayOutputStream()
 
         for (part in parts.filterIsInstance<Map<*, *>>()) {
             (part["string"] as? String)?.let { joined.write(it.toByteArray()) }
-            (part["base64"] as? String)?.let { joined.write(Base64.decode(it, Base64.DEFAULT)) }
+            (part["bytes"] as? ByteArray)?.let { joined.write(it) }
             (part["blob"] as? Map<*, *>)?.let { joined.write(bytes(it) ?: return null) }
         }
 

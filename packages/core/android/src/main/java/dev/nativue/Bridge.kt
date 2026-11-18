@@ -453,7 +453,11 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         "blobRead" to { arguments ->
             val (blobId, offset, size) = Triple(arguments[0] as String, (arguments[1] as Number).toInt(), (arguments[2] as Number).toInt())
             blobStore.bytes(blobId, offset, size)?.let { bytes ->
-                if (arguments[3] == "base64") Base64.encodeToString(bytes, Base64.NO_WRAP) else String(bytes, Charsets.UTF_8)
+                when (arguments[3]) {
+                    "bytes" -> bytes
+                    "base64" -> Base64.encodeToString(bytes, Base64.NO_WRAP)
+                    else -> String(bytes, Charsets.UTF_8)
+                }
             }
         },
         "blobRelease" to { arguments -> blobStore.remove(arguments[0] as String) },

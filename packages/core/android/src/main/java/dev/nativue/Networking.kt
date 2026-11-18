@@ -29,7 +29,7 @@ class Networking(
     private val onEvent: (owner: JavaScriptRuntime?, requestId: Int, eventName: String, payload: Map<String, Any?>) -> Unit,
 ) {
     private class Request(val id: Int, val owner: JavaScriptRuntime?, query: Map<*, *>) {
-        /** 'text', 'base64' or 'blob'. */
+        /** 'text', 'bytes' or 'blob'. */
         val responseType = query["responseType"] as? String ?: "text"
         val incrementalUpdates = query["incrementalUpdates"] == true
         val streamsText = incrementalUpdates && responseType == "text"
@@ -173,7 +173,7 @@ class Networking(
     /** What to send, or null for none. */
     private fun body(body: Map<*, *>): Body? {
         (body["string"] as? String)?.let { return bytesBody(it.toByteArray()) }
-        (body["base64"] as? String)?.let { return bytesBody(Base64.decode(it, Base64.DEFAULT)) }
+        (body["bytes"] as? ByteArray)?.let { return bytesBody(it) }
         (body["blob"] as? Map<*, *>)?.let { return bytesBody(blobBytes(it)) }
         (body["uri"] as? String)?.let { uri -> return Body(-1) { openUri(uri) } }
 
@@ -237,9 +237,9 @@ class Networking(
         emit(request, "data", mapOf("data" to responseData(request, bytes.toByteArray(), contentType)))
     }
 
-    /** Text, base64, or for 'blob' the bytes kept in the BlobStore, described as a NativeBlob. */
+    /** Text, the bytes, or for 'blob' the bytes kept in the BlobStore, described as a NativeBlob. */
     private fun responseData(request: Request, bytes: ByteArray, contentType: String?): Any = when (request.responseType) {
-        "base64" -> Base64.encodeToString(bytes, Base64.NO_WRAP)
+        "bytes" -> bytes
         "blob" -> {
             val type = contentType?.substringBefore(";")?.trim().orEmpty()
             mapOf("blobId" to blobStore.store(bytes), "offset" to 0, "size" to bytes.size, "type" to type)

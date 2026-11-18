@@ -15,7 +15,7 @@ final class Networking: NSObject, URLSessionDataDelegate {
     private final class RequestState {
         let id: Int
         weak var owner: AnyObject?
-        /// 'text', 'base64' or 'blob'.
+        /// 'text', 'bytes' or 'blob'.
         let responseType: String
         let incrementalUpdates: Bool
         var mimeType: String?
@@ -168,11 +168,11 @@ final class Networking: NSObject, URLSessionDataDelegate {
         emit(state, "complete", ["error": NSNull(), "timedOut": false])
     }
 
-    /// Text, base64, or for 'blob' the bytes kept in the BlobStore, described as a NativeBlob.
+    /// Text, the bytes, or for 'blob' the bytes kept in the BlobStore, described as a NativeBlob.
     private func responseData(of state: RequestState) -> Any {
         switch state.responseType {
-        case "base64":
-            return state.data.base64EncodedString()
+        case "bytes":
+            return state.data
         case "blob":
             let blobId = blobStore.store(state.data)
             return ["blobId": blobId, "offset": 0, "size": state.data.count, "type": state.mimeType ?? ""]
@@ -206,7 +206,7 @@ final class Networking: NSObject, URLSessionDataDelegate {
         guard let body else { return .none }
 
         if let text = body["string"] as? String { return .data(Data(text.utf8)) }
-        if let base64 = body["base64"] as? String { return .data(Data(base64Encoded: base64) ?? Data()) }
+        if let bytes = body["bytes"] as? Data { return .data(bytes) }
         if let blob = body["blob"] as? [String: Any] { return .data(try blobData(blob)) }
         if let uri = body["uri"] as? String {
             let url = try fileOrDataURL(uri)

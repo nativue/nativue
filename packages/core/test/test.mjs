@@ -110,8 +110,8 @@ globalThis.__native = {
     const data =
       responseType === 'blob'
         ? { blobId: storeBlob(bytes), offset: 0, size: bytes.length, type: 'application/json' }
-        : responseType === 'base64'
-          ? bytes.toString('base64')
+        : responseType === 'bytes'
+          ? new Uint8Array(bytes)
           : text
     const report = (eventName, payload) => globalThis.__networkEvent(requestId, eventName, payload)
 
@@ -126,7 +126,7 @@ globalThis.__native = {
   blobCreate: (parts) => {
     const pieces = parts.map((part) => {
       if ('string' in part) return Buffer.from(part.string)
-      if ('base64' in part) return Buffer.from(part.base64, 'base64')
+      if ('bytes' in part) return Buffer.from(part.bytes)
 
       return readBlob(part.blob)
     })
@@ -136,6 +136,8 @@ globalThis.__native = {
   },
   blobRead: (blobId, offset, size, encoding) => {
     const bytes = readBlob({ blobId, offset, size })
+
+    if (encoding === 'bytes') return new Uint8Array(bytes)
 
     return encoding === 'base64' ? bytes.toString('base64') : bytes.toString('utf8')
   },
@@ -779,12 +781,12 @@ assert.deepEqual(jsonRequest.events, [
   'loadend',
 ])
 
-// Binary both ways: bytes go to native and come back as base64.
+// Binary both ways: bytes go to native and come back as bytes, a subarray as only what it sees.
 const binaryRequest = await sendXhr(
   (xhr) => (xhr.responseType = 'arraybuffer'),
-  new Uint8Array([1, 2, 255]),
+  new Uint8Array([0, 1, 2, 255]).subarray(1),
 )
-assert.deepEqual(fetchRequests.at(-1).body, { base64: 'AQL/' })
+assert.deepEqual([...fetchRequests.at(-1).body.bytes], [1, 2, 255])
 assert.equal(new TextDecoder().decode(binaryRequest.xhr.response), JSON.stringify(POSTS))
 
 // Blob and FileReader: the bytes stay native, text is UTF-8.

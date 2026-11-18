@@ -671,7 +671,11 @@ final class Bridge {
             let blob = ["blobId": arguments[0], "offset": arguments[1], "size": arguments[2]]
             guard let data = blobStore.data(of: blob) else { return nil }
 
-            return string(arguments[3]) == "base64" ? data.base64EncodedString() : String(decoding: data, as: UTF8.self)
+            switch string(arguments[3]) {
+            case "bytes": return data
+            case "base64": return data.base64EncodedString()
+            default: return String(decoding: data, as: UTF8.self)
+            }
         }
 
         // Not through self: the runtime may collect Blobs as it's destroyed, with the Bridge.

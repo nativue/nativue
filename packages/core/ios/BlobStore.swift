@@ -50,15 +50,15 @@ final class BlobStore {
         lock.withLock { dataById = [:] }
     }
 
-    /// Joins `{ string }`, `{ base64 }` and `{ blob }` parts into a new blob.
+    /// Joins `{ string }`, `{ bytes }` and `{ blob }` parts into a new blob.
     func create(parts: [[String: Any]]) throws -> (blobId: String, size: Int) {
         var joined = Data()
 
         for part in parts {
             if let text = part["string"] as? String {
                 joined.append(Data(text.utf8))
-            } else if let base64 = part["base64"] as? String {
-                joined.append(Data(base64Encoded: base64) ?? Data())
+            } else if let bytes = part["bytes"] as? Data {
+                joined.append(bytes)
             } else if let blob = part["blob"] as? [String: Any] {
                 guard let data = data(of: blob) else { throw NetworkingError("The blob has been released") }
                 joined.append(data)

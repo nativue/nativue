@@ -1,7 +1,6 @@
 // Blob, File and FileReader, like the browser's. The bytes stay native (see BlobStore), so a large
 // download never crosses into JS unless it's read. They're freed when the garbage collector collects
 // the last Blob that points to them: __blobCollector gives an object whose collection frees them.
-import { fromByteArray, toByteArray } from 'base64-js'
 import { EventTarget, ProgressEvent } from './events'
 import { ReadableStream } from './streams'
 import type { NativeBlob, NativeBlobPart } from './types'
@@ -62,7 +61,7 @@ export class Blob {
   }
 
   async arrayBuffer(): Promise<ArrayBuffer> {
-    return toByteArray(this.read('base64')).buffer as ArrayBuffer
+    return this.readBytes().buffer as ArrayBuffer
   }
 
   /** The bytes in chunks, each read from native when the stream is read. */
@@ -75,7 +74,7 @@ export class Blob {
 
         const chunk = this.slice(offset, offset + STREAM_CHUNK_SIZE)
         offset += chunk.size
-        controller.enqueue(toByteArray(chunk.read('base64')))
+        controller.enqueue(chunk.readBytes())
       },
     })
   }
@@ -83,10 +82,15 @@ export class Blob {
   /** Synchronous: the bytes are in native memory. */
   read(encoding: 'text' | 'base64'): string {
     const { blobId, offset, size } = this.data
-    const contents = native.blobRead(blobId, offset, size, encoding)
-    if (contents === null) throw new Error('The blob has been released')
 
-    return contents
+    return released(native.blobRead(blobId, offset, size, encoding))
+  }
+
+  /** A copy of the bytes, in a buffer of their own. */
+  readBytes(): Uint8Array {
+    const { blobId, offset, size } = this.data
+
+    return released(native.blobRead(blobId, offset, size, 'bytes'))
   }
 }
 
@@ -109,7 +113,13 @@ function nativeBlobPart(part: BlobPart): NativeBlobPart {
   if (typeof part === 'string') return { string: part }
   if (part instanceof Blob) return { blob: part.data }
 
-  return { base64: fromByteArray(bytesOf(part)) }
+  return { bytes: bytesOf(part) }
+}
+
+function released<Contents>(contents: Contents | null): Contents {
+  if (contents === null) throw new Error('The blob has been released')
+
+  return contents
 }
 
 export function bytesOf(buffer: ArrayBuffer | ArrayBufferView): Uint8Array {
@@ -159,7 +169,7 @@ export class FileReader extends EventTarget {
   }
 
   readAsArrayBuffer(blob: Blob): void {
-    this.startReading(blob, () => toByteArray(blob.read('base64')).buffer as ArrayBuffer)
+    this.startReading(blob, () => blob.readBytes().buffer as ArrayBuffer)
   }
 
   abort(): void {

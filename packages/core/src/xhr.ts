@@ -1,6 +1,5 @@
 // XMLHttpRequest and FormData, like the browser's: native runs the request, and its progress comes back as
 // events through __networkEvent. fetch and libraries like axios build on it.
-import { fromByteArray, toByteArray } from 'base64-js'
 import { Blob, bytesOf, File } from './blob'
 import { Event, EventTarget, ProgressEvent } from './events'
 import { URLSearchParams } from './url'
@@ -109,7 +108,7 @@ function nativeBody(body: XMLHttpRequestBody): NativeRequestBody {
   if (body instanceof URLSearchParams) return { string: body.toString() }
   if (body instanceof Blob) return { blob: body.data }
   if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) {
-    return { base64: fromByteArray(bytesOf(body)) }
+    return { bytes: bytesOf(body) }
   }
   if ('uri' in body) return { uri: body.uri }
 
@@ -166,8 +165,8 @@ export class XMLHttpRequest extends EventTarget {
   private requestHeaders: Record<string, string> = {}
   private responseHeaders: Record<string, string> = {}
   private chosenResponseType: XMLHttpRequestResponseType = ''
-  /** Text, or base64 for 'arraybuffer'. */
   private rawResponse = ''
+  private bytesResponse: Uint8Array | null = null
   private blobResponse: Blob | null = null
   // Held until the request ends, so a Blob being uploaded isn't collected (and released) meanwhile.
   private sentBody: XMLHttpRequestBody = null
@@ -312,8 +311,9 @@ export class XMLHttpRequest extends EventTarget {
     this.setReadyState(HEADERS_RECEIVED)
   }
 
-  private receiveData(data: string | NativeBlob) {
+  private receiveData(data: string | Uint8Array | NativeBlob) {
     if (typeof data === 'string') this.rawResponse = data
+    else if (data instanceof Uint8Array) this.bytesResponse = data
     else this.blobResponse = Blob.fromNative(data)
     this.parsedResponse = undefined
     this.setReadyState(LOADING)
@@ -349,7 +349,7 @@ export class XMLHttpRequest extends EventTarget {
         : this.failed
           ? 'error'
           : 'load'
-    const length = this.blobResponse?.size ?? this.rawResponse.length
+    const length = this.blobResponse?.size ?? this.bytesResponse?.length ?? this.rawResponse.length
     this.dispatchProgress(this, outcome, length, length)
     this.dispatchProgress(this, 'loadend', length, length)
   }
@@ -369,7 +369,7 @@ export class XMLHttpRequest extends EventTarget {
   }
 
   private nativeResponseType() {
-    if (this.chosenResponseType === 'arraybuffer') return 'base64'
+    if (this.chosenResponseType === 'arraybuffer') return 'bytes'
     if (this.chosenResponseType === 'blob') return 'blob'
 
     return 'text'
@@ -381,7 +381,7 @@ export class XMLHttpRequest extends EventTarget {
 
   private parseResponse(): unknown {
     if (this.chosenResponseType === 'blob') return this.blobResponse
-    if (this.chosenResponseType === 'arraybuffer') return toByteArray(this.rawResponse).buffer
+    if (this.chosenResponseType === 'arraybuffer') return (this.bytesResponse ?? new Uint8Array()).buffer
 
     try {
       return JSON.parse(this.rawResponse)
@@ -396,6 +396,7 @@ export class XMLHttpRequest extends EventTarget {
     this.responseURL = ''
     this.responseHeaders = {}
     this.rawResponse = ''
+    this.bytesResponse = null
     this.blobResponse = null
     this.parsedResponse = undefined
     this.failed = false
