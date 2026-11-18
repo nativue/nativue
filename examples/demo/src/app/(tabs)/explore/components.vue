@@ -54,9 +54,12 @@ const styles = computed(() =>
       height: 48,
       paddingHorizontal: 14,
       borderRadius: radius.small,
+      borderWidth: 2,
+      borderColor: 'transparent',
       backgroundColor: colors.background,
       fontSize: 17,
     },
+    inputFocused: { borderColor: colors.green },
     iconRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     indicators: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
     images: { flexDirection: 'row', gap: 12 },
@@ -101,7 +104,12 @@ const styles = computed(() =>
     </Section>
 
     <Section title="Inputs">
-      <TextInput v-model="name" placeholder="Your name" :style="styles.input" />
+      <TextInput
+        v-model="name"
+        placeholder="Your name"
+        :style="styles.input"
+        :focused-style="styles.inputFocused"
+      />
       <Text :style="styles.body">Hello, {{ name || 'stranger' }} 👋</Text>
       <FieldRow label="Notifications" :detail="notifications ? 'On' : 'Off'">
         <Switch v-model="notifications" />

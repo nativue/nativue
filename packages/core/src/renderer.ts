@@ -39,6 +39,8 @@ interface Node {
   children: Node[]
   text: string
   style?: Style | null
+  /** <TextInput focused-style>: merged over `style` while the input has focus. */
+  focusedStyle?: Style | null
   className?: string
   /** The states its class's styles may depend on (Tailwind's active:, focus:, disabled:). */
   pressed?: boolean
@@ -160,9 +162,10 @@ function withoutAnimatedProperties(
 
 // The class's styles come first, so the style prop overrides them, as inline styles do on the web.
 function combinedStyle(element: Node): Style | null {
-  if (!element.classStyle) return element.style ?? null
+  const focusedStyle = element.focused ? element.focusedStyle : null
+  if (!element.classStyle && !focusedStyle) return element.style ?? null
 
-  return { ...element.classStyle, ...element.style }
+  return { ...element.classStyle, ...element.style, ...focusedStyle }
 }
 
 function classStyleOf(element: Node): Style | undefined {
@@ -176,7 +179,10 @@ function classStyleOf(element: Node): Style | undefined {
 }
 
 /** Applies a change to what makes up the style (style, class, state), sending only the diff. */
-function updateStyle(element: Node, change: Pick<Node, 'style' | 'className'> & ElementState) {
+function updateStyle(
+  element: Node,
+  change: Pick<Node, 'style' | 'focusedStyle' | 'className'> & ElementState,
+) {
   const previousStyle = combinedStyle(element)
 
   Object.assign(element, change)
@@ -311,6 +317,7 @@ const { createApp: createBaseApp } = createRenderer<Node, Node>({
     if (key === 'style') updateStyle(element, { style: nextValue })
     else if (key === 'class') updateStyle(element, { className: nextValue ?? undefined })
     else if (key === 'pressed') updateStyle(element, { pressed: nextValue })
+    else if (camelize(key) === 'focusedStyle') updateStyle(element, { focusedStyle: nextValue })
     else if (key === 'disabled') {
       updateStyle(element, { disabled: isTruthyAttribute(nextValue) })
       native.setProp(element.id, key, nextValue ?? null)
@@ -339,7 +346,7 @@ globalThis.__dispatch = (nodeId, eventName, payload) => {
   handlers[MODEL_EVENT_BY_NATIVE_EVENT[eventName]]?.(payload)
 }
 
-// A <TextInput>'s focus, for its class's focus: styles.
+// A <TextInput>'s focus, for its class's focus: styles and its focused-style.
 function updateFocus(nodeId: number, eventName: string) {
   const textInput = textInputsById.get(nodeId)
   if (!textInput || (eventName !== 'focus' && eventName !== 'blur')) return

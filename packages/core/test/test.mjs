@@ -278,6 +278,14 @@ assert.ok(tapCount(3))
 
 // v-model on TextInput and Switch.
 const nameInputId = descendantOfType(componentsId, 'TextInput')
+const inputBorderColor = () => viewsById[nameInputId].style.borderColor
+assert.equal(inputBorderColor(), processColor('transparent'))
+globalThis.__dispatch(nameInputId, 'focus') // focused-style while focused
+await settle()
+assert.equal(inputBorderColor(), processColor('#0e9f84'))
+globalThis.__dispatch(nameInputId, 'blur')
+await settle()
+assert.equal(inputBorderColor(), processColor('transparent'))
 assert.equal(viewsById[nameInputId].props.value, '')
 globalThis.__dispatch(nameInputId, 'changetext', 'Ana')
 await settle()

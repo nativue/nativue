@@ -50,6 +50,8 @@ declare module '@vue/runtime-core' {
         onSubmitEditing?: (text: string) => void
         onFocus?: () => void
         onBlur?: () => void
+        /** Merged over `style` while the input has focus. */
+        focusedStyle?: Style
       }
     >
     Image: NativeComponent<{
