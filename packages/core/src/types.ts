@@ -66,6 +66,14 @@ export type Style = {
 
 export type GestureState = 'began' | 'changed' | 'ended' | 'cancelled' | 'failed'
 
+// @layout: the view's box in its parent, in points.
+export interface LayoutEvent {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export interface ScrollEvent {
   x: number
   y: number

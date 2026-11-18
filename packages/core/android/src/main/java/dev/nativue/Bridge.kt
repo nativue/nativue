@@ -68,6 +68,8 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     private val animatedGraph = AnimatedGraph()
     private val modalHostsByNodeId = HashMap<Int, ModalHost>()
     private val gestureReportersByNodeId = HashMap<Int, GestureReporter>()
+    /** Views with @layout, and the box they last reported. */
+    private val reportedLayoutsByNodeId = mutableMapOf<Int, Map<String, Float>?>()
 
     /** The latest window insets, mid-animation while the keyboard moves. */
     private var windowInsets: WindowInsets? = null
@@ -82,6 +84,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     fun start() {
         NativeNode.setPixelDensity(density)
         rootView.onLayoutPass = ::layout
+        NativeNode.onLayoutCalculated = ::reportLayoutChanges
         rootView.setOnApplyWindowInsetsListener { view, insets ->
             windowInsets = insets
             view.requestLayout() // safe area and keyboard paddings
@@ -546,6 +549,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     private fun forgetNode(id: Int) {
         nodesById.remove(id)
         gestureReportersByNodeId.remove(id)
+        reportedLayoutsByNodeId.remove(id)
         modalHostsByNodeId.remove(id)?.let {
             it.onEvent = {} // its "dismiss" would reach a node JS has forgotten
             it.setVisible(false)
@@ -559,6 +563,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         }
         modalHostsByNodeId.clear()
         gestureReportersByNodeId.clear() // node ids start over
+        reportedLayoutsByNodeId.clear()
         animatedGraph.reset()
         animatedGraph.onAnimationEnd = { animationId, finished ->
             evaluate { runtime?.call("__animationFinished", animationId, finished) }
@@ -726,6 +731,23 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         node.yogaNode.setHeight(side)
     }
 
+    /** @layout fires for the views whose box changed: { x, y, width, height }, in dp, in its parent. */
+    private fun reportLayoutChanges() {
+        for ((id, reportedLayout) in reportedLayoutsByNodeId) {
+            val yogaNode = nodesById[id]?.yogaNode ?: continue
+            val layout = mapOf(
+                "x" to yogaNode.layoutX,
+                "y" to yogaNode.layoutY,
+                "width" to yogaNode.layoutWidth,
+                "height" to yogaNode.layoutHeight,
+            )
+            if (yogaNode.layoutWidth.isNaN() || layout == reportedLayout) continue
+
+            reportedLayoutsByNodeId[id] = layout
+            dispatchEvent("layout", id, layout)
+        }
+    }
+
     private fun dispatchEvent(eventName: String, id: Int, payload: Any? = null) {
         evaluate { runtime?.call("__dispatch", id, eventName, payload) }
     }
@@ -810,6 +832,10 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
             "showsHorizontalScrollIndicator" -> (view as? ScrollContainerView)?.showsHorizontalScrollIndicator = isTruthyAttribute(value)
 
             "showsVerticalScrollIndicator" -> (view as? ScrollContainerView)?.showsVerticalScrollIndicator = isTruthyAttribute(value)
+
+            // A new handler on every render re-registers: only a first one waits for a report.
+            "onLayout" -> if (!isTruthyAttribute(value)) reportedLayoutsByNodeId.remove(id)
+                else if (id !in reportedLayoutsByNodeId) reportedLayoutsByNodeId[id] = null
 
             "onScroll" -> (view as? ScrollContainerView)?.onScroll = if (isTruthyAttribute(value)) reportScroll(node, id) else null
 

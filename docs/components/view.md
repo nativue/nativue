@@ -23,11 +23,19 @@ Like every component, it takes `role` and `aria-*`: see [Accessibility](../acces
 
 ## Events
 
-| Event     | Payload       | Fires                            |
-| --------- | ------------- | -------------------------------- |
-| `@pan`    | `PanEvent`    | while a finger drags on the view |
-| `@pinch`  | `PinchEvent`  | while two fingers pinch          |
-| `@rotate` | `RotateEvent` | while two fingers rotate         |
+| Event     | Payload       | Fires                                    |
+| --------- | ------------- | ---------------------------------------- |
+| `@layout` | `LayoutEvent` | when the view's position or size changes |
+| `@pan`    | `PanEvent`    | while a finger drags on the view         |
+| `@pinch`  | `PinchEvent`  | while two fingers pinch                  |
+| `@rotate` | `RotateEvent` | while two fingers rotate                 |
+
+`@layout` gives `{ x, y, width, height }`, in points, relative to the parent. It fires once the view is
+laid out, then on every change, and works on every component, not only `View`:
+
+```vue
+<View @layout="({ height }) => (cardHeight = height)">...</View>
+```
 
 Gestures run natively and can move the view without JavaScript on every frame: see
 [Animations and gestures](../animations.md#gestures).

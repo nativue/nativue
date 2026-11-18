@@ -3,9 +3,11 @@
 import type { DefineComponent } from '@vue/runtime-core'
 import type { AnimatedEvent } from './animated'
 import type { FlatList, Pressable, Swipeable } from './components'
-import type { PanEvent, PinchEvent, RotateEvent, ScrollEvent, Style } from './types'
+import type { LayoutEvent, PanEvent, PinchEvent, RotateEvent, ScrollEvent, Style } from './types'
 
-type NativeComponent<Props = {}> = DefineComponent<Props & { style?: Style } & AccessibilityProps>
+type NativeComponent<Props = {}> = DefineComponent<
+  Props & { style?: Style; onLayout?: (event: LayoutEvent) => void } & AccessibilityProps
+>
 type BooleanAttribute = boolean | 'true' | 'false'
 // As on the web: what a screen reader says about the view. See docs/accessibility.md.
 export interface AccessibilityProps {

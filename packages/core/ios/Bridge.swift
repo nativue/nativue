@@ -42,6 +42,8 @@ final class Bridge {
     private var gestureReportersByNodeId: [Int: GestureReporter] = [:]
     private let animatedGraph = AnimatedGraph()
     var nodesById: [Int: NativeNode] = [:]
+    /// Views with @layout, and the box they last reported.
+    private var reportedLayoutsByNodeId: [Int: CGRect] = [:]
     /// Modals and screens: their content is laid out as a separate Yoga root.
     private var contentRootsByNodeId: [Int: ContentRoot] = [:]
     /// For Dimensions.get('window'): the screen's at start, then the root view's, kept on the JS queue.
@@ -58,6 +60,7 @@ final class Bridge {
     func start(rootView: RootView) {
         self.rootView = rootView
         rootView.onLayoutSubviews = { [unowned self] in layout() }
+        NativeNode.onLayoutCalculated = { [unowned self] in reportLayoutChanges() }
         let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene
         windowSize = windowScene?.screen.bounds.size ?? .zero
         colorScheme = Self.colorScheme(of: windowScene?.traitCollection ?? rootView.traitCollection)
@@ -381,6 +384,7 @@ final class Bridge {
         contentRootsByNodeId.values.forEach { ($0 as? ModalController)?.setVisible(false) }
         contentRootsByNodeId = [:]
         gestureReportersByNodeId = [:] // node ids start over
+        reportedLayoutsByNodeId = [:]
         animatedGraph.reset()
         animatedGraph.onAnimationEnd = { [unowned self] animationId, finished in
             evaluate { [unowned self] in
@@ -425,6 +429,26 @@ final class Bridge {
         modalController(id)?.dismissIfDetached()
         contentRootsByNodeId[id] = nil
         gestureReportersByNodeId[id] = nil
+        reportedLayoutsByNodeId[id] = nil
+    }
+
+    /// @layout fires for the views whose box changed: { x, y, width, height }, in points, in its parent.
+    private func reportLayoutChanges() {
+        for (id, reportedLayout) in reportedLayoutsByNodeId {
+            guard let yogaNode = nodesById[id]?.yogaNode else { continue }
+
+            let layout = CGRect(
+                x: CGFloat(YGNodeLayoutGetLeft(yogaNode)),
+                y: CGFloat(YGNodeLayoutGetTop(yogaNode)),
+                width: CGFloat(YGNodeLayoutGetWidth(yogaNode)),
+                height: CGFloat(YGNodeLayoutGetHeight(yogaNode))
+            )
+            guard !layout.width.isNaN, layout != reportedLayout else { continue }
+
+            reportedLayoutsByNodeId[id] = layout
+            let payload = ["x": layout.minX, "y": layout.minY, "width": layout.width, "height": layout.height]
+            dispatchEvent("layout", toNodeId: id, payload: payload)
+        }
     }
 
     private func modalController(_ id: Int) -> ModalController? {
@@ -872,6 +896,11 @@ final class Bridge {
 
         case "resizeMode":
             node.view.contentMode = ImageView.resizeModes[value as? String ?? ""] ?? .scaleAspectFill
+
+        case "onLayout":
+            // A new handler on every render re-registers: only a first one waits for a report.
+            if !isTruthyAttribute(value) { reportedLayoutsByNodeId[id] = nil }
+            else if reportedLayoutsByNodeId[id] == nil { reportedLayoutsByNodeId[id] = .null }
 
         case "onScroll":
             (node.view as? VueScrollView)?.onScroll = isTruthyAttribute(value) ? reportScroll(toNodeId: id) : nil

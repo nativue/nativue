@@ -80,9 +80,13 @@ final class NativeNode {
     }
 
     /// Computes the layout for this subtree and applies the resulting frames to the views.
+    /// After every layout pass, of the root or of a screen's or modal's content: for @layout.
+    static var onLayoutCalculated: (() -> Void)?
+
     func calculateLayout(width: CGFloat, height: CGFloat) {
         YGNodeCalculateLayout(yogaNode, Float(width), Float(height), .LTR)
         Self.applyFrames(of: yogaNode)
+        Self.onLayoutCalculated?()
     }
 
     /// A view inserted during a layout animation would grow from the corner: it fades in where it lands.

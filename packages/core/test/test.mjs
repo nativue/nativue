@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import assert from 'node:assert'
 import { createSymbolicator } from '../cli/symbolicate.mjs'
 import { processColor } from '../src/colors.ts'
+import { rowAt, rowOffsets } from '../src/list-window.ts'
 
 const ROW_HEIGHT = 64
 const WINDOW = { width: 390, height: 844 }
@@ -92,6 +93,17 @@ globalThis.__native = {
 // Page options and the <Tabs.Screen> order apply on the next tick (the runtime drains it before handing
 // the batch to native).
 await new Promise((resolve) => setTimeout(resolve))
+
+// ---------- FlatList's windowing: rows of different heights ----------
+
+const offsets = rowOffsets([10, 30, 20])
+assert.deepEqual(offsets, [0, 10, 40, 60])
+assert.equal(rowAt(offsets, 0), 0)
+assert.equal(rowAt(offsets, 39), 1)
+assert.equal(rowAt(offsets, 40), 2)
+assert.equal(rowAt(offsets, -50), 0) // bounce past the top
+assert.equal(rowAt(offsets, 500), 2) // and past the bottom
+assert.equal(rowAt(rowOffsets([]), 0), 0)
 
 // ---------- Helpers ----------
 
@@ -390,7 +402,7 @@ const listWindow = () =>
 assert.ok(listTexts().includes('1,000 ITEMS · 0 DONE'))
 assert.ok(listTexts().includes('Swipe a row either way · pull to refresh')) // #header slot
 assert.ok(listTexts().includes('End of the list')) // #footer slot
-assert.equal(listWindow().children.length, 10)
+assert.equal(listWindow().children.length, 11) // the first row, and the offscreen ones after it
 
 scrollList(100 * ROW_HEIGHT)
 await settle()

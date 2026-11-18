@@ -61,6 +61,7 @@ class NativeNode(val view: View, measuresContent: Boolean) {
     fun calculateLayout(width: Float, height: Float) {
         yogaNode.calculateLayout(width, height)
         applyFrames()
+        onLayoutCalculated()
     }
 
     /** Only visits subtrees Yoga laid out again; untouched subtrees keep their frames. */
@@ -149,6 +150,9 @@ class NativeNode(val view: View, measuresContent: Boolean) {
 
     companion object {
         private val yogaConfig = YogaConfigFactory.create()
+
+        /** After every layout pass, of the root or of a modal's content: for @layout. */
+        var onLayoutCalculated: () -> Unit = {}
 
         /** Rounds layouts to whole pixels; set before the first node is laid out. */
         fun setPixelDensity(density: Float) = yogaConfig.setPointScaleFactor(density)
