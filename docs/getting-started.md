@@ -52,9 +52,10 @@ npm run android -- --device    # the first Android phone, with USB debugging on
 `--device <name or id>` picks a given phone, simulator or emulator, e.g.
 `npm run ios -- --device "iPhone 16"`; an unknown one lists what's available.
 
-On iOS, open `ios/App.xcodeproj` in Xcode once and pick your team under Signing & Capabilities: a
-phone only runs signed apps. You can also press Run in Xcode, or in Android Studio for the `android`
-folder, with `npm run dev` running.
+On iOS, a phone only runs signed apps: sign in to your Apple account in Xcode > Settings > Accounts
+once. The app is signed with your development team, or the one picked under Signing & Capabilities
+in `ios/App.xcodeproj` (needed if you're in several). You can also press Run in Xcode, or in Android
+Studio for the `android` folder, with `npm run dev` running.
 
 A debug build finds the dev server by itself. An iPhone reaches it through the computer's local
 address on the same Wi-Fi, which is written into the app when it's built: build again after switching

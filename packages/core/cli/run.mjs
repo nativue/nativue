@@ -2,6 +2,7 @@
 // or emulator when none is running, then installs and launches the app on it. `--device` picks one by
 // name or id (a simulator, an emulator or a phone), or alone, the first phone connected.
 import { execFileSync, spawn } from 'node:child_process'
+import { X509Certificate } from 'node:crypto'
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -114,7 +115,48 @@ function noDeviceMessage(requested, available) {
   return `No device named or with the id "${requested}". Available:\n  ${available.join('\n  ')}`
 }
 
+const IOS_PROJECT_FILE = 'ios/App.xcodeproj/project.pbxproj'
+
+/** The teams of this Mac's valid "Apple Development" certificates (their OU). */
+function developmentTeams() {
+  const certificates = run(
+    'security',
+    ['find-certificate', '-a', '-c', 'Apple Development', '-p'],
+    {
+      stdio: ['ignore', 'pipe', 'ignore'],
+    },
+  ).match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g)
+
+  const teams = (certificates ?? [])
+    .map((pem) => new X509Certificate(pem))
+    .filter((certificate) => new Date(certificate.validTo) > new Date())
+    .map((certificate) => certificate.subject.match(/^OU=(\w+)$/m)?.[1])
+
+  return [...new Set(teams.filter(Boolean))]
+}
+
+/**
+ * A phone only runs signed apps. Without a team in the project, the one of this Mac's development
+ * certificate, for this build only: the project stays as it is.
+ */
+function signingSettings() {
+  if (readFileSync(IOS_PROJECT_FILE, 'utf8').includes('DEVELOPMENT_TEAM')) return []
+
+  const teams = developmentTeams()
+  if (teams.length === 1) return [`DEVELOPMENT_TEAM=${teams[0]}`]
+
+  const reason =
+    teams.length === 0
+      ? 'No Apple Development certificate on this Mac: sign in to your Apple account in Xcode > Settings > Accounts,'
+      : 'Your certificates belong to several teams:'
+  throw new Error(
+    `${reason} then pick your team in ios/App.xcodeproj, under Signing & Capabilities.`,
+  )
+}
+
 function buildIOSApp(destination, isSimulator) {
+  const signing = isSimulator ? [] : ['-allowProvisioningUpdates', ...signingSettings()]
+
   step('Building the iOS app')
 
   try {
@@ -131,8 +173,8 @@ function buildIOSApp(destination, isSimulator) {
         `id=${destination}`,
         '-derivedDataPath',
         IOS_BUILD_DIRECTORY,
-        // A phone needs a signed app: Xcode creates its provisioning profile.
-        ...(isSimulator ? [] : ['-allowProvisioningUpdates']),
+        // Xcode creates the provisioning profile.
+        ...signing,
         '-quiet',
         'build',
       ],
@@ -142,7 +184,7 @@ function buildIOSApp(destination, isSimulator) {
     if (isSimulator) throw error
 
     throw new Error(
-      'The build for the phone failed. If it says signing needs a development team, open ios/App.xcodeproj in Xcode and pick your team under Signing & Capabilities.',
+      'The build for the phone failed. If it is about signing, open ios/App.xcodeproj in Xcode and check Signing & Capabilities.',
     )
   }
 }
