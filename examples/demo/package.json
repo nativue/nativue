@@ -13,6 +13,7 @@
     "@nativue/core": "*",
     "@nativue/haptics": "*",
     "@nativue/icons": "*",
+    "@nativue/sqlite": "*",
     "@nativue/tailwind": "*"
   }
 }

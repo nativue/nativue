@@ -6,6 +6,7 @@ import {
   CompassIcon,
   DatabaseIcon,
   HandIcon,
+  HardDriveIcon,
   ListChecksIcon,
   PaletteIcon,
   SparklesIcon,
@@ -95,6 +96,13 @@ export const demoSections: DemoSection[] = [
         subtitle: 'fetch, AsyncStorage and timers',
         icon: DatabaseIcon,
         tint: colors.teal,
+      },
+      {
+        href: '/explore/sqlite',
+        title: 'SQLite',
+        subtitle: 'Todos kept in a database: @nativue/sqlite',
+        icon: HardDriveIcon,
+        tint: colors.blue,
       },
       {
         href: '/explore/errors',

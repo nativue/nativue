@@ -9,6 +9,7 @@ let package = Package(
     dependencies: [.package(path: "../../../../packages/core")],
     targets: [
         .target(name: "NativueHaptics", dependencies: [.product(name: "Nativue", package: "core")], path: "Sources/NativueHaptics"),
-        .target(name: "NativuePlugins", dependencies: [.product(name: "Nativue", package: "core"), "NativueHaptics"], path: "Sources/NativuePlugins"),
+        .target(name: "NativueSqlite", dependencies: [.product(name: "Nativue", package: "core")], path: "Sources/NativueSqlite"),
+        .target(name: "NativuePlugins", dependencies: [.product(name: "Nativue", package: "core"), "NativueHaptics", "NativueSqlite"], path: "Sources/NativuePlugins"),
     ]
 )

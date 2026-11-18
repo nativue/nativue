@@ -19,8 +19,8 @@ to the demo.
 ## Run the demo
 
 The demo app, in `examples/demo`, shows every feature: components, navigation, lists, animations,
-gestures, Tailwind, haptics, data and errors. It uses the packages from this repository, so a change
-to the framework shows up in it right away.
+gestures, Tailwind, haptics, SQLite, data and errors. It uses the packages from this repository, so a
+change to the framework shows up in it right away.
 
 ```sh
 npm run ios        # builds the demo, opens it on an iOS simulator, then runs the dev server
