@@ -9,3 +9,4 @@ xcuserdata/
 .kotlin
 .idea
 local.properties
+.build
