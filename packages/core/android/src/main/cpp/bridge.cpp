@@ -1,11 +1,13 @@
 // JNI bridge between dev.nativue.JavaScriptRuntime (Kotlin) and Hermes, through JSI. Values cross as
-// plain Java objects: null, Boolean, Double, String, ArrayList and HashMap (and back from any Number,
-// List, Map or Object[]). Every call happens on the JS thread.
+// plain Java objects: null, Boolean, Double, String, ByteArray (from an ArrayBuffer or a typed array, back
+// as a Uint8Array), ArrayList and HashMap (and back from any Number, List, Map or Object[]). Every call
+// happens on the JS thread.
 #include <hermes/hermes.h>
 #include <jni.h>
 #include <jsi/jsi.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -16,7 +18,7 @@ namespace {
 JavaVM* javaVM;
 
 struct JavaTypes {
-  jclass object, boolean, number, doubleClass, string, list, arrayList, map, hashMap, objectArray;
+  jclass object, boolean, number, doubleClass, string, byteArray, list, arrayList, map, hashMap, objectArray;
   jmethodID booleanValueOf, booleanValue, doubleValueOf, numberDoubleValue;
   jmethodID listSize, listGet, arrayListInit, arrayListAdd;
   jmethodID mapKeys, mapGet, hashMapInit, hashMapPut, setToArray;
@@ -84,6 +86,53 @@ std::string toStdString(JNIEnv* env, jstring string) {
   return text;
 }
 
+// ---------- Bytes ----------
+
+struct Bytes {
+  const uint8_t* data;
+  size_t size;
+};
+
+// An ArrayBuffer, or what a typed array or DataView sees of one. Not copied: use before calling JS again.
+std::optional<Bytes> bytesOf(jsi::Runtime& runtime, const jsi::Object& object) {
+  if (object.isArrayBuffer(runtime)) {
+    jsi::ArrayBuffer buffer = object.getArrayBuffer(runtime);
+
+    return Bytes{buffer.data(runtime), buffer.size(runtime)};
+  }
+
+  jsi::Value buffer = object.getProperty(runtime, "buffer");
+  if (!buffer.isObject() || !buffer.getObject(runtime).isArrayBuffer(runtime)) return std::nullopt;
+
+  jsi::ArrayBuffer arrayBuffer = buffer.getObject(runtime).getArrayBuffer(runtime);
+  auto offset = static_cast<size_t>(object.getProperty(runtime, "byteOffset").asNumber());
+  auto length = static_cast<size_t>(object.getProperty(runtime, "byteLength").asNumber());
+
+  return Bytes{arrayBuffer.data(runtime) + offset, length};
+}
+
+class OwnedBuffer : public jsi::MutableBuffer {
+ public:
+  explicit OwnedBuffer(std::vector<uint8_t> bytes) : bytes_(std::move(bytes)) {}
+
+  size_t size() const override {
+    return bytes_.size();
+  }
+
+  uint8_t* data() override {
+    return bytes_.data();
+  }
+
+ private:
+  std::vector<uint8_t> bytes_;
+};
+
+jsi::Value uint8Array(jsi::Runtime& runtime, std::vector<uint8_t> bytes) {
+  jsi::ArrayBuffer buffer(runtime, std::make_shared<OwnedBuffer>(std::move(bytes)));
+
+  return runtime.global().getPropertyAsFunction(runtime, "Uint8Array").callAsConstructor(runtime, buffer);
+}
+
 // ---------- Values ----------
 
 jobject toJava(JNIEnv* env, jsi::Runtime& runtime, const jsi::Value& value);
@@ -118,6 +167,13 @@ jobject objectToJava(JNIEnv* env, jsi::Runtime& runtime, const jsi::Object& obje
   return map;
 }
 
+jbyteArray bytesToJava(JNIEnv* env, const Bytes& bytes) {
+  jbyteArray array = env->NewByteArray(static_cast<jsize>(bytes.size));
+  env->SetByteArrayRegion(array, 0, static_cast<jsize>(bytes.size), reinterpret_cast<const jbyte*>(bytes.data));
+
+  return array;
+}
+
 // Functions and other non-data values become null.
 jobject toJava(JNIEnv* env, jsi::Runtime& runtime, const jsi::Value& value) {
   if (value.isBool()) return env->CallStaticObjectMethod(types.boolean, types.booleanValueOf, value.getBool());
@@ -128,6 +184,7 @@ jobject toJava(JNIEnv* env, jsi::Runtime& runtime, const jsi::Value& value) {
   jsi::Object object = value.getObject(runtime);
   if (object.isFunction(runtime)) return nullptr;
   if (object.isArray(runtime)) return arrayToJava(env, runtime, object.getArray(runtime));
+  if (auto bytes = bytesOf(runtime, object)) return bytesToJava(env, *bytes);
 
   return objectToJava(env, runtime, object);
 }
@@ -188,6 +245,13 @@ jsi::Value toJavaScript(JNIEnv* env, jsi::Runtime& runtime, jobject value) {
   }
   if (env->IsInstanceOf(value, types.string)) {
     return toJavaScriptString(env, runtime, static_cast<jstring>(value));
+  }
+  if (env->IsInstanceOf(value, types.byteArray)) {
+    auto array = static_cast<jbyteArray>(value);
+    std::vector<uint8_t> bytes(env->GetArrayLength(array));
+    env->GetByteArrayRegion(array, 0, static_cast<jsize>(bytes.size()), reinterpret_cast<jbyte*>(bytes.data()));
+
+    return uint8Array(runtime, std::move(bytes));
   }
   if (env->IsInstanceOf(value, types.list)) return listToJavaScript(env, runtime, value);
   if (env->IsInstanceOf(value, types.map)) return mapToJavaScript(env, runtime, value);
@@ -364,6 +428,7 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
   types.number = globalClass(env, "java/lang/Number");
   types.doubleClass = globalClass(env, "java/lang/Double");
   types.string = globalClass(env, "java/lang/String");
+  types.byteArray = globalClass(env, "[B");
   types.list = globalClass(env, "java/util/List");
   types.arrayList = globalClass(env, "java/util/ArrayList");
   types.map = globalClass(env, "java/util/Map");

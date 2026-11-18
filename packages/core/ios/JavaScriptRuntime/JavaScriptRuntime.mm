@@ -1,5 +1,6 @@
 // The bridge between Bridge.swift and Hermes, through JSI: the iOS side of android/src/main/cpp/bridge.cpp.
-// Values cross as Foundation objects. Every call happens on the JS queue.
+// Values cross as Foundation objects, bytes as NSData (back as a Uint8Array). Every call happens on the
+// JS queue.
 #import "NativueJavaScriptRuntime.h"
 
 #include <hermes/hermes.h>
@@ -7,6 +8,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -36,6 +38,53 @@ std::string toStdString(NSString *string) {
 
 NSString *toObjectiveCString(const std::string &string) {
   return [NSString stringWithUTF8String:string.c_str()] ?: @"";
+}
+
+// ---------- Bytes ----------
+
+struct Bytes {
+  const uint8_t *data;
+  size_t size;
+};
+
+// An ArrayBuffer, or what a typed array or DataView sees of one. Not copied: use before calling JS again.
+std::optional<Bytes> bytesOf(jsi::Runtime &runtime, const jsi::Object &object) {
+  if (object.isArrayBuffer(runtime)) {
+    jsi::ArrayBuffer buffer = object.getArrayBuffer(runtime);
+
+    return Bytes{buffer.data(runtime), buffer.size(runtime)};
+  }
+
+  jsi::Value buffer = object.getProperty(runtime, "buffer");
+  if (!buffer.isObject() || !buffer.getObject(runtime).isArrayBuffer(runtime)) return std::nullopt;
+
+  jsi::ArrayBuffer arrayBuffer = buffer.getObject(runtime).getArrayBuffer(runtime);
+  auto offset = static_cast<size_t>(object.getProperty(runtime, "byteOffset").asNumber());
+  auto length = static_cast<size_t>(object.getProperty(runtime, "byteLength").asNumber());
+
+  return Bytes{arrayBuffer.data(runtime) + offset, length};
+}
+
+class OwnedBuffer : public jsi::MutableBuffer {
+ public:
+  explicit OwnedBuffer(std::vector<uint8_t> bytes) : bytes_(std::move(bytes)) {}
+
+  size_t size() const override {
+    return bytes_.size();
+  }
+
+  uint8_t *data() override {
+    return bytes_.data();
+  }
+
+ private:
+  std::vector<uint8_t> bytes_;
+};
+
+jsi::Value uint8Array(jsi::Runtime &runtime, std::vector<uint8_t> bytes) {
+  jsi::ArrayBuffer buffer(runtime, std::make_shared<OwnedBuffer>(std::move(bytes)));
+
+  return runtime.global().getPropertyAsFunction(runtime, "Uint8Array").callAsConstructor(runtime, buffer);
 }
 
 // ---------- Values ----------
@@ -79,6 +128,7 @@ id toObjectiveC(jsi::Runtime &runtime, const jsi::Value &value) {
   jsi::Object object = value.getObject(runtime);
   if (object.isFunction(runtime)) return NSNull.null;
   if (object.isArray(runtime)) return arrayToObjectiveC(runtime, object.getArray(runtime));
+  if (auto bytes = bytesOf(runtime, object)) return [NSData dataWithBytes:bytes->data length:bytes->size];
 
   return objectToObjectiveC(runtime, object);
 }
@@ -114,6 +164,12 @@ jsi::Value toJavaScript(jsi::Runtime &runtime, id value) {
     return jsi::Value([value doubleValue]);
   }
   if ([value isKindOfClass:NSString.class]) return toJavaScriptString(runtime, value);
+  if ([value isKindOfClass:NSData.class]) {
+    NSData *data = value;
+    auto bytes = static_cast<const uint8_t *>(data.bytes);
+
+    return uint8Array(runtime, std::vector<uint8_t>(bytes, bytes + data.length));
+  }
   if ([value isKindOfClass:NSArray.class]) return arrayToJavaScript(runtime, value);
   if ([value isKindOfClass:NSDictionary.class]) return dictionaryToJavaScript(runtime, value);
 

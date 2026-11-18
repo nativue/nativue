@@ -76,6 +76,10 @@ public final class CameraPlugin: NativuePlugin {
 On Android, async functions settle a `Promise` instead, from any thread:
 `registry.addAsyncFunction("camera.requestAccess") { arguments, promise -> promise.resolve(true) }`.
 
+Arguments and results are booleans, numbers, strings, `null`, arrays and objects of those, and
+bytes: an `ArrayBuffer` or a typed array (`Uint8Array`...) arrives as `Data` on iOS and `ByteArray`
+on Android, and returned bytes reach JavaScript as a `Uint8Array`, with no base64 in between.
+
 Plugin views get their props through `PluginView.setProp(key, value)`; nativue applies `style`
 and lays them out, sized by their style (they don't measure their content). The package's
 JavaScript calls the functions with `requireNativeFunction` and renders the views by their tag:
