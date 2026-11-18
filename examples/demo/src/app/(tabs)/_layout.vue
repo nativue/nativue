@@ -9,6 +9,7 @@ import { colors } from '@/lib/theme'
     :screen-options="{
       tabBarActiveTintColor: colors.green,
       tabBarInactiveTintColor: colors.secondaryText,
+      tabBarBackgroundColor: colors.surface,
     }"
   >
     <Tabs.Screen
