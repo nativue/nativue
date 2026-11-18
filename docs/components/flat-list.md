@@ -17,14 +17,27 @@ as smoothly as a short one.
 Rows size to their content: the list measures each one as it renders, and counts rows it hasn't
 rendered yet as the average of those it has. When every row has the same height, pass it as
 `item-height`, in points: the list then knows where each row is without measuring, and the scroll bar
-is exact from the start. It scrolls vertically.
+is exact from the start.
+
+It scrolls vertically, or sideways with `horizontal`: then rows are measured by their width, and
+`item-width` fixes it. The header comes before the rows, on the left, and the footer after them.
+
+```vue
+<FlatList :data="photos" horizontal :style="{ height: 120 }">
+  <template #item="{ item }">
+    <Image :source="{ uri: item.url }" :style="{ width: 160, height: 120, marginRight: 8 }" />
+  </template>
+</FlatList>
+```
 
 ## Props
 
 | Prop            | Type                                | Default   | Description                                                     |
 | --------------- | ----------------------------------- | --------- | --------------------------------------------------------------- |
 | `data`          | `any[]`                             | required  | the items                                                       |
+| `horizontal`    | `boolean`                           | `false`   | scrolls sideways                                                |
 | `item-height`   | `number`                            | measured  | every row's height, when they're all the same                   |
+| `item-width`    | `number`                            | measured  | every row's width, when horizontal and they're all the same     |
 | `key-extractor` | `(item, index) => string \| number` | the index | a stable key per item, so rows keep their state when items move |
 | `style`         | `Style`                             |           | the list's own style; give it a bounded size, like `flex: 1`    |
 

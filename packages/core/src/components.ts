@@ -89,12 +89,13 @@ export const Pressable = defineComponent({
 
 const OFFSCREEN_ROWS_RENDERED = 10
 // What a row not yet measured counts as, until some are: then their average.
-const ESTIMATED_ROW_HEIGHT = 50
+const ESTIMATED_ROW_LENGTH = 50
 
-// Renders only the rows near the visible area; the rest is empty padding of the same height.
-// Slots: #item="{ item, index }", plus #header, #footer and #empty. With `item-height`, every row is that
-// tall; without it, rows size to their content and are measured as they render. Vertical only.
-// Limitation: Rows not rendered yet count as the average measured height, so jumping far (dragging the
+// Renders only the rows near the visible area; the rest is empty padding of the same length.
+// Slots: #item="{ item, index }", plus #header, #footer and #empty. Vertical by default, sideways with
+// `horizontal`. With `item-height` (or `item-width` when horizontal), every row is that long; without
+// it, rows size to their content and are measured as they render.
+// Limitation: Rows not rendered yet count as the average measured length, so jumping far (dragging the
 // scroll indicator) can shift the rows a few points once they're measured; anchor the scroll position
 // to the first visible row if that shows.
 // Limitation: Items are `any` in the #item slot; make FlatList generic if typed rows are wanted.
@@ -104,7 +105,9 @@ export const FlatList = defineComponent({
   name: 'FlatList',
   props: {
     data: { type: Array as PropType<any[]>, required: true },
+    horizontal: Boolean,
     itemHeight: Number,
+    itemWidth: Number,
     keyExtractor: {
       type: Function as PropType<(item: any, index: number) => string | number>,
       default: (_item: unknown, index: number) => index,
@@ -119,48 +122,55 @@ export const FlatList = defineComponent({
   }>,
 
   setup(props, { slots }) {
-    const scrollTop = ref(0)
-    const viewportHeight = ref(0)
-    const headerHeight = ref(0)
-    const measuredHeights = reactive(new Map<string | number, number>())
+    const scrollPosition = ref(0)
+    const viewportLength = ref(0)
+    const headerLength = ref(0)
+    const measuredLengths = reactive(new Map<string | number, number>())
+
+    // Along the scroll direction: heights for a vertical list, widths for a horizontal one.
+    const fixedLength = computed(() => (props.horizontal ? props.itemWidth : props.itemHeight))
+    const lengthOf = ({ width, height }: { width: number; height: number }) =>
+      props.horizontal ? width : height
 
     const offsets = computed(() => {
-      const estimatedHeight = averageOf(measuredHeights.values()) ?? ESTIMATED_ROW_HEIGHT
-      const heights = props.data.map(
+      const estimatedLength = averageOf(measuredLengths.values()) ?? ESTIMATED_ROW_LENGTH
+      const lengths = props.data.map(
         (item, index) =>
-          props.itemHeight ??
-          measuredHeights.get(props.keyExtractor(item, index)) ??
-          estimatedHeight,
+          fixedLength.value ??
+          measuredLengths.get(props.keyExtractor(item, index)) ??
+          estimatedLength,
       )
 
-      return rowOffsets(heights)
+      return rowOffsets(lengths)
     })
 
     // Numbers, so scrolling within the same rows doesn't re-render.
     const start = computed(() =>
-      Math.max(0, rowAt(offsets.value, scrollTop.value) - OFFSCREEN_ROWS_RENDERED),
+      Math.max(0, rowAt(offsets.value, scrollPosition.value) - OFFSCREEN_ROWS_RENDERED),
     )
     const end = computed(() => {
-      const lastVisibleRow = rowAt(offsets.value, scrollTop.value + viewportHeight.value)
+      const lastVisibleRow = rowAt(offsets.value, scrollPosition.value + viewportLength.value)
 
       return Math.min(props.data.length, lastVisibleRow + 1 + OFFSCREEN_ROWS_RENDERED)
     })
 
     // Bouncing past either edge reports offsets outside the list: clamp them, or the window (and the
     // layout) would change on every frame of the bounce.
-    function handleScroll({ y, height }: ScrollEvent) {
-      const maxScrollTop = Math.max(0, offsets.value[props.data.length] - height)
+    function handleScroll(event: ScrollEvent) {
+      const offset = props.horizontal ? event.x : event.y
+      const length = lengthOf(event)
+      const maxScrollPosition = Math.max(0, offsets.value[props.data.length] - length)
 
-      scrollTop.value = Math.min(Math.max(y - headerHeight.value, 0), maxScrollTop)
-      viewportHeight.value = height
+      scrollPosition.value = Math.min(Math.max(offset - headerLength.value, 0), maxScrollPosition)
+      viewportLength.value = length
     }
 
     function renderRow(item: unknown, offset: number): VNode {
       const index = start.value + offset
       const key = props.keyExtractor(item, index)
-      const sizing = props.itemHeight
-        ? { style: { height: props.itemHeight } }
-        : { onLayout: ({ height }: LayoutEvent) => measuredHeights.set(key, height) }
+      const sizing = fixedLength.value
+        ? { style: props.horizontal ? { width: fixedLength.value } : { height: fixedLength.value } }
+        : { onLayout: (layout: LayoutEvent) => measuredLengths.set(key, lengthOf(layout)) }
 
       return h('View', { key, ...sizing }, slots.item?.({ item, index }))
     }
@@ -168,28 +178,43 @@ export const FlatList = defineComponent({
     function renderHeader(): VNode | null {
       if (!slots.header) return null
 
-      const onLayout = ({ height }: LayoutEvent) => (headerHeight.value = height)
+      const onLayout = (layout: LayoutEvent) => (headerLength.value = lengthOf(layout))
 
       return h('View', { onLayout }, slots.header({}))
     }
 
-    return () => {
-      const total = offsets.value[props.data.length]
-      // overflow: 'scroll' tells Yoga the rows may reach past the window's box: otherwise it caps a row
-      // that sizes to its content at the space the paddings leave, which is none.
-      const window = {
-        paddingTop: offsets.value[start.value],
-        paddingBottom: total - offsets.value[end.value],
-        overflow: 'scroll' as const,
+    // overflow: 'scroll' tells Yoga the rows may reach past the window's box: otherwise it caps a row
+    // that sizes to its content at the space the paddings leave, which is none.
+    function windowStyle(): Style {
+      const before = offsets.value[start.value]
+      const after = offsets.value[props.data.length] - offsets.value[end.value]
+
+      if (props.horizontal) {
+        return {
+          flexDirection: 'row',
+          paddingLeft: before,
+          paddingRight: after,
+          overflow: 'scroll',
+        }
       }
 
+      return { paddingTop: before, paddingBottom: after, overflow: 'scroll' }
+    }
+
+    return () => {
+      const rows = props.data.slice(start.value, end.value).map(renderRow)
+
       // Other attributes (refreshing, @refresh...) fall through to the ScrollView.
-      return h('ScrollView', { style: props.style, onScroll: handleScroll }, [
-        renderHeader(),
-        h('View', { style: window }, props.data.slice(start.value, end.value).map(renderRow)),
-        props.data.length === 0 ? slots.empty?.({}) : null,
-        slots.footer?.({}),
-      ])
+      return h(
+        'ScrollView',
+        { style: props.style, horizontal: props.horizontal, onScroll: handleScroll },
+        [
+          renderHeader(),
+          h('View', { style: windowStyle() }, rows),
+          props.data.length === 0 ? slots.empty?.({}) : null,
+          slots.footer?.({}),
+        ],
+      )
     }
   },
 })
