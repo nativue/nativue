@@ -139,6 +139,38 @@ class DataBuffer : public jsi::Buffer {
   NSData *data_;
 };
 
+// ---------- Blobs ----------
+
+// What __blobCollector returns: when the garbage collector collects it (with the last Blob that holds it),
+// it releases the blob's native bytes.
+class BlobCollector : public jsi::HostObject {
+ public:
+  BlobCollector(NativueNativeFunction release, NSString *blobId) : release_(release), blobId_(blobId) {}
+
+  ~BlobCollector() override {
+    release_(@[ blobId_ ]);
+  }
+
+ private:
+  NativueNativeFunction release_;
+  NSString *blobId_;
+};
+
+void installBlobCollector(jsi::Runtime &runtime, NativueNativeFunction release) {
+  auto collector = [release](jsi::Runtime &runtime, const jsi::Value &, const jsi::Value *arguments, size_t count) {
+    if (count < 1 || !arguments[0].isString()) throw jsi::JSError(runtime, "__blobCollector needs a blob id");
+
+    NSString *blobId = toObjectiveCString(runtime, arguments[0].getString(runtime));
+
+    return jsi::Value(runtime, jsi::Object::createFromHostObject(runtime, std::make_shared<BlobCollector>(release, blobId)));
+  };
+
+  runtime.global().setProperty(
+      runtime,
+      "__blobCollector",
+      jsi::Function::createFromHostFunction(runtime, jsi::PropNameID::forAscii(runtime, "__blobCollector"), 1, collector));
+}
+
 }  // namespace
 
 @implementation NativueJavaScriptRuntime {
@@ -182,6 +214,9 @@ class DataBuffer : public jsi::Buffer {
   }
 
   runtime.global().setProperty(runtime, "__native", nativeModule);
+
+  NativueNativeFunction releaseBlob = functions[@"blobRelease"];
+  if (releaseBlob) installBlobCollector(runtime, releaseBlob);
 }
 
 - (void)evaluate:(NSData *)bundle sourceURL:(NSString *)sourceURL {

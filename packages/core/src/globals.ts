@@ -18,6 +18,8 @@ declare global {
     eventName: Name,
     payload: NetworkEventPayloads[Name],
   ) => void
+  /** From the runtime (not __native): an object whose garbage collection releases the blob's bytes. */
+  var __blobCollector: ((blobId: string) => object) | undefined
 
   var console: {
     log(...values: unknown[]): void

@@ -46,6 +46,19 @@ struct Runtime {
   jobject owner;
 };
 
+// Calls the Kotlin native function at `index` with one string, outside any JS call: no JS value to
+// return, no JS error to throw.
+void callNativeWithString(jobject owner, jint index, const std::string& argument) {
+  JNIEnv* env = currentEnvironment();
+  if (env == nullptr) return;
+
+  env->PushLocalFrame(4);
+  jobjectArray arguments = env->NewObjectArray(1, types.object, env->NewStringUTF(argument.c_str()));
+  env->CallObjectMethod(owner, types.callNative, index, arguments);
+  if (env->ExceptionCheck()) env->ExceptionClear();
+  env->PopLocalFrame(nullptr);
+}
+
 // ---------- Strings (UTF-16 both ways, so emoji survive) ----------
 
 jstring toJavaString(JNIEnv* env, jsi::Runtime& runtime, const jsi::String& string) {
@@ -218,6 +231,40 @@ void runReportingErrors(Runtime& runtime, Work work) {
   }
 }
 
+// ---------- Blobs ----------
+
+// What __blobCollector returns: when the garbage collector collects it (with the last Blob that holds it),
+// it releases the blob's native bytes through blobRelease.
+class BlobCollector : public jsi::HostObject {
+ public:
+  BlobCollector(jobject owner, jint releaseIndex, std::string blobId)
+      : owner_(owner), releaseIndex_(releaseIndex), blobId_(std::move(blobId)) {}
+
+  ~BlobCollector() override {
+    callNativeWithString(owner_, releaseIndex_, blobId_);
+  }
+
+ private:
+  jobject owner_;
+  jint releaseIndex_;
+  std::string blobId_;
+};
+
+void installBlobCollector(jsi::Runtime& runtime, jobject owner, jint releaseIndex) {
+  auto collector = [owner, releaseIndex](jsi::Runtime& runtime, const jsi::Value&, const jsi::Value* arguments, size_t count) {
+    if (count < 1 || !arguments[0].isString()) throw jsi::JSError(runtime, "__blobCollector needs a blob id");
+
+    auto blobCollector = std::make_shared<BlobCollector>(owner, releaseIndex, arguments[0].getString(runtime).utf8(runtime));
+
+    return jsi::Value(runtime, jsi::Object::createFromHostObject(runtime, blobCollector));
+  };
+
+  runtime.global().setProperty(
+      runtime,
+      "__blobCollector",
+      jsi::Function::createFromHostFunction(runtime, jsi::PropNameID::forAscii(runtime, "__blobCollector"), 1, collector));
+}
+
 // ---------- __native ----------
 
 // A Kotlin exception thrown by a native function becomes a JS error at the call site.
@@ -273,6 +320,7 @@ void installNativeModule(Runtime& runtime, JNIEnv* env, jobjectArray functionNam
     auto name = static_cast<jstring>(env->GetObjectArrayElement(functionNames, index));
     std::string functionName = toStdString(env, name);
     nativeModule.setProperty(hermes, functionName.c_str(), nativeFunction(hermes, runtime.owner, functionName, index));
+    if (functionName == "blobRelease") installBlobCollector(hermes, runtime.owner, index);
     env->DeleteLocalRef(name);
   }
 
@@ -390,6 +438,7 @@ extern "C" JNIEXPORT void JNICALL Java_dev_nativue_JavaScriptRuntime_call(
 
 extern "C" JNIEXPORT void JNICALL Java_dev_nativue_JavaScriptRuntime_destroy(JNIEnv* env, jobject, jlong handle) {
   Runtime* runtime = reinterpret_cast<Runtime*>(handle);
+  runtime->hermes.reset();  // first: collecting its Blobs on the way out still calls the owner
   env->DeleteGlobalRef(runtime->owner);
   delete runtime;
 }

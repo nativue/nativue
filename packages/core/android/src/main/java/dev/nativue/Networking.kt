@@ -25,12 +25,14 @@ import kotlin.concurrent.thread
  */
 class Networking(
     private val context: Context,
+    private val blobStore: BlobStore,
     private val onEvent: (owner: JavaScriptRuntime?, requestId: Int, eventName: String, payload: Map<String, Any?>) -> Unit,
 ) {
     private class Request(val id: Int, val owner: JavaScriptRuntime?, query: Map<*, *>) {
-        val returnsBase64 = query["responseType"] == "base64"
+        /** 'text', 'base64' or 'blob'. */
+        val responseType = query["responseType"] as? String ?: "text"
         val incrementalUpdates = query["incrementalUpdates"] == true
-        val streamsText = incrementalUpdates && !returnsBase64
+        val streamsText = incrementalUpdates && responseType == "text"
         val withCredentials = query["withCredentials"] != false
 
         @Volatile var aborted = false
@@ -147,7 +149,7 @@ class Networking(
         emit(request, "response", mapOf("status" to status, "headers" to headers, "url" to connection.url.toString()))
 
         val stream = (if (status >= 400) connection.errorStream else connection.inputStream) ?: ByteArray(0).inputStream()
-        download(request, CountingInputStream(stream), connection.contentLengthLong)
+        download(request, CountingInputStream(stream), connection.contentLengthLong, connection.contentType)
         emit(request, "complete", mapOf("error" to null, "timedOut" to false))
     }
 
@@ -172,6 +174,7 @@ class Networking(
     private fun body(body: Map<*, *>): Body? {
         (body["string"] as? String)?.let { return bytesBody(it.toByteArray()) }
         (body["base64"] as? String)?.let { return bytesBody(Base64.decode(it, Base64.DEFAULT)) }
+        (body["blob"] as? Map<*, *>)?.let { return bytesBody(blobBytes(it)) }
         (body["uri"] as? String)?.let { uri -> return Body(-1) { openUri(uri) } }
 
         val parts = (body["formData"] as? List<*>)?.filterIsInstance<Map<*, *>>() ?: return null
@@ -204,7 +207,7 @@ class Networking(
         }
     }
 
-    private fun download(request: Request, stream: CountingInputStream, expectedLength: Long) {
+    private fun download(request: Request, stream: CountingInputStream, expectedLength: Long, contentType: String?) {
         fun progress() = mapOf("loaded" to stream.count, "total" to expectedLength)
 
         if (request.streamsText) {
@@ -231,9 +234,17 @@ class Networking(
             }
         }
 
-        val data = if (request.returnsBase64) Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP)
-            else bytes.toString(Charsets.UTF_8.name())
-        emit(request, "data", mapOf("data" to data))
+        emit(request, "data", mapOf("data" to responseData(request, bytes.toByteArray(), contentType)))
+    }
+
+    /** Text, base64, or for 'blob' the bytes kept in the BlobStore, described as a NativeBlob. */
+    private fun responseData(request: Request, bytes: ByteArray, contentType: String?): Any = when (request.responseType) {
+        "base64" -> Base64.encodeToString(bytes, Base64.NO_WRAP)
+        "blob" -> {
+            val type = contentType?.substringBefore(";")?.trim().orEmpty()
+            mapOf("blobId" to blobStore.store(bytes), "offset" to 0, "size" to bytes.size, "type" to type)
+        }
+        else -> String(bytes, Charsets.UTF_8)
     }
 
     /**
@@ -266,16 +277,22 @@ class Networking(
                 continue
             }
 
-            val uri = part["uri"] as? String ?: continue
+            val uri = part["uri"] as? String
+            val blob = part["blob"] as? Map<*, *>
+            if (uri == null && blob == null) continue
+
             val filename = part["filename"] as? String ?: "file"
             val type = part["type"] as? String ?: "application/octet-stream"
             write("Content-Disposition: form-data; name=\"$name\"; filename=\"$filename\"\r\n")
             write("Content-Type: $type\r\n\r\n")
-            openUri(uri).use { it.copyTo(body) }
+            if (uri != null) openUri(uri).use { it.copyTo(body) }
+            if (blob != null) body.write(blobBytes(blob))
             write("\r\n")
         }
         write("--$boundary--\r\n")
     }
+
+    private fun blobBytes(blob: Map<*, *>) = blobStore.bytes(blob) ?: throw IOException("The blob has been released")
 
     private fun openUri(uri: String): InputStream {
         if (uri.startsWith("data:")) return Base64.decode(uri.substringAfter(","), Base64.DEFAULT).inputStream()

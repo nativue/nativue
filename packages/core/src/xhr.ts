@@ -1,8 +1,14 @@
 // XMLHttpRequest and FormData, like the browser's: native runs the request, and its progress comes back as
 // events through __networkEvent. fetch and libraries like axios build on it.
 import { fromByteArray, toByteArray } from 'base64-js'
+import { Blob, bytesOf, File } from './blob'
 import { Event, EventTarget, ProgressEvent } from './events'
-import type { NativeFormDataPart, NativeRequestBody, NetworkEventPayloads } from './types'
+import type {
+  NativeBlob,
+  NativeFormDataPart,
+  NativeRequestBody,
+  NetworkEventPayloads,
+} from './types'
 
 const native = globalThis.__native
 
@@ -12,10 +18,10 @@ const HEADERS_RECEIVED = 2
 const LOADING = 3
 const DONE = 4
 
-// 'blob' and 'document' aren't supported.
-export type XMLHttpRequestResponseType = '' | 'text' | 'json' | 'arraybuffer'
+// 'document' isn't supported.
+export type XMLHttpRequestResponseType = '' | 'text' | 'json' | 'arraybuffer' | 'blob'
 
-const SUPPORTED_RESPONSE_TYPES = new Set(['', 'text', 'json', 'arraybuffer'])
+const SUPPORTED_RESPONSE_TYPES = new Set(['', 'text', 'json', 'arraybuffer', 'blob'])
 
 type EventHandler<EventType = Event> = ((event: EventType) => void) | null
 
@@ -26,18 +32,21 @@ export interface FormDataFile {
   type?: string
 }
 
-type FormDataValue = string | FormDataFile
+type FormDataValue = string | FormDataFile | Blob
 
 export class FormData {
   private readonly entries: [string, FormDataValue][] = []
+  private readonly filenames = new Map<Blob, string>()
 
-  append(name: string, value: FormDataValue | number | boolean): void {
+  /** `filename` names a Blob's file (a File has its own name). */
+  append(name: string, value: FormDataValue | number | boolean, filename?: string): void {
     this.entries.push([name, typeof value === 'object' ? value : String(value)])
+    if (value instanceof Blob && filename !== undefined) this.filenames.set(value, filename)
   }
 
-  set(name: string, value: FormDataValue | number | boolean): void {
+  set(name: string, value: FormDataValue | number | boolean, filename?: string): void {
     this.delete(name)
-    this.append(name, value)
+    this.append(name, value, filename)
   }
 
   get(name: string): FormDataValue | null {
@@ -66,6 +75,12 @@ export class FormData {
   toNativeParts(): NativeFormDataPart[] {
     return this.entries.map(([name, value]) => {
       if (typeof value === 'string') return { name, value }
+      if (value instanceof Blob) {
+        const filename = this.filenames.get(value) ?? (value instanceof File ? value.name : 'blob')
+        const type = value.type || 'application/octet-stream'
+
+        return { name, blob: value.data, filename, type }
+      }
 
       const filename = value.name ?? 'file'
       const type = value.type ?? 'application/octet-stream'
@@ -76,15 +91,15 @@ export class FormData {
 }
 
 export type XMLHttpRequestBody =
-  string | FormData | ArrayBuffer | ArrayBufferView | { uri: string } | null | undefined
+  string | FormData | Blob | ArrayBuffer | ArrayBufferView | { uri: string } | null | undefined
 
 function nativeBody(body: XMLHttpRequestBody): NativeRequestBody {
   if (body == null) return null
   if (typeof body === 'string') return { string: body }
   if (body instanceof FormData) return { formData: body.toNativeParts() }
-  if (body instanceof ArrayBuffer) return { base64: fromByteArray(new Uint8Array(body)) }
-  if (ArrayBuffer.isView(body)) {
-    return { base64: fromByteArray(new Uint8Array(body.buffer, body.byteOffset, body.byteLength)) }
+  if (body instanceof Blob) return { blob: body.data }
+  if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) {
+    return { base64: fromByteArray(bytesOf(body)) }
   }
   if ('uri' in body) return { uri: body.uri }
 
@@ -143,6 +158,9 @@ export class XMLHttpRequest extends EventTarget {
   private chosenResponseType: XMLHttpRequestResponseType = ''
   /** Text, or base64 for 'arraybuffer'. */
   private rawResponse = ''
+  private blobResponse: Blob | null = null
+  // Held until the request ends, so a Blob being uploaded isn't collected (and released) meanwhile.
+  private sentBody: XMLHttpRequestBody = null
   private parsedResponse: unknown = undefined
   private requestId: number | null = null
   private sent = false
@@ -220,6 +238,7 @@ export class XMLHttpRequest extends EventTarget {
       throw new Error('The request must be opened, not sent')
 
     this.sent = true
+    this.sentBody = body
     const requestId = nextRequestId++
     this.requestId = requestId
     requestsById.set(requestId, this)
@@ -230,7 +249,7 @@ export class XMLHttpRequest extends EventTarget {
       url: this.url,
       headers: this.requestHeaders,
       body: nativeBody(body),
-      responseType: this.chosenResponseType === 'arraybuffer' ? 'base64' : 'text',
+      responseType: this.nativeResponseType(),
       incrementalUpdates: this.wantsIncrementalUpdates(),
       timeout: this.timeout,
       withCredentials: this.withCredentials,
@@ -280,8 +299,9 @@ export class XMLHttpRequest extends EventTarget {
     this.setReadyState(HEADERS_RECEIVED)
   }
 
-  private receiveData(data: string) {
-    this.rawResponse = data
+  private receiveData(data: string | NativeBlob) {
+    if (typeof data === 'string') this.rawResponse = data
+    else this.blobResponse = Blob.fromNative(data)
     this.parsedResponse = undefined
     this.setReadyState(LOADING)
   }
@@ -316,7 +336,7 @@ export class XMLHttpRequest extends EventTarget {
         : this.failed
           ? 'error'
           : 'load'
-    const length = this.rawResponse.length
+    const length = this.blobResponse?.size ?? this.rawResponse.length
     this.dispatchProgress(this, outcome, length, length)
     this.dispatchProgress(this, 'loadend', length, length)
   }
@@ -335,11 +355,19 @@ export class XMLHttpRequest extends EventTarget {
     )
   }
 
+  private nativeResponseType() {
+    if (this.chosenResponseType === 'arraybuffer') return 'base64'
+    if (this.chosenResponseType === 'blob') return 'blob'
+
+    return 'text'
+  }
+
   private returnsText(): boolean {
     return this.chosenResponseType === '' || this.chosenResponseType === 'text'
   }
 
   private parseResponse(): unknown {
+    if (this.chosenResponseType === 'blob') return this.blobResponse
     if (this.chosenResponseType === 'arraybuffer') return toByteArray(this.rawResponse).buffer
 
     try {
@@ -355,6 +383,7 @@ export class XMLHttpRequest extends EventTarget {
     this.responseURL = ''
     this.responseHeaders = {}
     this.rawResponse = ''
+    this.blobResponse = null
     this.parsedResponse = undefined
     this.failed = false
     this.timedOut = false
@@ -363,6 +392,7 @@ export class XMLHttpRequest extends EventTarget {
   private forgetRequest() {
     if (this.requestId !== null) requestsById.delete(this.requestId)
     this.requestId = null
+    this.sentBody = null
   }
 }
 

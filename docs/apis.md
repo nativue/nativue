@@ -46,13 +46,13 @@ if (!response.ok) throw new Error(`HTTP ${response.status}`)
 const post = await response.json()
 ```
 
-`Response` has `ok`, `status`, `headers`, `url`, `text()` and `json()`. `Headers` has `get`, `set`,
-`has` and `forEach`; header names are case-insensitive.
+`Response`, `Request` and `Headers` are the web's: a response body reads as `text()`, `json()`,
+`blob()` or `arrayBuffer()`. It arrives whole, as a [`Blob`](#blob-and-filereader): no streaming.
 
 ### Uploading files
 
-A `FormData` body is sent as `multipart/form-data`. Text fields go as they are; a file is
-`{ uri, name, type }`, read from the device (`file:`, `data:`, or an Android `content:` uri):
+A `FormData` body is sent as `multipart/form-data`. Text fields go as they are; a file is a `Blob` or
+`File`, or `{ uri, name, type }` for one on the device (`file:`, `data:`, or an Android `content:` uri):
 
 ```ts
 const form = new FormData()
@@ -81,9 +81,6 @@ fetch(`https://api.example.com/search?q=${query}`, { signal: controller.signal }
 controller.abort() // a new query came in
 ```
 
-Response bodies are text (JSON included): no `blob()`, `arrayBuffer()` or streaming. For those, use
-`XMLHttpRequest`.
-
 ## XMLHttpRequest
 
 The web's `XMLHttpRequest`, which `fetch` is built on, for what `fetch` doesn't do: upload and download
@@ -97,10 +94,11 @@ xhr.open('POST', 'https://api.example.com/photos')
 xhr.send(form)
 ```
 
-- `responseType`: `''` or `'text'`, `'json'`, or `'arraybuffer'`; not `'blob'` or `'document'`.
+- `responseType`: `''` or `'text'`, `'json'`, `'arraybuffer'` or `'blob'`; not `'document'`.
 - `onprogress` gets the text as it arrives: `responseText` grows while the response downloads.
 - `timeout`, in milliseconds, fires `ontimeout`.
-- Bodies: text, `FormData`, an `ArrayBuffer` or typed array, or `{ uri }` for a file on the device.
+- Bodies: text, `FormData`, a `Blob`, an `ArrayBuffer` or typed array, or `{ uri }` for a file on the
+  device.
 - Cookies are sent and kept on the device, across launches (`withCredentials` is `true` by default;
   `false`, or fetch's `credentials: 'omit'`, neither sends nor keeps them). They're the same cookies
   as the app's web views.
@@ -108,6 +106,24 @@ xhr.send(form)
 
 `Event`, `ProgressEvent`, `EventTarget`, `AbortController` and `AbortSignal` (with `AbortSignal.timeout`)
 are there too.
+
+## Blob and FileReader
+
+The web's `Blob`, `File` and `FileReader`. A Blob's bytes stay in native memory, so a large download
+doesn't go through JavaScript unless you read it; they're freed when the Blob is garbage collected.
+
+```ts
+const photo = await (await fetch(photoUrl)).blob()
+form.append('photo', photo, 'photo.jpg') // uploaded straight from native memory
+
+const reader = new FileReader()
+reader.onload = () => console.log(reader.result) // 'data:image/jpeg;base64,...'
+reader.readAsDataURL(photo)
+```
+
+- `new Blob(parts, { type })` joins strings, `ArrayBuffer`s, typed arrays and other Blobs.
+- `size`, `type`, `slice()`, `text()` and `arrayBuffer()`; no `stream()`.
+- `FileReader` reads as text (UTF-8 only), as a data URL, or as an `ArrayBuffer`.
 
 ## Platform
 

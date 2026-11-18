@@ -14,6 +14,7 @@ const animated = { nodes: {}, started: [], stopped: [], styles: {}, events: {} }
 const storage = new Map()
 const fetchRequests = []
 const abortedFetchIds = []
+const blobsById = new Map()
 const POSTS = [
   { id: 1, title: 'Primeiro post' },
   { id: 2, title: 'Segundo post' },
@@ -79,7 +80,13 @@ globalThis.__native = {
   sendRequest: (requestId, { url, method, headers, body, responseType }) => {
     fetchRequests.push({ url, method, headers, body })
     const text = JSON.stringify(POSTS)
-    const data = responseType === 'base64' ? Buffer.from(text).toString('base64') : text
+    const bytes = Buffer.from(text)
+    const data =
+      responseType === 'blob'
+        ? { blobId: storeBlob(bytes), offset: 0, size: bytes.length, type: 'application/json' }
+        : responseType === 'base64'
+          ? bytes.toString('base64')
+          : text
     const report = (eventName, payload) => globalThis.__networkEvent(requestId, eventName, payload)
 
     setTimeout(() => {
@@ -89,7 +96,39 @@ globalThis.__native = {
     })
   },
   abortRequest: (requestId) => abortedFetchIds.push(requestId),
+
+  blobCreate: (parts) => {
+    const pieces = parts.map((part) => {
+      if ('string' in part) return Buffer.from(part.string)
+      if ('base64' in part) return Buffer.from(part.base64, 'base64')
+
+      return readBlob(part.blob)
+    })
+    const bytes = Buffer.concat(pieces)
+
+    return { blobId: storeBlob(bytes), size: bytes.length }
+  },
+  blobRead: (blobId, offset, size, encoding) => {
+    const bytes = readBlob({ blobId, offset, size })
+
+    return encoding === 'base64' ? bytes.toString('base64') : bytes.toString('utf8')
+  },
+  blobRelease: (blobId) => blobsById.delete(blobId),
 }
+
+function storeBlob(bytes) {
+  const blobId = String(blobsById.size + 1)
+  blobsById.set(blobId, bytes)
+
+  return blobId
+}
+
+function readBlob({ blobId, offset, size }) {
+  return blobsById.get(blobId).subarray(offset, offset + size)
+}
+
+// Hermes has no fetch: whatwg-fetch only installs itself where there's none.
+delete globalThis.fetch
 
 ;(0, eval)(
   readFileSync(new URL('../../../examples/demo/ios/App/main.bundle.js', import.meta.url), 'utf8'),
@@ -660,8 +699,8 @@ assert.ok(renderedTexts(dataId).includes('Visits to this page'))
 assert.equal(storage.get('dataPageVisits'), '1')
 
 press(pressableContaining('Load posts', dataId))
-await settle()
-await settle() // the response arrives on a later turn
+// The response arrives on a later turn, and fetch reads its body (a Blob) on later ones.
+for (let turn = 0; turn < 5; turn++) await settle()
 assert.deepEqual(fetchRequests.at(-1), {
   url: 'https://jsonplaceholder.typicode.com/posts?_limit=5',
   method: 'GET',
@@ -721,6 +760,48 @@ const binaryRequest = await sendXhr(
 )
 assert.deepEqual(fetchRequests.at(-1).body, { base64: 'AQL/' })
 assert.equal(new TextDecoder().decode(binaryRequest.xhr.response), JSON.stringify(POSTS))
+
+// Blob and FileReader: the bytes stay native, text is UTF-8.
+const blob = new Blob(['olá ', new Uint8Array([0x63, 0x61, 0x66, 0xc3, 0xa9])], {
+  type: 'Text/Plain',
+})
+assert.equal(blob.size, 10)
+assert.equal(blob.type, 'text/plain')
+assert.equal(await blob.text(), 'olá café')
+assert.equal(await blob.slice(-5).text(), 'café')
+assert.equal(await new Blob([blob.slice(0, 4), '!']).text(), 'olá!')
+assert.deepEqual([...new Uint8Array(await blob.slice(0, 2).arrayBuffer())], [0x6f, 0x6c])
+
+const dataUrl = await new Promise((resolve) => {
+  const reader = new FileReader()
+  reader.onload = () => resolve(reader.result)
+  reader.readAsDataURL(new Blob(['hi'], { type: 'text/plain' }))
+})
+assert.equal(dataUrl, 'data:text/plain;base64,aGk=')
+
+// fetch keeps the response a native Blob, read as UTF-8 text or as bytes.
+const blobResponse = await fetch('https://example.com/posts')
+assert.deepEqual(await blobResponse.clone().json(), POSTS)
+assert.equal((await blobResponse.clone().blob()).type, 'application/json')
+assert.equal(new TextDecoder().decode(await blobResponse.arrayBuffer()), JSON.stringify(POSTS))
+
+// A Blob as the body, alone or as a FormData file.
+const photo = new File(['jpeg bytes'], 'photo.jpg', { type: 'image/jpeg' })
+await fetch('https://example.com/upload', { method: 'POST', body: photo })
+assert.deepEqual(fetchRequests.at(-1).body, { blob: photo.data })
+const photoForm = new FormData()
+photoForm.append('photo', photo)
+photoForm.append('note', new Blob(['n']), 'note.txt')
+await fetch('https://example.com/upload', { method: 'POST', body: photoForm })
+assert.deepEqual(fetchRequests.at(-1).body.formData, [
+  { name: 'photo', blob: photo.data, filename: 'photo.jpg', type: 'image/jpeg' },
+  {
+    name: 'note',
+    blob: photoForm.get('note').data,
+    filename: 'note.txt',
+    type: 'application/octet-stream',
+  },
+])
 
 // FormData: text fields and files, which native reads by uri into a multipart body.
 const form = new FormData()

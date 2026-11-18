@@ -142,15 +142,31 @@ export interface NativeModule {
   /** Starts an HTTP request; its progress comes back through __networkEvent. */
   sendRequest(requestId: number, request: NativeRequest): void
   abortRequest(requestId: number): void
+
+  /** Joins the parts into new native bytes; null if a part's blob has been released. */
+  blobCreate(parts: NativeBlobPart[]): { blobId: string; size: number } | null
+  /** UTF-8 text or base64 of the bytes; null once released. */
+  blobRead(blobId: string, offset: number, size: number, encoding: 'text' | 'base64'): string | null
+  blobRelease(blobId: string): void
 }
+
+/** Bytes held natively: a Blob's, or a slice of them. */
+export interface NativeBlob {
+  blobId: string
+  offset: number
+  size: number
+  type: string
+}
+
+export type NativeBlobPart = { string: string } | { base64: string } | { blob: NativeBlob }
 
 export interface NativeRequest {
   method: string
   url: string
   headers: Record<string, string>
   body: NativeRequestBody
-  /** 'base64' for binary responses (arraybuffer). */
-  responseType: 'text' | 'base64'
+  /** 'base64' for arraybuffer responses; 'blob' keeps the bytes native. */
+  responseType: 'text' | 'base64' | 'blob'
   /** Send the text as it arrives (incrementaldata) and download progress, not just the whole at the end. */
   incrementalUpdates: boolean
   /** In milliseconds; 0 for the platform's. */
@@ -164,17 +180,20 @@ export type NativeRequestBody =
   | { string: string }
   | { base64: string }
   | { uri: string }
+  | { blob: NativeBlob }
   | { formData: NativeFormDataPart[] }
 
 export type NativeFormDataPart =
-  { name: string; value: string } | { name: string; uri: string; filename: string; type: string }
+  | { name: string; value: string }
+  | { name: string; uri: string; filename: string; type: string }
+  | { name: string; blob: NativeBlob; filename: string; type: string }
 
 /** What native reports about a request, by event name. */
 export interface NetworkEventPayloads {
   uploadprogress: { loaded: number; total: number }
   response: { status: number; headers: Record<string, string>; url: string }
-  /** The whole response, once: text, or base64 for 'base64'. Not sent after incrementaldata. */
-  data: { data: string }
+  /** The whole response, once: text, base64 for 'base64', a NativeBlob for 'blob'. Not sent after incrementaldata. */
+  data: { data: string | NativeBlob }
   incrementaldata: { text: string; loaded: number; total: number }
   progress: { loaded: number; total: number }
   /** The end: `error` set when it failed. */

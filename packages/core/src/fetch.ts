@@ -1,132 +1,93 @@
-// fetch, Headers and Response, like the browser's, on top of XMLHttpRequest (./xhr). Also puts the
-// networking classes the browser has globally (XMLHttpRequest, FormData, AbortController...) on globalThis.
-// Limitation: Response bodies are text only (no blob() or arrayBuffer()) and there's no Request class.
-import {
-  AbortController,
-  AbortSignal,
-  Event,
-  EventTarget,
-  namedError,
-  ProgressEvent,
-} from './events'
-import { FormData, XMLHttpRequest, type XMLHttpRequestBody } from './xhr'
+// fetch, Headers, Request and Response: whatwg-fetch (the browser polyfill) on top of XMLHttpRequest,
+// with responses kept as native Blobs. ./networking goes first: it puts what whatwg-fetch looks for on
+// globalThis.
+import './networking'
+import 'whatwg-fetch'
 
-type HeadersInit = FetchHeaders | Record<string, string>
+type HeadersInit = Headers | Record<string, string> | [string, string][]
+type BodyInit = import('./xhr').XMLHttpRequestBody
 
-export interface RequestInit {
+interface RequestInit {
   method?: string
   headers?: HeadersInit
-  body?: XMLHttpRequestBody
+  body?: BodyInit
   signal?: AbortSignal | null
-  /** 'include' (the default here) or 'same-origin' send cookies; 'omit' doesn't. */
+  /** 'same-origin' (the default) and 'include' send cookies; 'omit' doesn't. */
   credentials?: 'include' | 'same-origin' | 'omit'
 }
 
-class FetchHeaders {
-  readonly valuesByName = new Map<string, string>()
-
-  constructor(init: HeadersInit = {}) {
-    const entries = init instanceof FetchHeaders ? init.valuesByName : Object.entries(init)
-
-    for (const [name, value] of entries) this.set(name, value)
-  }
-
-  get(name: string): string | null {
-    return this.valuesByName.get(name.toLowerCase()) ?? null
-  }
-
-  set(name: string, value: string): void {
-    this.valuesByName.set(name.toLowerCase(), String(value))
-  }
-
-  has(name: string): boolean {
-    return this.valuesByName.has(name.toLowerCase())
-  }
-
-  forEach(callback: (value: string, name: string, headers: FetchHeaders) => void): void {
-    this.valuesByName.forEach((value, name) => callback(value, name, this))
-  }
+interface ResponseInit {
+  status?: number
+  statusText?: string
+  headers?: HeadersInit
+  url?: string
 }
 
-class FetchResponse {
-  readonly status: number
-  readonly ok: boolean
-  readonly headers: FetchHeaders
-  readonly url: string
-  private readonly body: string
-
-  constructor(xhr: XMLHttpRequest) {
-    this.status = xhr.status
-    this.ok = xhr.status >= 200 && xhr.status < 300
-    this.headers = new FetchHeaders(parseHeaders(xhr.getAllResponseHeaders()))
-    this.url = xhr.responseURL
-    this.body = xhr.responseText
-  }
-
-  async text(): Promise<string> {
-    return this.body
-  }
-
-  // Limitation: `any` like the DOM's json(); type it at the call site.
-  async json(): Promise<any> {
-    return JSON.parse(this.body)
-  }
+interface Body {
+  readonly bodyUsed: boolean
+  text(): Promise<string>
+  // `any` like the DOM's: type it at the call site.
+  json(): Promise<any>
+  blob(): Promise<Blob>
+  arrayBuffer(): Promise<ArrayBuffer>
+  formData(): Promise<FormData>
 }
-
-function parseHeaders(text: string): Record<string, string> {
-  const lines = text.split('\r\n').filter(Boolean)
-
-  return Object.fromEntries(lines.map((line) => line.split(/: (.*)/s).slice(0, 2)))
-}
-
-function fetch(
-  input: string | { toString(): string },
-  { method = 'GET', headers = {}, body = null, signal = null, credentials }: RequestInit = {},
-): Promise<FetchResponse> {
-  if (signal?.aborted) return Promise.reject(signal.reason)
-
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest()
-    const abort = () => xhr.abort()
-
-    xhr.open(method, input)
-    xhr.withCredentials = credentials !== 'omit'
-    new FetchHeaders(headers).forEach((value, name) => xhr.setRequestHeader(name, value))
-
-    xhr.onload = () => resolve(new FetchResponse(xhr))
-    xhr.onerror = () => reject(new TypeError('Network request failed'))
-    xhr.ontimeout = () => reject(new TypeError('Network request timed out'))
-    xhr.onabort = () => reject(signal?.reason ?? namedError('AbortError', 'Aborted'))
-    xhr.onloadend = () => signal?.removeEventListener('abort', abort)
-    signal?.addEventListener('abort', abort)
-
-    xhr.send(body)
-  })
-}
-
-Object.assign(globalThis, {
-  fetch,
-  Headers: FetchHeaders,
-  Response: FetchResponse,
-  XMLHttpRequest,
-  FormData,
-  AbortController,
-  AbortSignal,
-  Event,
-  EventTarget,
-  ProgressEvent,
-})
 
 declare global {
-  var fetch: (input: string | { toString(): string }, init?: RequestInit) => Promise<FetchResponse>
-  var Headers: typeof FetchHeaders
-  type Headers = FetchHeaders
-  var Response: typeof FetchResponse
-  type Response = FetchResponse
+  interface Headers {
+    append(name: string, value: string): void
+    delete(name: string): void
+    get(name: string): string | null
+    has(name: string): boolean
+    set(name: string, value: string): void
+    forEach(callback: (value: string, name: string, headers: Headers) => void): void
+    keys(): IterableIterator<string>
+    values(): IterableIterator<string>
+    entries(): IterableIterator<[string, string]>
+    [Symbol.iterator](): IterableIterator<[string, string]>
+  }
+  var Headers: { new (init?: HeadersInit): Headers; prototype: Headers }
+
+  interface Request extends Body {
+    readonly url: string
+    readonly method: string
+    readonly headers: Headers
+    readonly credentials: 'include' | 'same-origin' | 'omit'
+    readonly signal: AbortSignal
+    clone(): Request
+  }
+  var Request: { new (input: string | Request, init?: RequestInit): Request; prototype: Request }
+
+  interface Response extends Body {
+    readonly status: number
+    readonly statusText: string
+    readonly ok: boolean
+    readonly headers: Headers
+    readonly url: string
+    clone(): Response
+  }
+  var Response: {
+    new (body?: BodyInit, init?: ResponseInit): Response
+    prototype: Response
+    error(): Response
+    redirect(url: string, status?: number): Response
+  }
+
+  function fetch(
+    input: string | { toString(): string } | Request,
+    init?: RequestInit,
+  ): Promise<Response>
+
   var XMLHttpRequest: typeof import('./xhr').XMLHttpRequest
   type XMLHttpRequest = import('./xhr').XMLHttpRequest
   var FormData: typeof import('./xhr').FormData
   type FormData = import('./xhr').FormData
+  var Blob: typeof import('./blob').Blob
+  type Blob = import('./blob').Blob
+  var File: typeof import('./blob').File
+  type File = import('./blob').File
+  var FileReader: typeof import('./blob').FileReader
+  type FileReader = import('./blob').FileReader
   var AbortController: typeof import('./events').AbortController
   type AbortController = import('./events').AbortController
   var AbortSignal: typeof import('./events').AbortSignal
@@ -137,4 +98,7 @@ declare global {
   type EventTarget = import('./events').EventTarget
   var ProgressEvent: typeof import('./events').ProgressEvent
   type ProgressEvent = import('./events').ProgressEvent
+  type RequestInit = import('./fetch').RequestInit
 }
+
+export type { RequestInit }

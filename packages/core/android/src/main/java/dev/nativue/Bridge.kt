@@ -12,6 +12,7 @@ import android.os.Looper
 import android.text.Editable
 import android.text.InputType
 import android.text.TextWatcher
+import android.util.Base64
 import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
@@ -69,7 +70,8 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     private val modalHostsByNodeId = HashMap<Int, ModalHost>()
     private val gestureReportersByNodeId = HashMap<Int, GestureReporter>()
     /** Views with @layout, and the box they last reported. */
-    private val networking = Networking(activity) { owner, requestId, eventName, payload ->
+    private val blobStore = BlobStore()
+    private val networking = Networking(activity, blobStore) { owner, requestId, eventName, payload ->
         callIfStillRunning(owner, "__networkEvent", requestId, eventName, payload)
     }
     private val reportedLayoutsByNodeId = mutableMapOf<Int, Map<String, Float>?>()
@@ -365,6 +367,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         putAll(animatedFunctions())
         putAll(layoutAnimationFunctions())
         putAll(networkingFunctions())
+        putAll(blobFunctions())
     }
 
     /** Read from JS, off the main thread: the window's size doesn't need the views. */
@@ -437,6 +440,24 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
             networking.send((arguments[0] as Number).toInt(), arguments[1] as? Map<*, *> ?: emptyMap<String, Any>(), runtime)
         },
         "abortRequest" to { arguments -> networking.abort((arguments[0] as Number).toInt()) },
+    )
+
+    /**
+     * The bytes behind JS's Blobs (BlobStore). blobRelease is also what the runtime calls when a Blob is
+     * garbage collected.
+     */
+    private fun blobFunctions(): Map<String, NativeFunction> = mapOf(
+        // null when a part's blob has been released.
+        "blobCreate" to { arguments ->
+            blobStore.create(arguments[0] as? List<*> ?: emptyList<Any>())?.let { (blobId, size) -> mapOf("blobId" to blobId, "size" to size) }
+        },
+        "blobRead" to { arguments ->
+            val (blobId, offset, size) = Triple(arguments[0] as String, (arguments[1] as Number).toInt(), (arguments[2] as Number).toInt())
+            blobStore.bytes(blobId, offset, size)?.let { bytes ->
+                if (arguments[3] == "base64") Base64.encodeToString(bytes, Base64.NO_WRAP) else String(bytes, Charsets.UTF_8)
+            }
+        },
+        "blobRelease" to { arguments -> blobStore.remove(arguments[0] as String) },
     )
 
     // ---------- Errors ----------
@@ -532,6 +553,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         modalHostsByNodeId.clear()
         gestureReportersByNodeId.clear() // node ids start over
         networking.abortAll() // and so do request ids
+        blobStore.removeAll() // and the Blobs that held them are gone
         reportedLayoutsByNodeId.clear()
         animatedGraph.reset()
         animatedGraph.onAnimationEnd = { animationId, finished ->

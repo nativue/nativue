@@ -44,7 +44,8 @@ final class Bridge {
     var nodesById: [Int: NativeNode] = [:]
     /// Views with @layout, and the box they last reported.
     private var reportedLayoutsByNodeId: [Int: CGRect] = [:]
-    private let networking = Networking()
+    private let blobStore = BlobStore()
+    private lazy var networking = Networking(blobStore: blobStore)
     /// Modals and screens: their content is laid out as a separate Yoga root.
     private var contentRootsByNodeId: [Int: ContentRoot] = [:]
     /// For Dimensions.get('window'): the screen's at start, then the root view's, kept on the JS queue.
@@ -320,6 +321,7 @@ final class Bridge {
         defineAnimatedFunctions(define)
         defineStorageFunctions(define, defineGetter)
         defineNetworking(define)
+        defineBlobFunctions(define, defineGetter)
 
         define("setTimer") { [unowned self] arguments in
             let (timerId, delayInMilliseconds) = (int(arguments[0]), int(arguments[1]))
@@ -389,6 +391,7 @@ final class Bridge {
         contentRootsByNodeId = [:]
         gestureReportersByNodeId = [:] // node ids start over
         networking.abortAll() // and so do request ids
+        blobStore.removeAll() // and the Blobs that held them are gone
         reportedLayoutsByNodeId = [:]
         animatedGraph.reset()
         animatedGraph.onAnimationEnd = { [unowned self] animationId, finished in
@@ -651,6 +654,29 @@ final class Bridge {
 
         define("abortRequest") { [unowned self] arguments in
             networking.abort(requestId: int(arguments[0]))
+        }
+    }
+
+    /// The bytes behind JS's Blobs (BlobStore). blobRelease is also what the runtime calls when a Blob is
+    /// garbage collected.
+    private func defineBlobFunctions(_ define: Define, _ defineGetter: DefineGetter) {
+        // nil when a part's blob has been released.
+        defineGetter("blobCreate") { [unowned self] arguments in
+            guard let blob = try? blobStore.create(parts: arguments[0] as? [[String: Any]] ?? []) else { return nil }
+
+            return ["blobId": blob.blobId, "size": blob.size]
+        }
+
+        defineGetter("blobRead") { [unowned self] arguments in
+            let blob = ["blobId": arguments[0], "offset": arguments[1], "size": arguments[2]]
+            guard let data = blobStore.data(of: blob) else { return nil }
+
+            return string(arguments[3]) == "base64" ? data.base64EncodedString() : String(decoding: data, as: UTF8.self)
+        }
+
+        // Not through self: the runtime may collect Blobs as it's destroyed, with the Bridge.
+        define("blobRelease") { [blobStore] arguments in
+            blobStore.remove(blobId: arguments[0] as? String ?? "")
         }
     }
 

@@ -6,12 +6,19 @@ import Foundation
 final class Networking: NSObject, URLSessionDataDelegate {
     /// (who asked, request id, event name, payload).
     var onEvent: ((AnyObject?, Int, String, [String: Any]) -> Void)?
+    private let blobStore: BlobStore
+
+    init(blobStore: BlobStore) {
+        self.blobStore = blobStore
+    }
 
     private final class RequestState {
         let id: Int
         weak var owner: AnyObject?
-        let returnsBase64: Bool
+        /// 'text', 'base64' or 'blob'.
+        let responseType: String
         let incrementalUpdates: Bool
+        var mimeType: String?
         var data = Data()
         var loaded: Int64 = 0
         var expectedLength: Int64 = -1
@@ -23,11 +30,11 @@ final class Networking: NSObject, URLSessionDataDelegate {
         init(id: Int, owner: AnyObject?, query: [String: Any]) {
             self.id = id
             self.owner = owner
-            returnsBase64 = query["responseType"] as? String == "base64"
+            responseType = query["responseType"] as? String ?? "text"
             incrementalUpdates = query["incrementalUpdates"] as? Bool ?? false
         }
 
-        var streamsText: Bool { incrementalUpdates && !returnsBase64 }
+        var streamsText: Bool { incrementalUpdates && responseType == "text" }
 
         func deleteTemporaryFile() {
             if let temporaryFile { try? FileManager.default.removeItem(at: temporaryFile) }
@@ -123,6 +130,7 @@ final class Networking: NSObject, URLSessionDataDelegate {
 
         let httpResponse = response as? HTTPURLResponse
         state.expectedLength = response.expectedContentLength
+        state.mimeType = response.mimeType
         emit(state, "response", [
             "status": httpResponse?.statusCode ?? 200,
             "headers": httpResponse?.allHeaderFields ?? [:],
@@ -156,11 +164,21 @@ final class Networking: NSObject, URLSessionDataDelegate {
             return emit(state, "complete", ["error": error.localizedDescription, "timedOut": timedOut])
         }
 
-        if !state.streamsText {
-            let data = state.returnsBase64 ? state.data.base64EncodedString() : decodedText(state.data, of: state)
-            emit(state, "data", ["data": data])
-        }
+        if !state.streamsText { emit(state, "data", ["data": responseData(of: state)]) }
         emit(state, "complete", ["error": NSNull(), "timedOut": false])
+    }
+
+    /// Text, base64, or for 'blob' the bytes kept in the BlobStore, described as a NativeBlob.
+    private func responseData(of state: RequestState) -> Any {
+        switch state.responseType {
+        case "base64":
+            return state.data.base64EncodedString()
+        case "blob":
+            let blobId = blobStore.store(state.data)
+            return ["blobId": blobId, "offset": 0, "size": state.data.count, "type": state.mimeType ?? ""]
+        default:
+            return decodedText(state.data, of: state)
+        }
     }
 
     // MARK: Requests
@@ -189,6 +207,7 @@ final class Networking: NSObject, URLSessionDataDelegate {
 
         if let text = body["string"] as? String { return .data(Data(text.utf8)) }
         if let base64 = body["base64"] as? String { return .data(Data(base64Encoded: base64) ?? Data()) }
+        if let blob = body["blob"] as? [String: Any] { return .data(try blobData(blob)) }
         if let uri = body["uri"] as? String {
             let url = try fileOrDataURL(uri)
             return url.isFileURL ? .file(url, isTemporary: false) : .data(try Data(contentsOf: url))
@@ -229,13 +248,16 @@ final class Networking: NSObject, URLSessionDataDelegate {
         if let value = part["value"] as? String {
             return try output.write(contentsOf: Data("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".utf8))
         }
-        guard let uri = part["uri"] as? String else { return }
+        let uri = part["uri"] as? String
+        let blob = part["blob"] as? [String: Any]
+        guard uri != nil || blob != nil else { return }
 
         let filename = part["filename"] as? String ?? "file"
         let type = part["type"] as? String ?? "application/octet-stream"
         try output.write(contentsOf: Data("Content-Disposition: form-data; name=\"\(name)\"; filename=\"\(filename)\"\r\n".utf8))
         try output.write(contentsOf: Data("Content-Type: \(type)\r\n\r\n".utf8))
-        try copyContents(of: try fileOrDataURL(uri), to: output)
+        if let uri { try copyContents(of: try fileOrDataURL(uri), to: output) }
+        if let blob { try output.write(contentsOf: try blobData(blob)) }
         try output.write(contentsOf: Data("\r\n".utf8))
     }
 
@@ -249,6 +271,12 @@ final class Networking: NSObject, URLSessionDataDelegate {
         while let chunk = try input.read(upToCount: 64 * 1024), !chunk.isEmpty {
             try output.write(contentsOf: chunk)
         }
+    }
+
+    private func blobData(_ blob: [String: Any]) throws -> Data {
+        guard let data = blobStore.data(of: blob) else { throw NetworkingError("The blob has been released") }
+
+        return data
     }
 
     private func fileOrDataURL(_ uri: String) throws -> URL {
@@ -284,7 +312,7 @@ final class Networking: NSObject, URLSessionDataDelegate {
     }
 }
 
-private struct NetworkingError: LocalizedError {
+struct NetworkingError: LocalizedError {
     let errorDescription: String?
 
     init(_ message: String) {
