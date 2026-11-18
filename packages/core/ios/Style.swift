@@ -1,7 +1,7 @@
 import UIKit
 import yoga
 
-// ponytail: removed layout properties arrive as null and keep their last value; reset them to Yoga's
+// Limitation: Removed layout properties arrive as null and keep their last value; reset them to Yoga's
 // defaults when it matters. Visual properties already fall back to UIKit's defaults on null.
 extension NativeNode {
     /// Receives only the properties that changed: the JS renderer diffs style objects before sending.
@@ -96,6 +96,8 @@ extension NativeNode {
             fontWeight = fontWeights[String(describing: weightName)] ?? .regular
         }
 
+        // Limitation: A fixed size on both platforms, ignoring the system's text size; scale it (UIFontMetrics,
+        // sp on Android) when accessibility sizes matter.
         let font = UIFont.systemFont(ofSize: fontSize, weight: fontWeight)
         (view as? UILabel)?.font = font
         (view as? UITextField)?.font = font

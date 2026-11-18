@@ -218,6 +218,7 @@ function startDevServer() {
       else if (request.url === '/symbolicate') handleSymbolicate(request, response)
       else handleBundle(response)
     })
+    // Limitation: Every interface, so phones reach it, and anyone on the network can download the bundle.
     .listen(PORT, () => console.log(`dev server: http://localhost:${PORT}`))
 
   // Without a keepalive, URLSession drops the idle connection.

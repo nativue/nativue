@@ -488,7 +488,7 @@ class TextInputView(context: Context) : android.widget.EditText(context), ThemeA
             applyThemeColors()
         }
 
-    // ponytail: a value JS sets on purpose that equals text typed earlier in the same editing session is
+    // Limitation: A value JS sets on purpose that equals text typed earlier in the same editing session is
     // ignored too; tag each change with a counter if that ever matters.
     private val textsSentToJavaScript = mutableSetOf<String>()
     var isSettingTextFromJavaScript = false

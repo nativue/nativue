@@ -563,6 +563,8 @@ function boxShadow(value) {
 
   if (visibleLayers.length === 0) return { shadowOpacity: 0 }
 
+  // Limitation: Native views draw one shadow, without spread: the first layer, its blur halved to look alike;
+  // stack shadow layers natively if richer shadows are wanted.
   const [{ lengths, rgba }] = visibleLayers
   const [offsetX = 0, offsetY = 0, blur = 0] = lengths
 

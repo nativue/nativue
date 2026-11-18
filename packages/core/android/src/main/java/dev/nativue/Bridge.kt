@@ -378,7 +378,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
      * fetch: HttpURLConnection runs the request; JS hears back through
      * __fetchFinished(requestId, response, error).
      */
-    // ponytail: text bodies only (no binary, FormData or streaming) and no abort, like on iOS.
+    // Limitation: Text bodies only (no binary, FormData or streaming) and no abort, like on iOS.
     private fun fetchFunctions(): Map<String, NativeFunction> = mapOf(
         "fetch" to { arguments ->
             val requestId = arguments[0]
@@ -491,7 +491,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         collectViews(root.view, removedViews)
         root.contentNode?.let { collectViews(it.view, removedViews) }
 
-        // ponytail: a nested <Modal>'s content isn't under the root's views, so its nodes stay; walk the
+        // Limitation: A nested <Modal>'s content isn't under the root's views, so its nodes stay; walk the
         // modal hosts too if apps nest many. Hosts stay: layout dismisses the detached ones.
         val removedIds = nodesById.filterValues { it.view in removedViews }.keys
         removedIds.forEach { id ->

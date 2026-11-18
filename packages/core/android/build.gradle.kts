@@ -10,7 +10,7 @@ plugins {
  * This computer's address on the local network (Wi-Fi or Ethernet first), for a physical device to
  * reach the dev server.
  */
-// ponytail: fixed at build time, like the iOS app's host; rebuild after switching networks.
+// Limitation: Fixed at build time, like the iOS app's host; rebuild after switching networks.
 fun localNetworkAddress(): String? = NetworkInterface.getNetworkInterfaces().toList()
     .filter { it.isUp && !it.isLoopback && !it.isVirtual }
     .sortedBy { if (it.name.startsWith("en") || it.name.startsWith("eth") || it.name.startsWith("wlan")) 0 else 1 }
@@ -24,7 +24,7 @@ android {
     ndkVersion = "27.1.12297006"
 
     defaultConfig {
-        // ponytail: 30 for the WindowInsets.Type API (safe area, keyboard); lower it with the compat insets if needed.
+        // Limitation: 30 for the WindowInsets.Type API (safe area, keyboard); lower it with the compat insets if needed.
         minSdk = 30
         consumerProguardFiles("consumer-rules.pro")
 

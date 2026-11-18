@@ -1,6 +1,6 @@
 // fetch, Headers and Response, like the browser's: native runs the request with
 // URLSession and calls back __fetchFinished.
-// ponytail: text bodies only (no Blob, FormData or streaming) and no AbortController.
+// Limitation: Text bodies only (no Blob, FormData or streaming) and no AbortController.
 const native = globalThis.__native
 
 interface PendingRequest {
@@ -68,7 +68,7 @@ class FetchResponse {
     return this.body
   }
 
-  // ponytail: `any` like the DOM's json(); type it at the call site.
+  // Limitation: `any` like the DOM's json(); type it at the call site.
   async json(): Promise<any> {
     return JSON.parse(this.body)
   }

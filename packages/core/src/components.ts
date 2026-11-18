@@ -87,11 +87,11 @@ const OFFSCREEN_ROWS_RENDERED = 10
 
 // Renders only the rows near the visible area; the rest is empty padding of the same height.
 // Slots: #item="{ item, index }", plus #header, #footer and #empty.
-// ponytail: rows have a fixed `itemHeight`; measure rows natively if
+// Limitation: Rows have a fixed `itemHeight`; measure rows natively if
 // variable heights are ever needed. Vertical only. The window ignores the header's height, which the
 // offscreen rows absorb while the header is shorter than them; measure it if tall headers show gaps.
-// ponytail: items are `any` in the #item slot; make FlatList generic if typed rows are wanted.
-// ponytail: an Animated.event `:on-scroll` replaces the window's own scroll handler, and a mapped event
+// Limitation: Items are `any` in the #item slot; make FlatList generic if typed rows are wanted.
+// Limitation: An Animated.event `:on-scroll` replaces the window's own scroll handler, and a mapped event
 // reaches JS only when a scroll starts and ends; report frames to both natively if that's needed.
 export const FlatList = defineComponent({
   name: 'FlatList',

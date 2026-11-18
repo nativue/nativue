@@ -17,6 +17,8 @@ import kotlin.math.hypot
  * gesture's state ("began", "changed", "ended", "cancelled"), so it can move the view through its
  * style; with Animated.event the values move natively and JS only hears the start and the end.
  * Numbers are in dp (and dp per second); rotation in radians. Mirrors ios/GestureReporter.swift.
+ * Limitation: Unlike on iOS, a parent doesn't see touches a child consumes (a <Pressable> inside a draggable
+ * card); intercept moves past the touch slop if that's needed.
  */
 class GestureReporter(
     private val view: View,

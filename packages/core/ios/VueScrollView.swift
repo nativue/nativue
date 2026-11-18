@@ -24,7 +24,7 @@ final class VueScrollView: UIScrollView {
     var adjustsForKeyboard = false
 
     /// Set when JS listens to @scroll. Called on every scroll step and size change (FlatList windowing).
-    // ponytail: one JS call per frame while scrolling; coalesce / add scrollEventThrottle if JS falls behind.
+    // Limitation: One JS call per frame while scrolling; coalesce / add scrollEventThrottle if JS falls behind.
     var onScroll: ((CGRect) -> Void)? {
         didSet { lastReportedBounds = nil }
     }

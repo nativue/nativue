@@ -2,7 +2,7 @@ import UIKit
 
 /// Image view behind <Image>. Loads `source` (an http(s) or data: url) through URLSession, which also
 /// gives HTTP caching through URLCache.
-// ponytail: no decoded-image cache and no intrinsic size; add an NSCache / measure function if lists of
+// Limitation: No decoded-image cache and no intrinsic size; add an NSCache / measure function if lists of
 // images stutter or sizing by hand gets annoying.
 final class ImageView: UIImageView {
     static let resizeModes: [String: UIView.ContentMode] = [

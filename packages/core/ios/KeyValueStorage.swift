@@ -3,7 +3,7 @@ import Foundation
 /// Behind AsyncStorage. Every value lives in memory, so reads never touch the disk; changes
 /// are saved to a file in the background, coalesced, so a burst of writes costs one save. Used only on
 /// the JS queue; the save itself runs on its own queue with a snapshot.
-/// ponytail: each save rewrites the whole file; switch to SQLite or an append log if data grows large.
+/// Limitation: Each save rewrites the whole file; switch to SQLite or an append log if data grows large.
 final class KeyValueStorage {
     private let javaScriptQueue: DispatchQueue
     private let saveQueue = DispatchQueue(label: "dev.nativue.storage", qos: .utility)

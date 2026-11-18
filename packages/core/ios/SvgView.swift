@@ -4,7 +4,7 @@ import UIKit
 /// scaled from `viewBox` to its bounds like preserveAspectRatio="xMidYMid meet". Elements are stroked
 /// with `color` (round caps and joins, as icon sets expect); those whose fill isn't "none" are also
 /// filled with it.
-/// ponytail: only the shapes icon sets use and a single color; add per-element colors, gradients or
+/// Limitation: Only the shapes icon sets use and a single color; add per-element colors, gradients or
 /// transforms when a real-world SVG needs them.
 final class SvgView: UIView {
     var viewBox = CGRect(x: 0, y: 0, width: 24, height: 24) {

@@ -17,7 +17,7 @@ import com.facebook.yoga.YogaOverflow
 import com.facebook.yoga.YogaPositionType
 import com.facebook.yoga.YogaWrap
 
-// ponytail: removed layout properties arrive as null and keep their last value, like on iOS.
+// Limitation: Removed layout properties arrive as null and keep their last value, like on iOS.
 
 /** Receives only the properties that changed: the JS renderer diffs style objects before sending. */
 fun NativeNode.applyStyle(changes: Map<String, Any?>) {

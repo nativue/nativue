@@ -501,7 +501,7 @@ export function useLocalSearchParams<RouteParams extends Params = Params>(): Rou
   })
 }
 
-// ponytail: the path when the page opened; make it a ref if pages need to follow in-place navigation.
+// Limitation: The path when the page opened; make it a ref if pages need to follow in-place navigation.
 export function usePathname(): string {
   return injectPageEntry('usePathname').href.split('?')[0]
 }

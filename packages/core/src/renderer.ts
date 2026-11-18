@@ -395,7 +395,7 @@ export const Keyboard = {
 
 // Replaces Vue's DOM-only vModelText, which the template compiler emits for v-model on
 // <TextInput> and <Switch>.
-// ponytail: v-model modifiers (.trim, .number, .lazy) are not supported yet.
+// Limitation: v-model modifiers (.trim, .number, .lazy) are not supported yet.
 export const vModelText: Directive<Node> = {
   created(element, { value }) {
     native.setProp(element.id, 'value', value ?? '')

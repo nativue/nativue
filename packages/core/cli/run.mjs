@@ -132,7 +132,7 @@ function connectedDevices(adb) {
     .map((line) => line.split('\t')[0])
 }
 
-// ponytail: the first device or emulator wins; a --device option when people run several at once.
+// Limitation: The first device or emulator wins; a --device option when people run several at once.
 async function pickDevice(sdkPath, adb) {
   const [device] = connectedDevices(adb)
   if (device) return device

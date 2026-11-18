@@ -22,7 +22,7 @@ final class Bridge {
         return URL(string: "http://\(host):40836")!
     }()
 
-    // ponytail: GCD threads have a 512 KB stack; move to a Thread with a bigger stack if deep trees hit
+    // Limitation: GCD threads have a 512 KB stack; move to a Thread with a bigger stack if deep trees hit
     // "RangeError: Maximum call stack size exceeded".
     private let javaScriptQueue = DispatchQueue(label: "dev.nativue.javascript", qos: .userInteractive)
 
@@ -39,11 +39,12 @@ final class Bridge {
     var rootView: RootView!
     private var gestureReportersByNodeId: [Int: GestureReporter] = [:]
     private let animatedGraph = AnimatedGraph()
-    // ponytail: children of a removed node stay in the dictionary; clean up recursively if memory leaks.
+    // Limitation: Children of a removed node stay in the dictionary; clean up recursively if memory leaks.
     var nodesById: [Int: NativeNode] = [:]
     /// Modals and screens: their content is laid out as a separate Yoga root.
-    // ponytail: Vue removes only a subtree's root, so the modals and screens inside a removed subtree stay
+    // Limitation: Vue removes only a subtree's root, so the modals and screens inside a removed subtree stay
     // here and are laid out on every pass; drop the detached ones on remove if navigators come and go.
+    // Likewise a sheet a <ScreenStack> presented stays up when a v-if removes the stack (a reload closes it).
     private var contentRootsByNodeId: [Int: ContentRoot] = [:]
     /// Read on the main thread at start, for Dimensions.get('window').
     private var windowSize: CGSize = .zero
@@ -223,7 +224,7 @@ final class Bridge {
             reportError(message: string(arguments[0]), details: string(arguments[1]))
         }
 
-        // ponytail: the size at launch; report rotation and split view changes if the app supports them.
+        // Limitation: The size at launch; report rotation and split view changes if the app supports them.
         defineGetter("windowSize") { [unowned self] _ in
             ["width": windowSize.width, "height": windowSize.height]
         }
@@ -552,7 +553,7 @@ final class Bridge {
     }
 
     /// fetch: URLSession runs the request; JS hears back through __fetchFinished(requestId, response, error).
-    /// ponytail: text bodies only (no binary, FormData or streaming) and no abort.
+    /// Limitation: Text bodies only (no binary, FormData or streaming) and no abort.
     private func defineFetch(_ define: Define) {
         define("fetch") { [unowned self] arguments in
             let (requestId, url, method) = (int(arguments[0]), string(arguments[1]), string(arguments[2]))

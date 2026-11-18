@@ -25,7 +25,7 @@ import kotlin.math.tan
  * with `color` (round caps and joins, as icon sets expect); those whose fill isn't "none" are also
  * filled with it. Mirrors ios/SvgView.swift.
  */
-// ponytail: only the shapes icon sets use and a single color; add per-element colors, gradients or
+// Limitation: Only the shapes icon sets use and a single color; add per-element colors, gradients or
 // transforms when a real-world SVG needs them.
 class SvgView(context: Context) : View(context) {
     var viewBox = RectF(0f, 0f, 24f, 24f)
