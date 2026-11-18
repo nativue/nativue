@@ -108,3 +108,22 @@ export async function migrate() {
 
 Call `migrate()` before the first query, e.g. in `src/app.ts`. The pending migrations run once,
 together in a transaction.
+
+## Kysely
+
+[Kysely](https://kysely.dev) works with the dialect in `@nativue/sqlite/kysely`:
+
+```ts
+import { Kysely } from 'kysely'
+import { SQLite } from '@nativue/sqlite'
+import { NativueSqliteDialect } from '@nativue/sqlite/kysely'
+
+export const db = new Kysely<Schema>({
+  dialect: new NativueSqliteDialect(SQLite.open('app.db')),
+})
+```
+
+Queries, `returning()`, `insertId`, transactions (controlled ones and savepoints too), the
+`Migrator` (from `kysely/migration`, with a provider that returns your migrations) and
+introspection work as usual. While a transaction runs, Kysely's other queries wait for it to end.
+`stream()` isn't supported.

@@ -19,7 +19,8 @@
   "bugs": "https://github.com/nativue/nativue/issues",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./kysely": "./src/kysely.ts"
   },
   "scripts": {
     "test": "node test/statements.test.mjs",
@@ -28,8 +29,17 @@
   "dependencies": {
     "base64-js": "^1.5.1"
   },
+  "devDependencies": {
+    "kysely": "^0.29.9"
+  },
   "peerDependencies": {
-    "@nativue/core": ">=0.7.0"
+    "@nativue/core": ">=0.7.0",
+    "kysely": ">=0.28.0"
+  },
+  "peerDependenciesMeta": {
+    "kysely": {
+      "optional": true
+    }
   },
   "nativue": {
     "ios": {
