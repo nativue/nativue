@@ -139,11 +139,44 @@ export interface NativeModule {
   storageKeys(): string[]
   storageClear(): void
 
-  fetch(
-    requestId: number,
-    url: string,
-    method: string,
-    headers: Record<string, string>,
-    body: string | null,
-  ): void
+  /** Starts an HTTP request; its progress comes back through __networkEvent. */
+  sendRequest(requestId: number, request: NativeRequest): void
+  abortRequest(requestId: number): void
+}
+
+export interface NativeRequest {
+  method: string
+  url: string
+  headers: Record<string, string>
+  body: NativeRequestBody
+  /** 'base64' for binary responses (arraybuffer). */
+  responseType: 'text' | 'base64'
+  /** Send the text as it arrives (incrementaldata) and download progress, not just the whole at the end. */
+  incrementalUpdates: boolean
+  /** In milliseconds; 0 for the platform's. */
+  timeout: number
+  withCredentials: boolean
+}
+
+// Text, bytes as base64, a file native reads by uri, or the parts of a multipart/form-data body.
+export type NativeRequestBody =
+  | null
+  | { string: string }
+  | { base64: string }
+  | { uri: string }
+  | { formData: NativeFormDataPart[] }
+
+export type NativeFormDataPart =
+  { name: string; value: string } | { name: string; uri: string; filename: string; type: string }
+
+/** What native reports about a request, by event name. */
+export interface NetworkEventPayloads {
+  uploadprogress: { loaded: number; total: number }
+  response: { status: number; headers: Record<string, string>; url: string }
+  /** The whole response, once: text, or base64 for 'base64'. Not sent after incrementaldata. */
+  data: { data: string }
+  incrementaldata: { text: string; loaded: number; total: number }
+  progress: { loaded: number; total: number }
+  /** The end: `error` set when it failed. */
+  complete: { error: string | null; timedOut: boolean }
 }

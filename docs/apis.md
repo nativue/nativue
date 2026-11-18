@@ -49,8 +49,65 @@ const post = await response.json()
 `Response` has `ok`, `status`, `headers`, `url`, `text()` and `json()`. `Headers` has `get`, `set`,
 `has` and `forEach`; header names are case-insensitive.
 
-Request and response bodies are text (JSON included): no `Blob`, `FormData`, streaming or
-`AbortController`.
+### Uploading files
+
+A `FormData` body is sent as `multipart/form-data`. Text fields go as they are; a file is
+`{ uri, name, type }`, read from the device (`file:`, `data:`, or an Android `content:` uri):
+
+```ts
+const form = new FormData()
+form.append('title', 'Trip')
+form.append('photo', { uri: photoUri, name: 'photo.jpg', type: 'image/jpeg' })
+
+await fetch('https://api.example.com/photos', { method: 'POST', body: form })
+```
+
+Don't set `Content-Type` yourself: it carries the boundary between the parts.
+
+### Cancelling
+
+Pass an `AbortController`'s `signal`. Aborting rejects the request at once with an `AbortError`,
+and cancels it natively:
+
+```ts
+const controller = new AbortController()
+fetch(`https://api.example.com/search?q=${query}`, { signal: controller.signal })
+  .then((response) => response.json())
+  .then(showResults)
+  .catch((error) => {
+    if (error.name !== 'AbortError') throw error
+  })
+
+controller.abort() // a new query came in
+```
+
+Response bodies are text (JSON included): no `blob()`, `arrayBuffer()` or streaming. For those, use
+`XMLHttpRequest`.
+
+## XMLHttpRequest
+
+The web's `XMLHttpRequest`, which `fetch` is built on, for what `fetch` doesn't do: upload and download
+progress, binary responses, timeouts. Libraries that use it work as they do in a browser.
+
+```ts
+const xhr = new XMLHttpRequest()
+xhr.upload.onprogress = ({ loaded, total }) => (progress.value = loaded / total)
+xhr.onload = () => console.log(xhr.status, xhr.responseText)
+xhr.open('POST', 'https://api.example.com/photos')
+xhr.send(form)
+```
+
+- `responseType`: `''` or `'text'`, `'json'`, or `'arraybuffer'`; not `'blob'` or `'document'`.
+- `onprogress` gets the text as it arrives: `responseText` grows while the response downloads.
+- `timeout`, in milliseconds, fires `ontimeout`.
+- Bodies: text, `FormData`, an `ArrayBuffer` or typed array, or `{ uri }` for a file on the device.
+- Cookies are sent and kept on the device, across launches (`withCredentials` is `true` by default;
+  `false`, or fetch's `credentials: 'omit'`, neither sends nor keeps them). They're the same cookies
+  as the app's web views.
+- Files are uploaded from disk as they're sent, so a large video never sits in memory.
+
+`Event`, `ProgressEvent`, `EventTarget`, `AbortController` and `AbortSignal` (with `AbortSignal.timeout`)
+are there too.
 
 ## Platform
 

@@ -44,6 +44,7 @@ final class Bridge {
     var nodesById: [Int: NativeNode] = [:]
     /// Views with @layout, and the box they last reported.
     private var reportedLayoutsByNodeId: [Int: CGRect] = [:]
+    private let networking = Networking()
     /// Modals and screens: their content is laid out as a separate Yoga root.
     private var contentRootsByNodeId: [Int: ContentRoot] = [:]
     /// For Dimensions.get('window'): the screen's at start, then the root view's, kept on the JS queue.
@@ -61,6 +62,9 @@ final class Bridge {
         self.rootView = rootView
         rootView.onLayoutSubviews = { [unowned self] in layout() }
         NativeNode.onLayoutCalculated = { [unowned self] in reportLayoutChanges() }
+        networking.onEvent = { [unowned self] owner, requestId, eventName, payload in
+            sendNetworkEvent(owner: owner, requestId: requestId, eventName: eventName, payload: payload)
+        }
         let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene
         windowSize = windowScene?.screen.bounds.size ?? .zero
         colorScheme = Self.colorScheme(of: windowScene?.traitCollection ?? rootView.traitCollection)
@@ -315,7 +319,7 @@ final class Bridge {
 
         defineAnimatedFunctions(define)
         defineStorageFunctions(define, defineGetter)
-        defineFetch(define)
+        defineNetworking(define)
 
         define("setTimer") { [unowned self] arguments in
             let (timerId, delayInMilliseconds) = (int(arguments[0]), int(arguments[1]))
@@ -384,6 +388,7 @@ final class Bridge {
         contentRootsByNodeId.values.forEach { ($0 as? ModalController)?.setVisible(false) }
         contentRootsByNodeId = [:]
         gestureReportersByNodeId = [:] // node ids start over
+        networking.abortAll() // and so do request ids
         reportedLayoutsByNodeId = [:]
         animatedGraph.reset()
         animatedGraph.onAnimationEnd = { [unowned self] animationId, finished in
@@ -637,46 +642,23 @@ final class Bridge {
         }
     }
 
-    /// fetch: URLSession runs the request; JS hears back through __fetchFinished(requestId, response, error).
-    /// Limitation: Text bodies only (no binary, FormData or streaming) and no abort.
-    private func defineFetch(_ define: Define) {
-        define("fetch") { [unowned self] arguments in
-            let (requestId, url, method) = (int(arguments[0]), string(arguments[1]), string(arguments[2]))
-            let headers = arguments[3] as? [String: String] ?? [:]
-            let bodyText = arguments[4] as? String
-            let owner = runtime
+    /// XMLHttpRequest's native side (Networking); fetch is built on it in JS.
+    private func defineNetworking(_ define: Define) {
+        define("sendRequest") { [unowned self] arguments in
+            let query = arguments[1] as? [String: Any] ?? [:]
+            networking.send(requestId: int(arguments[0]), query: query, owner: runtime)
+        }
 
-            guard let url = URL(string: url) else {
-                return finishFetch(requestId, owner: owner, response: nil, error: "invalid URL \(url)")
-            }
-
-            var request = URLRequest(url: url)
-            request.httpMethod = method
-            request.httpBody = bodyText?.data(using: .utf8)
-            headers.forEach { name, value in request.setValue(value, forHTTPHeaderField: name) }
-
-            URLSession.shared.dataTask(with: request) { [unowned self] data, response, error in
-                guard let response = response as? HTTPURLResponse, error == nil else {
-                    return finishFetch(
-                        requestId, owner: owner, response: nil, error: error?.localizedDescription ?? "no response"
-                    )
-                }
-
-                finishFetch(requestId, owner: owner, response: [
-                    "status": response.statusCode,
-                    "headers": response.allHeaderFields,
-                    "body": String(decoding: data ?? Data(), as: UTF8.self),
-                ], error: nil)
-            }.resume()
+        define("abortRequest") { [unowned self] arguments in
+            networking.abort(requestId: int(arguments[0]))
         }
     }
 
     /// Like finishAsyncFunction, dropped if the runtime that asked has since been reloaded.
-    private func finishFetch(_ requestId: Int, owner: JavaScriptRuntime?, response: [String: Any]?, error: String?) {
+    private func sendNetworkEvent(owner: AnyObject?, requestId: Int, eventName: String, payload: [String: Any]) {
         evaluate { [unowned self] in
             guard runtime === owner else { return }
-            let arguments: [Any] = [requestId, response ?? NSNull(), error ?? NSNull()]
-            runtime?.call("__fetchFinished", arguments: arguments)
+            runtime?.call("__networkEvent", arguments: [requestId, eventName, payload])
         }
     }
 

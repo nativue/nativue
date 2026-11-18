@@ -69,6 +69,9 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     private val modalHostsByNodeId = HashMap<Int, ModalHost>()
     private val gestureReportersByNodeId = HashMap<Int, GestureReporter>()
     /** Views with @layout, and the box they last reported. */
+    private val networking = Networking(activity) { owner, requestId, eventName, payload ->
+        callIfStillRunning(owner, "__networkEvent", requestId, eventName, payload)
+    }
     private val reportedLayoutsByNodeId = mutableMapOf<Int, Map<String, Float>?>()
 
     /** The latest window insets, mid-animation while the keyboard moves. */
@@ -361,7 +364,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         putAll(storageFunctions())
         putAll(animatedFunctions())
         putAll(layoutAnimationFunctions())
-        putAll(fetchFunctions())
+        putAll(networkingFunctions())
     }
 
     /** Read from JS, off the main thread: the window's size doesn't need the views. */
@@ -428,48 +431,13 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         "configureNextLayoutAnimation" to { arguments -> nextLayoutAnimation = arguments[0] as? Map<*, *> },
     )
 
-    /**
-     * fetch: HttpURLConnection runs the request; JS hears back through
-     * __fetchFinished(requestId, response, error).
-     */
-    // Limitation: Text bodies only (no binary, FormData or streaming) and no abort, like on iOS.
-    private fun fetchFunctions(): Map<String, NativeFunction> = mapOf(
-        "fetch" to { arguments ->
-            val requestId = arguments[0]
-            val url = arguments[1] as String
-            val method = arguments[2] as String
-            val headers = arguments[3] as? Map<*, *> ?: emptyMap<String, String>()
-            val body = arguments[4] as? String
-            val owner = runtime
-
-            thread {
-                val (response, error) = runCatching { request(url, method, headers, body) }
-                    .fold({ Pair(it, null) }, { Pair(null, it.message ?: it.toString()) })
-                callIfStillRunning(owner, "__fetchFinished", requestId, response, error)
-            }
+    /** XMLHttpRequest's native side (Networking); fetch is built on it in JS. */
+    private fun networkingFunctions(): Map<String, NativeFunction> = mapOf(
+        "sendRequest" to { arguments ->
+            networking.send((arguments[0] as Number).toInt(), arguments[1] as? Map<*, *> ?: emptyMap<String, Any>(), runtime)
         },
+        "abortRequest" to { arguments -> networking.abort((arguments[0] as Number).toInt()) },
     )
-
-    private fun request(url: String, method: String, headers: Map<*, *>, body: String?): Map<String, Any> {
-        val connection = URL(url).openConnection() as HttpURLConnection
-        connection.requestMethod = method
-        headers.forEach { (name, value) -> connection.setRequestProperty(name.toString(), value.toString()) }
-
-        if (body != null) {
-            connection.doOutput = true
-            connection.outputStream.use { it.write(body.toByteArray()) }
-        }
-
-        val status = connection.responseCode
-        val stream = if (status >= 400) connection.errorStream else connection.inputStream
-        val responseHeaders = connection.headerFields.filterKeys { it != null }.mapValues { it.value.joinToString(", ") }
-
-        return mapOf(
-            "status" to status,
-            "headers" to responseHeaders,
-            "body" to (stream?.bufferedReader()?.use { it.readText() } ?: ""),
-        )
-    }
 
     // ---------- Errors ----------
 
@@ -563,6 +531,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         }
         modalHostsByNodeId.clear()
         gestureReportersByNodeId.clear() // node ids start over
+        networking.abortAll() // and so do request ids
         reportedLayoutsByNodeId.clear()
         animatedGraph.reset()
         animatedGraph.onAnimationEnd = { animationId, finished ->

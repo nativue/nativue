@@ -1,7 +1,7 @@
 // What the JavaScript engine has globally: the bridge, the hooks native calls into, and the web APIs
 // prelude.ts (timers, console) and fetch.ts provide. No DOM.
 import type { ColorScheme, WindowSize } from './appearance'
-import type { LayoutEvent, NativeModule } from './types'
+import type { LayoutEvent, NativeModule, NetworkEventPayloads } from './types'
 
 declare global {
   var __native: NativeModule
@@ -13,10 +13,10 @@ declare global {
   var __windowSizeChanged: (windowSize: WindowSize) => void
   var __asyncFunctionFinished: (callId: number, value: unknown, errorMessage: string | null) => void
   var __animationFinished: (animationId: number, finished: boolean) => void
-  var __fetchFinished: (
+  var __networkEvent: <Name extends keyof NetworkEventPayloads>(
     requestId: number,
-    response: { status: number; headers: Record<string, string>; body: string } | null,
-    errorMessage: string | null,
+    eventName: Name,
+    payload: NetworkEventPayloads[Name],
   ) => void
 
   var console: {

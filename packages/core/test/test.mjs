@@ -13,6 +13,7 @@ const layoutAnimations = []
 const animated = { nodes: {}, started: [], stopped: [], styles: {}, events: {} }
 const storage = new Map()
 const fetchRequests = []
+const abortedFetchIds = []
 const POSTS = [
   { id: 1, title: 'Primeiro post' },
   { id: 2, title: 'Segundo post' },
@@ -74,16 +75,20 @@ globalThis.__native = {
   storageKeys: () => [...storage.keys()],
   storageClear: () => storage.clear(),
 
-  // Answers like URLSession would, on a later turn.
-  fetch: (requestId, url, method, headers, body) => {
+  // Answers like the native networking would, on a later turn: the response, its data, the end.
+  sendRequest: (requestId, { url, method, headers, body, responseType }) => {
     fetchRequests.push({ url, method, headers, body })
-    const response = {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(POSTS),
-    }
-    setTimeout(() => globalThis.__fetchFinished(requestId, response, null))
+    const text = JSON.stringify(POSTS)
+    const data = responseType === 'base64' ? Buffer.from(text).toString('base64') : text
+    const report = (eventName, payload) => globalThis.__networkEvent(requestId, eventName, payload)
+
+    setTimeout(() => {
+      report('response', { status: 200, headers: { 'Content-Type': 'application/json' }, url })
+      report('data', { data })
+      report('complete', { error: null, timedOut: false })
+    })
   },
+  abortRequest: (requestId) => abortedFetchIds.push(requestId),
 }
 
 ;(0, eval)(
@@ -677,8 +682,71 @@ assert.deepEqual(fetchRequests.at(-1), {
   url: 'https://example.com',
   method: 'POST',
   headers: { 'content-type': 'text/plain' },
-  body: 'hi',
+  body: { string: 'hi' },
 })
+
+// XMLHttpRequest, which fetch and libraries like axios build on.
+function sendXhr(configure, body) {
+  const xhr = new XMLHttpRequest()
+  const events = []
+  xhr.onreadystatechange = () => events.push(`readyState ${xhr.readyState}`)
+  xhr.onload = () => events.push('load')
+  xhr.open('POST', 'https://example.com/xhr')
+  configure(xhr)
+
+  return new Promise((resolve) => {
+    xhr.addEventListener('loadend', () => resolve({ xhr, events: [...events, 'loadend'] }))
+    xhr.send(body)
+  })
+}
+
+const jsonRequest = await sendXhr((xhr) => (xhr.responseType = 'json'), 'hello')
+assert.deepEqual(jsonRequest.xhr.response, POSTS)
+assert.equal(jsonRequest.xhr.status, 200)
+assert.equal(jsonRequest.xhr.getResponseHeader('Content-Type'), 'application/json')
+assert.equal(jsonRequest.xhr.getAllResponseHeaders(), 'content-type: application/json\r\n')
+assert.deepEqual(jsonRequest.events, [
+  'readyState 1',
+  'readyState 2',
+  'readyState 3',
+  'readyState 4',
+  'load',
+  'loadend',
+])
+
+// Binary both ways: bytes go to native and come back as base64.
+const binaryRequest = await sendXhr(
+  (xhr) => (xhr.responseType = 'arraybuffer'),
+  new Uint8Array([1, 2, 255]),
+)
+assert.deepEqual(fetchRequests.at(-1).body, { base64: 'AQL/' })
+assert.equal(new TextDecoder().decode(binaryRequest.xhr.response), JSON.stringify(POSTS))
+
+// FormData: text fields and files, which native reads by uri into a multipart body.
+const form = new FormData()
+form.append('title', 'Trip')
+form.append('photo', { uri: 'file:///photo.jpg', name: 'photo.jpg', type: 'image/jpeg' })
+form.append('count', 2)
+await fetch('https://example.com/upload', { method: 'POST', body: form })
+assert.deepEqual(fetchRequests.at(-1).body, {
+  formData: [
+    { name: 'title', value: 'Trip' },
+    { name: 'photo', uri: 'file:///photo.jpg', filename: 'photo.jpg', type: 'image/jpeg' },
+    { name: 'count', value: '2' },
+  ],
+})
+
+// AbortController: the promise rejects with an AbortError at once, and native cancels the request.
+const controller = new AbortController()
+const abortedRequest = fetch('https://example.com/slow', { signal: controller.signal })
+controller.abort()
+await assert.rejects(abortedRequest, { name: 'AbortError' })
+assert.equal(abortedFetchIds.length, 1)
+await settle() // the fake's late answer finds no request: nothing happens
+await assert.rejects(fetch('https://example.com', { signal: controller.signal }), {
+  name: 'AbortError',
+})
+assert.equal(abortedFetchIds.length, 1) // aborted before it started: native never heard of it
 
 press(buttonTitled('Reset', dataId))
 await settle()
