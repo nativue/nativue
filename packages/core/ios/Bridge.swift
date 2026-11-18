@@ -833,6 +833,9 @@ final class Bridge {
         case "pagingEnabled":
             (node.view as? UIScrollView)?.isPagingEnabled = isTruthyAttribute(value)
 
+        case "scrollEventThrottle":
+            (node.view as? VueScrollView)?.scrollEventThrottle = (value as? NSNumber)?.doubleValue ?? 0
+
         case "showsHorizontalScrollIndicator":
             (node.view as? UIScrollView)?.showsHorizontalScrollIndicator = isTruthyAttribute(value)
 

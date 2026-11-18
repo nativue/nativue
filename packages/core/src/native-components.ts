@@ -55,6 +55,8 @@ declare module '@vue/runtime-core' {
       contentInsetAdjustmentBehavior?: 'automatic' | 'scrollableAxes' | 'never' | 'always'
       /** The keyboard insets the content, and the focused input scrolls above it. */
       automaticallyAdjustKeyboardInsets?: boolean
+      /** At most one @scroll per this many milliseconds (the last position always comes); 0, every frame. */
+      scrollEventThrottle?: number
       onScroll?: EventHandler<ScrollEvent>
       onRefresh?: () => void
     }>

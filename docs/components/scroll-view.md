@@ -26,15 +26,16 @@ needs.
 | `keyboard-dismiss-mode`                | `'none' \| 'on-drag' \| 'interactive'`                   | `'none'`  | `'on-drag'` closes the keyboard when the user scrolls; `'interactive'` (iOS) lets the drag pull it down                |
 | `keyboard-should-persist-taps`         | `'never' \| 'always' \| 'handled'`                       | `'never'` | `'never'`: a tap outside a text field closes the keyboard; `'always'` and `'handled'` keep it open                     |
 | `automatically-adjust-keyboard-insets` | `boolean`                                                | `false`   | makes room for the keyboard and scrolls the focused field above it, see [below](#the-keyboard)                         |
+| `scroll-event-throttle`                | `number`                                                 | `0`       | at most one `@scroll` per this many milliseconds; the last position always arrives. `0` sends one every frame          |
 | `refreshing`                           | `boolean`                                                |           | shows the pull-to-refresh spinner, with `@refresh`                                                                     |
 | `style`                                | `Style`                                                  |           |                                                                                                                        |
 
 ## Events
 
-| Event      | Payload                   | Fires                                                                                           |
-| ---------- | ------------------------- | ----------------------------------------------------------------------------------------------- |
-| `@scroll`  | `{ x, y, width, height }` | on every scroll step, and when its size changes: the visible area, in the content's coordinates |
-| `@refresh` |                           | when the user pulls to refresh                                                                  |
+| Event      | Payload                   | Fires                                                                                                                                  |
+| ---------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `@scroll`  | `{ x, y, width, height }` | on every scroll step (or as `scroll-event-throttle` allows), and when its size changes: the visible area, in the content's coordinates |
+| `@refresh` |                           | when the user pulls to refresh                                                                                                         |
 
 ## Pull to refresh
 

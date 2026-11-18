@@ -827,6 +827,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
             "horizontal" -> setScrollDirection(node, isTruthyAttribute(value))
 
             "pagingEnabled" -> (view as? ScrollContainerView)?.pagingEnabled = isTruthyAttribute(value)
+            "scrollEventThrottle" -> (view as? ScrollContainerView)?.scrollEventThrottle = (value as? Number)?.toLong() ?: 0
 
             "showsHorizontalScrollIndicator" -> (view as? ScrollContainerView)?.showsHorizontalScrollIndicator = isTruthyAttribute(value)
 

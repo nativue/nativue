@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Rect
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Base64
 import android.util.LruCache
 import android.view.MotionEvent
@@ -186,6 +187,12 @@ class ScrollContainerView(context: Context) : ContainerView(context) {
     var onScroll: ((x: Int, y: Int) -> Unit)? = null
     var onOffsetChange: ((x: Int, y: Int) -> Unit)? = null
 
+    /** scroll-event-throttle, in milliseconds: 0 reports every scroll step. */
+    var scrollEventThrottle = 0L
+
+    private var lastReportTime = 0L
+    private var hasPendingReport = false
+
     var pagingEnabled = false
         set(value) {
             field = value
@@ -360,6 +367,25 @@ class ScrollContainerView(context: Context) : ContainerView(context) {
         refreshIndicator.layout(indicatorLeft, -size, indicatorLeft + size, 0)
     }
 
+    // Within the throttle, the report waits for its end, so the last position always reaches JS.
+    private fun reportScrollThrottled() {
+        if (onScroll == null || hasPendingReport) return
+
+        val elapsed = SystemClock.uptimeMillis() - lastReportTime
+        if (elapsed >= scrollEventThrottle) return reportScroll()
+
+        hasPendingReport = true
+        postDelayed({
+            hasPendingReport = false
+            reportScroll()
+        }, scrollEventThrottle - elapsed)
+    }
+
+    private fun reportScroll() {
+        lastReportTime = SystemClock.uptimeMillis()
+        onScroll?.invoke(scroller.scrollX, scroller.scrollY)
+    }
+
     private fun makeScroller(horizontal: Boolean): FrameLayout {
         val scroller = if (horizontal) PagingHorizontalScrollView(context) else PagingVerticalScrollView(context)
         (scroller as PagingScroller).pagingEnabled = pagingEnabled
@@ -369,7 +395,7 @@ class ScrollContainerView(context: Context) : ContainerView(context) {
         scroller.addView(content, FrameLayout.LayoutParams(content.layoutParams?.width ?: 0, content.layoutParams?.height ?: 0))
         scroller.setOnScrollChangeListener { _, x, y, _, _ ->
             onOffsetChange?.invoke(x, y)
-            onScroll?.invoke(x, y)
+            reportScrollThrottled()
             if (isTouching && keyboardDismissMode != "none") rootView.findFocus()?.let(::hideKeyboard)
         }
 

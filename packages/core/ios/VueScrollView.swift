@@ -23,13 +23,18 @@ final class VueScrollView: UIScrollView {
     /// above it.
     var adjustsForKeyboard = false
 
-    /// Set when JS listens to @scroll. Called on every scroll step and size change (FlatList windowing).
-    // Limitation: One JS call per frame while scrolling; coalesce / add scrollEventThrottle if JS falls behind.
+    /// Set when JS listens to @scroll. Called on every scroll step and size change (FlatList windowing),
+    /// at most once per `scrollEventThrottle`.
     var onScroll: ((CGRect) -> Void)? {
         didSet { lastReportedBounds = nil }
     }
 
+    /// scroll-event-throttle, in milliseconds: 0 reports every frame.
+    var scrollEventThrottle: Double = 0
+
     private var lastReportedBounds: CGRect?
+    private var lastReportTime: CFTimeInterval = 0
+    private var hasPendingReport = false
 
     /// Set when JS listens to @refresh: shows a pull-to-refresh spinner. JS owns `refreshing`.
     var onRefresh: (() -> Void)? {
@@ -79,10 +84,28 @@ final class VueScrollView: UIScrollView {
         super.layoutSubviews()
 
         onOffsetChange?(contentOffset)
+        reportScrollThrottled()
+    }
 
+    // Within the throttle, the report waits for its end, so the last position always reaches JS.
+    private func reportScrollThrottled() {
+        guard onScroll != nil, bounds != lastReportedBounds, !hasPendingReport else { return }
+
+        let elapsed = (CACurrentMediaTime() - lastReportTime) * 1000
+        guard elapsed < scrollEventThrottle else { return reportScroll() }
+
+        hasPendingReport = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + (scrollEventThrottle - elapsed) / 1000) { [weak self] in
+            self?.hasPendingReport = false
+            self?.reportScroll()
+        }
+    }
+
+    private func reportScroll() {
         guard let onScroll, bounds != lastReportedBounds else { return }
 
         lastReportedBounds = bounds
+        lastReportTime = CACurrentMediaTime()
         onScroll(bounds)
     }
 
