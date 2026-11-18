@@ -7,12 +7,14 @@
     "ios": "nativue run ios",
     "android": "nativue run android",
     "build": "nativue build --production",
-    "typecheck": "vue-tsc"
+    "typecheck": "vue-tsc",
+    "format": "prettier --write src"
   },
   "dependencies": {
     "@nativue/core": "__NATIVUE_VERSION__"
   },
   "devDependencies": {
+    "prettier": "^3.10.1",
     "typescript": "^5.9.3",
     "vue-tsc": "^3.3.14"
   }

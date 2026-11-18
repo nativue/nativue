@@ -1,3 +1,5 @@
 **/ios/**
 **/*.bundle.js
 package-lock.json
+# Its __DISPLAY_NAME__ placeholder would become bold
+packages/create-nativue/template/AGENTS.md

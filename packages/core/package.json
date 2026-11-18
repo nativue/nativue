@@ -56,7 +56,8 @@
     "android/build.gradle.kts",
     "android/consumer-rules.pro",
     "android/nativue.settings.gradle.kts",
-    "android/src"
+    "android/src",
+    "AGENTS.md"
   ],
   "publishConfig": {
     "access": "public"

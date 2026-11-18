@@ -11,6 +11,9 @@ template in the same change, for example:
 - a renamed or removed API that `template/src` uses
 - a new platform folder (e.g. `android/`) or file every app needs
 
+When a change adds, renames or removes something apps use (a component, prop, API, route feature or
+package), update `packages/core/AGENTS.md` too: it's the guide coding agents read in every app.
+
 Keep the demo's host app and the template's in step: they differ only in names and the path to the
 Swift package (`../../../packages/core` in the demo, `../node_modules/@nativue/core` in the template).
 

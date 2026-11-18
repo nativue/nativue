@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 
 const TEMPLATE_DIRECTORY = fileURLToPath(new URL('./template', import.meta.url))
-const TEXT_FILE = /(\.(json|vue|ts|plist|pbxproj|resolved|swift|kt|kts|xml)|gitignore)$/
+const TEXT_FILE = /(\.(json|vue|ts|plist|pbxproj|resolved|swift|kt|kts|xml|md)|gitignore)$/
 // Also the Android package and applicationId, which can't have hyphens.
 const BUNDLE_ID = /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/
 const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))

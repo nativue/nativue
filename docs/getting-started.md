@@ -75,6 +75,7 @@ ios/               the iOS app (App.xcodeproj): App.swift shows NativueView()
   NativuePlugins/  generated: nativue and the iOS side of your native packages
 android/           the Android app: MainActivity extends NativueActivity
 nativue.config.ts  plugins, e.g. @nativue/tailwind (optional)
+AGENTS.md          rules for coding agents; CLAUDE.md points Claude Code at it
 ```
 
 - `@/` points at `src/` from anywhere: `import { colors } from '@/lib/theme'`.
@@ -85,6 +86,10 @@ nativue.config.ts  plugins, e.g. @nativue/tailwind (optional)
   `npm run typecheck` checks your templates too.
 - Images are imported like modules: `import logo from '@/assets/logo.png'`, then
   `<Image :source="logo" />`.
+- `npm run format` formats `src` with Prettier, set up in `.prettierrc.json`.
+- Coding agents (Claude Code, Codex, Cursor...) read `AGENTS.md`, which points them at
+  `node_modules/@nativue/core/AGENTS.md`: how nativue differs from the web, kept current with the
+  installed version. Add your app's own rules to `AGENTS.md`.
 
 ### Vue plugins
 
