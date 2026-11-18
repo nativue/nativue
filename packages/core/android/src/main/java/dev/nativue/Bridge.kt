@@ -16,6 +16,7 @@ import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsAnimation
 import android.view.WindowInsetsController
@@ -23,11 +24,12 @@ import android.graphics.Insets
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.ProgressBar
-import android.widget.Switch
 import android.widget.TextView
 import com.facebook.yoga.YogaDisplay
 import com.facebook.yoga.YogaEdge
+import com.facebook.yoga.YogaFlexDirection
 import com.facebook.yoga.YogaPositionType
 import java.net.HttpURLConnection
 import java.net.URL
@@ -43,6 +45,11 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     /** The dev server address that answered last (set by listenForReload, read when symbolicating). */
     @Volatile
     private var devServerURL = ""
+    /** Ends listenForReload's loop: its thread would otherwise keep a destroyed activity alive. */
+    @Volatile
+    private var isDestroyed = false
+    @Volatile
+    private var reloadConnection: HttpURLConnection? = null
 
     private val javaScriptHandler = startJavaScriptThread()
     private val isDebuggable = activity.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
@@ -57,7 +64,6 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     private var nextLayoutAnimation: Map<*, *>? = null
 
     // Only touched on the main thread.
-    // ponytail: children of a removed node stay in the map; clean up recursively if memory leaks.
     private val nodesById = HashMap<Int, NativeNode>()
     private val animatedGraph = AnimatedGraph()
     private val modalHostsByNodeId = HashMap<Int, ModalHost>()
@@ -97,7 +103,11 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         if (isDebuggable) thread(isDaemon = true) { listenForReload() }
     }
 
+    /** On the main thread, when the activity is destroyed. */
     fun destroy() {
+        isDestroyed = true
+        reloadConnection?.disconnect()
+        animatedGraph.reset() // a looping animation would keep running on the dead views
         javaScriptHandler.post {
             runtime?.destroy()
             runtime = null
@@ -108,8 +118,9 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     /** (callId, ...arguments): settles the call with __asyncFunctionFinished; a throw rejects it. */
     private fun asyncCall(function: AsyncFunction): NativeFunction = { arguments ->
         val callId = int(arguments[0])
+        val owner = runtime
         val promise = Promise { value, errorMessage ->
-            evaluate { runtime?.call("__asyncFunctionFinished", callId, value, errorMessage) }
+            callIfStillRunning(owner, "__asyncFunctionFinished", callId, value, errorMessage)
         }
 
         runCatching { function(arguments.drop(1), promise) }.onFailure { promise.reject(it.message ?: it.toString()) }
@@ -121,6 +132,8 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         if (!ThemeColors.update(activity)) return
 
         applyThemeColors(activity.window.decorView)
+        // Content not in the window now, like a hidden <Modal>'s, is repainted too.
+        nodesById.values.forEach { applyThemeColors(it.view) }
         // The theme set them when the window was created; it isn't recreated (configChanges has uiMode).
         val lightBars = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
             WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
@@ -228,7 +241,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
 
     /** System back: closes the top <Modal>, else pops the innermost visible stack. */
     fun goBack(): Boolean {
-        modalHostsByNodeId.values.lastOrNull { it.isShowing }?.let {
+        modalHostsByNodeId.values.filter { it.isShowing }.maxByOrNull { it.presentationOrder }?.let {
             it.requestClose()
             return true
         }
@@ -279,7 +292,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         }
         put("remove") { arguments ->
             val id = int(arguments[0])
-            enqueue { nodesById.remove(id)?.removeFromParent() }
+            enqueue { nodesById[id]?.let(::removeNode) }
         }
         put("setText") { arguments ->
             val id = int(arguments[0])
@@ -310,9 +323,12 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     private fun setTimer(timerId: Int, delay: Int) {
         val owner = runtime
 
-        javaScriptHandler.postDelayed({
-            if (runtime === owner) evaluate { runtime?.call("__fireTimer", timerId) }
-        }, delay.toLong())
+        javaScriptHandler.postDelayed({ callIfStillRunning(owner, "__fireTimer", timerId) }, delay.toLong())
+    }
+
+    /** For results that arrive later: a reloaded runtime starts its timer, request and call ids over. */
+    private fun callIfStillRunning(owner: JavaScriptRuntime?, function: String, vararg arguments: Any?) {
+        evaluate { if (runtime === owner) runtime?.call(function, *arguments) }
     }
 
     private fun storageFunctions(): Map<String, NativeFunction> = mapOf(
@@ -370,11 +386,12 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
             val method = arguments[2] as String
             val headers = arguments[3] as? Map<*, *> ?: emptyMap<String, String>()
             val body = arguments[4] as? String
+            val owner = runtime
 
             thread {
                 val (response, error) = runCatching { request(url, method, headers, body) }
                     .fold({ Pair(it, null) }, { Pair(null, it.message ?: it.toString()) })
-                evaluate { runtime?.call("__fetchFinished", requestId, response, error) }
+                callIfStillRunning(owner, "__fetchFinished", requestId, response, error)
             }
         },
     )
@@ -446,11 +463,12 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         val candidateURLs = devServerURLs()
         var attempt = 0
 
-        while (true) {
+        while (!isDestroyed) {
             devServerURL = candidateURLs[attempt++ % candidateURLs.size]
             runCatching {
                 val connection = URL("$devServerURL/events").openConnection() as HttpURLConnection
                 connection.readTimeout = 0
+                reloadConnection = connection
 
                 connection.inputStream.bufferedReader().useLines { lines ->
                     lines.filter { it == "data: reload" }.forEach { _ ->
@@ -467,8 +485,32 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
 
     // ---------- Main thread ----------
 
+    /** Vue removes only a subtree's root: the nodes under it are forgotten with it. */
+    private fun removeNode(root: NativeNode) {
+        val removedViews = mutableSetOf<View>()
+        collectViews(root.view, removedViews)
+        root.contentNode?.let { collectViews(it.view, removedViews) }
+
+        // ponytail: a nested <Modal>'s content isn't under the root's views, so its nodes stay; walk the
+        // modal hosts too if apps nest many. Hosts stay: layout dismisses the detached ones.
+        val removedIds = nodesById.filterValues { it.view in removedViews }.keys
+        removedIds.forEach { id ->
+            nodesById.remove(id)
+            gestureReportersByNodeId.remove(id)
+        }
+        root.removeFromParent()
+    }
+
+    private fun collectViews(view: View, views: MutableSet<View>) {
+        views.add(view)
+        if (view is ViewGroup) (0 until view.childCount).forEach { collectViews(view.getChildAt(it), views) }
+    }
+
     private fun resetNodeTree() {
-        modalHostsByNodeId.values.forEach { it.setVisible(false) }
+        modalHostsByNodeId.values.forEach {
+            it.onEvent = {} // its "dismiss" would reach the new tree's node with the same id
+            it.setVisible(false)
+        }
         modalHostsByNodeId.clear()
         gestureReportersByNodeId.clear() // node ids start over
         animatedGraph.reset()
@@ -561,9 +603,10 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         "TextInput" -> NativeNode(makeTextInput(id), measuresContent = true)
 
         "Switch" -> {
-            val toggle = Switch(activity)
-            toggle.setOnCheckedChangeListener { view, isChecked ->
-                if (view.isPressed) dispatchEvent("valuechange", id, isChecked) // not when set from JS
+            val toggle = ToggleSwitch(activity)
+            toggle.setOnCheckedChangeListener { _, isChecked ->
+                // Every change but JS's own: touch, keyboard and accessibility toggles alike.
+                if (!toggle.isSettingFromJavaScript) dispatchEvent("valuechange", id, isChecked)
             }
             NativeNode(toggle, measuresContent = true)
         }
@@ -601,17 +644,19 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
             override fun onTextChanged(text: CharSequence?, start: Int, before: Int, count: Int) {}
 
             override fun afterTextChanged(text: Editable?) {
-                if (!textInput.hasFocus()) return // set from JS
+                if (textInput.isSettingTextFromJavaScript) return // autofill and accessibility do count
 
                 textInput.recordTextSentToJavaScript()
                 dispatchEvent("changetext", id, text.toString())
             }
         })
-        // Returning false lets the action close the keyboard, as single-line inputs are expected to.
+        // The return key closes the keyboard and ends editing, as single-line inputs do on iOS too.
         textInput.setOnEditorActionListener { _, _, _ ->
             dispatchEvent("submitediting", id, textInput.text.toString())
-            false
+            hideKeyboard(textInput)
+            true
         }
+        textInput.setOnFocusChangeListener { _, hasFocus -> dispatchEvent(if (hasFocus) "focus" else "blur", id, null) }
 
         return textInput
     }
@@ -709,7 +754,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
 
             "value" -> {
                 (view as? TextInputView)?.setTextFromJavaScript(value as? String ?: "")
-                (view as? Switch)?.isChecked = isTruthyAttribute(value)
+                (view as? ToggleSwitch)?.setCheckedFromJavaScript(isTruthyAttribute(value))
             }
 
             "disabled" -> {
@@ -752,7 +797,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
 
             "source" -> (view as? RemoteImageView)?.load(value as? String)
 
-            "resizeMode" -> (view as? RemoteImageView)?.scaleType = RemoteImageView.scaleTypes[value] ?: android.widget.ImageView.ScaleType.CENTER_CROP
+            "resizeMode" -> (view as? RemoteImageView)?.scaleType = RemoteImageView.scaleTypes[value] ?: ImageView.ScaleType.CENTER_CROP
 
             "onLongPress" -> (view as? PressableView)?.reportsLongPress = isTruthyAttribute(value)
 
@@ -771,7 +816,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     private fun setScrollDirection(node: NativeNode, horizontal: Boolean) {
         val scrollView = node.view as? ScrollContainerView ?: return
 
-        node.yogaNode.setFlexDirection(if (horizontal) com.facebook.yoga.YogaFlexDirection.ROW else com.facebook.yoga.YogaFlexDirection.COLUMN)
+        node.yogaNode.setFlexDirection(if (horizontal) YogaFlexDirection.ROW else YogaFlexDirection.COLUMN)
         scrollView.setHorizontal(horizontal)
     }
 
@@ -786,7 +831,6 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
             val fieldsToNodeIds = mapping?.entries?.associate { (field, nodeId) -> field.toString() to int(nodeId) }
             return gestureReporter(viewId, view).setAnimatedMapping(eventName, fieldsToNodeIds)
         }
-
 
         if (mapping == null) {
             scrollView.onOffsetChange = null

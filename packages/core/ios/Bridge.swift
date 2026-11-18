@@ -5,11 +5,11 @@ import yoga
 /// Runs the JS bundle off the main thread and applies the operations sent by the Vue renderer
 /// (src/renderer.js) to UIKit + Yoga in batches on the main thread.
 final class Bridge {
-    /// The simulator shares the Mac's network; a device uses the Mac's name, written into the app at build
-    /// time by the "Write Dev Server Host" build phase.
     /// Posted by the app with a URL it was opened with (deep link); forwarded to JS (`__openURL`).
     static let openURLNotification = Notification.Name("NativueOpenURL")
 
+    /// The simulator shares the Mac's network; a device uses the Mac's name, written into the app at build
+    /// time by the "Write Dev Server Host" build phase.
     static let devServerURL: URL = {
         #if targetEnvironment(simulator)
         let host = "localhost"
@@ -29,8 +29,6 @@ final class Bridge {
     // Only touched on javaScriptQueue.
     private var runtime: JavaScriptRuntime?
     private var pendingOperations: [() -> Void] = []
-    private var gestureReportersByNodeId: [Int: GestureReporter] = [:]
-    private let animatedGraph = AnimatedGraph()
     private lazy var storage = KeyValueStorage(javaScriptQueue: javaScriptQueue)
     /// Set by LayoutAnimation.configureNext in JS; animates the batch it's sent with.
     private var nextLayoutAnimation: LayoutAnimation?
@@ -39,10 +37,13 @@ final class Bridge {
 
     // Only touched on the main thread.
     var rootView: RootView!
+    private var gestureReportersByNodeId: [Int: GestureReporter] = [:]
+    private let animatedGraph = AnimatedGraph()
     // ponytail: children of a removed node stay in the dictionary; clean up recursively if memory leaks.
     var nodesById: [Int: NativeNode] = [:]
     /// Modals and screens: their content is laid out as a separate Yoga root.
-    // ponytail: controllers of removed modals stay here; drop them on remove if many modals come and go.
+    // ponytail: Vue removes only a subtree's root, so the modals and screens inside a removed subtree stay
+    // here and are laid out on every pass; drop the detached ones on remove if navigators come and go.
     private var contentRootsByNodeId: [Int: ContentRoot] = [:]
     /// Read on the main thread at start, for Dimensions.get('window').
     private var windowSize: CGSize = .zero
@@ -136,8 +137,11 @@ final class Bridge {
         }
     }
 
-    private func finishAsyncFunction(_ callId: Int, value: Any?, errorMessage: String?) {
+    /// Results reaching a runtime that has since been reloaded are dropped: call ids start over in the new one.
+    private func finishAsyncFunction(_ callId: Int, owner: JavaScriptRuntime?, value: Any?, errorMessage: String?) {
         evaluate { [unowned self] in
+            guard runtime === owner else { return }
+
             let arguments: [Any] = [callId, value ?? NSNull(), errorMessage ?? NSNull()]
             runtime?.call("__asyncFunctionFinished", arguments: arguments)
         }
@@ -235,13 +239,14 @@ final class Bridge {
         for (name, function) in pluginRegistry.asyncFunctions {
             define("pluginAsync:\(name)") { [unowned self] arguments in
                 let callId = int(arguments[0])
+                let owner = runtime
 
                 Task {
                     do {
                         let value = try await function(Array(arguments.dropFirst()))
-                        finishAsyncFunction(callId, value: value, errorMessage: nil)
+                        finishAsyncFunction(callId, owner: owner, value: value, errorMessage: nil)
                     } catch {
-                        finishAsyncFunction(callId, value: nil, errorMessage: error.localizedDescription)
+                        finishAsyncFunction(callId, owner: owner, value: nil, errorMessage: error.localizedDescription)
                     }
                 }
             }
@@ -339,6 +344,8 @@ final class Bridge {
     // MARK: - Main thread
 
     private func resetNodeTree() {
+        // Sheets of the old tree's screen stacks too, which only their stack knows about.
+        rootView.window?.rootViewController?.dismiss(animated: false)
         rootView.subviews.forEach { $0.removeFromSuperview() }
         contentRootsByNodeId.values.forEach { ($0 as? ModalController)?.setVisible(false) }
         contentRootsByNodeId = [:]
@@ -421,7 +428,10 @@ final class Bridge {
         case "KeyboardAvoidingView":
             let keyboardAvoidingView = KeyboardAvoidingView()
             let node = NativeNode(view: keyboardAvoidingView, measuresContent: false)
-            keyboardAvoidingView.onKeyboardOverlapChange = { [unowned self, unowned node] overlap in
+            // weak: a reload frees the node while a dismissing modal still shows its view.
+            keyboardAvoidingView.onKeyboardOverlapChange = { [unowned self, weak node] overlap in
+                guard let node else { return }
+
                 YGNodeStyleSetPadding(node.yogaNode, .bottom, Float(overlap))
                 rootView.setNeedsLayout()
                 rootView.layoutIfNeeded() // runs inside the keyboard animation, so frames animate with it
@@ -431,8 +441,8 @@ final class Bridge {
         case "SafeAreaView":
             let safeAreaView = SafeAreaView()
             let node = NativeNode(view: safeAreaView, measuresContent: false)
-            safeAreaView.onSafeAreaInsetsChange = { [unowned self, unowned node] in
-                if node.applySafeAreaPadding() { requestLayout() }
+            safeAreaView.onSafeAreaInsetsChange = { [unowned self, weak node] in
+                if node?.applySafeAreaPadding() == true { requestLayout() }
             }
             return node
 
@@ -506,8 +516,13 @@ final class Bridge {
             dispatchEvent("submitediting", toNodeId: id, payload: textInput.text ?? "")
         }, for: .editingDidEndOnExit)
 
-        textInput.addAction(UIAction { [unowned textInput] _ in
+        textInput.addAction(UIAction { [unowned self] _ in
+            dispatchEvent("focus", toNodeId: id, payload: nil)
+        }, for: .editingDidBegin)
+
+        textInput.addAction(UIAction { [unowned self, unowned textInput] _ in
             textInput.endEditingSession()
+            dispatchEvent("blur", toNodeId: id, payload: nil)
         }, for: .editingDidEnd)
 
         return textInput
@@ -543,9 +558,10 @@ final class Bridge {
             let (requestId, url, method) = (int(arguments[0]), string(arguments[1]), string(arguments[2]))
             let headers = arguments[3] as? [String: String] ?? [:]
             let bodyText = arguments[4] as? String
+            let owner = runtime
 
             guard let url = URL(string: url) else {
-                return finishFetch(requestId, response: nil, error: "invalid URL \(url)")
+                return finishFetch(requestId, owner: owner, response: nil, error: "invalid URL \(url)")
             }
 
             var request = URLRequest(url: url)
@@ -555,10 +571,12 @@ final class Bridge {
 
             URLSession.shared.dataTask(with: request) { [unowned self] data, response, error in
                 guard let response = response as? HTTPURLResponse, error == nil else {
-                    return finishFetch(requestId, response: nil, error: error?.localizedDescription ?? "no response")
+                    return finishFetch(
+                        requestId, owner: owner, response: nil, error: error?.localizedDescription ?? "no response"
+                    )
                 }
 
-                finishFetch(requestId, response: [
+                finishFetch(requestId, owner: owner, response: [
                     "status": response.statusCode,
                     "headers": response.allHeaderFields,
                     "body": String(decoding: data ?? Data(), as: UTF8.self),
@@ -567,8 +585,10 @@ final class Bridge {
         }
     }
 
-    private func finishFetch(_ requestId: Int, response: [String: Any]?, error: String?) {
+    /// Like finishAsyncFunction, dropped if the runtime that asked has since been reloaded.
+    private func finishFetch(_ requestId: Int, owner: JavaScriptRuntime?, response: [String: Any]?, error: String?) {
         evaluate { [unowned self] in
+            guard runtime === owner else { return }
             let arguments: [Any] = [requestId, response ?? NSNull(), error ?? NSNull()]
             runtime?.call("__fetchFinished", arguments: arguments)
         }

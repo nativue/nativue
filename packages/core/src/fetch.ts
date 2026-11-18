@@ -96,7 +96,10 @@ function fetch(
 }
 
 globalThis.__fetchFinished = (requestId, response, errorMessage) => {
-  const { resolve, reject, url } = pendingRequestsById.get(requestId)!
+  const request = pendingRequestsById.get(requestId)
+  if (!request) return
+
+  const { resolve, reject, url } = request
   pendingRequestsById.delete(requestId)
 
   if (errorMessage || !response) reject(new TypeError(`Network request failed: ${errorMessage}`))

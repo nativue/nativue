@@ -19,6 +19,9 @@ final class ModalController: UIViewController, ContentRoot, UIAdaptivePresentati
     var transparent = false
 
     private var isPresented: Bool { presentingViewController != nil }
+    /// What JS last asked for; applied again when a running transition ends, which UIKit would ignore.
+    private var wantsVisible = false
+    private var isTransitioning = false
 
     override func loadView() {
         view = contentNode.view
@@ -38,14 +41,22 @@ final class ModalController: UIViewController, ContentRoot, UIAdaptivePresentati
 
     /// Deferred to after the current batch, so the placeholder is already in the window when presenting.
     func setVisible(_ visible: Bool) {
-        DispatchQueue.main.async { [self] in
-            if visible { present() } else { dismissIfPresented() }
-        }
+        wantsVisible = visible
+        DispatchQueue.main.async { [self] in applyVisibility() }
     }
 
     /// The <Modal> left the tree (an ancestor's v-if): its content must go too.
     func dismissIfDetached() {
-        if placeholderView.window == nil { dismissIfPresented() }
+        guard placeholderView.window == nil else { return }
+
+        wantsVisible = false
+        applyVisibility()
+    }
+
+    private func applyVisibility() {
+        guard !isTransitioning else { return }
+
+        if wantsVisible { present() } else { dismissIfPresented() }
     }
 
     private func present() {
@@ -57,14 +68,24 @@ final class ModalController: UIViewController, ContentRoot, UIAdaptivePresentati
             : Self.presentationStyles[presentationStyleName] ?? .fullScreen
         modalTransitionStyle = animationType == "fade" ? .crossDissolve : .coverVertical
 
-        presenter.present(self, animated: animationType != "none") { [self] in onEvent?("show") }
+        isTransitioning = true
+        presenter.present(self, animated: animationType != "none") { [self] in
+            isTransitioning = false
+            onEvent?("show")
+            applyVisibility()
+        }
         presentationController?.delegate = self
     }
 
     private func dismissIfPresented() {
         guard isPresented else { return }
 
-        dismiss(animated: animationType != "none") { [self] in onEvent?("dismiss") }
+        isTransitioning = true
+        dismiss(animated: animationType != "none") { [self] in
+            isTransitioning = false
+            onEvent?("dismiss")
+            applyVisibility()
+        }
     }
 
     private func topViewController() -> UIViewController? {

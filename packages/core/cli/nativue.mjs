@@ -20,6 +20,7 @@ import { runOnAndroid, runOnIOS } from './run.mjs'
 import { createSymbolicator } from './symbolicate.mjs'
 
 const PORT = 40836 // 0x9F84, from #0E9F84, the nativue green
+const MAX_STACK_LENGTH = 1_000_000 // characters, of a stack the app posts to /symbolicate
 const BUNDLE_DIRECTORY = 'ios/App'
 const BUNDLE_PATH = `${BUNDLE_DIRECTORY}/main.bundle.js`
 const SOURCE_MAP_PATH = `${BUNDLE_PATH}.map`
@@ -184,17 +185,31 @@ function startDevServer() {
   }
 
   function handleBundle(response) {
+    // An installed app can ask before Vite's first build has written it.
+    if (!existsSync(BUNDLE_PATH)) {
+      response.writeHead(503, { 'Content-Type': 'text/plain' })
+      response.end('The bundle is still building')
+      return
+    }
+
     response.writeHead(200, { 'Content-Type': 'application/javascript' })
     response.end(readFileSync(BUNDLE_PATH))
   }
 
   // The app posts an error's stack; it gets it back pointing at the app's files.
   async function handleSymbolicate(request, response) {
-    let text = ''
-    for await (const chunk of request) text += chunk
+    try {
+      let text = ''
+      for await (const chunk of request) {
+        text += chunk
+        if (text.length > MAX_STACK_LENGTH) throw new Error('stack too long')
+      }
 
-    response.writeHead(200, { 'Content-Type': 'text/plain' })
-    response.end(symbolicate(text))
+      response.writeHead(200, { 'Content-Type': 'text/plain' })
+      response.end(symbolicate(text))
+    } catch {
+      response.writeHead(400).end() // an aborted or oversized post: never take the server down
+    }
   }
 
   http

@@ -62,11 +62,19 @@ class ModalHost(private val activity: Activity) {
     val isShowing: Boolean
         get() = isPresented
 
+    /** Back closes the modal presented last. */
+    var presentationOrder = 0L
+        private set
+
     private fun present() {
         if (isPresented) return
 
         isPresented = true
+        presentationOrder = System.nanoTime()
         val content = contentNode.view
+        // Shown again while still animating out: that dismissal's end would remove it.
+        content.animate().cancel()
+        (overlay.parent as? ViewGroup)?.removeView(overlay)
         content.background = when {
             transparent -> null
             isSheet -> GradientDrawable().apply {

@@ -55,7 +55,7 @@ final class PressableView: UIControl {
     }
 
     @objc private func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
-        guard recognizer.state == .began else { return }
+        guard recognizer.state == .began, isEnabled else { return }
 
         didLongPress = true
         onEvent?("longpress")

@@ -250,19 +250,29 @@ function matchSegments(segments: Segment[], pathParts: string[]): Params | null 
     const part = pathParts[index]
     if (part === undefined) return null
 
-    if (segment.type === 'param') params[segment.name] = decodeURIComponent(part)
+    if (segment.type === 'param') params[segment.name] = decodeURIComponentSafely(part)
     else if (segment.name !== part) return null
   }
 
   return segments.length === pathParts.length ? params : null
 }
 
+// Links come from other apps too: a malformed escape (%E0%A4) is kept as it is, not thrown.
+function decodeURIComponentSafely(text: string): string {
+  try {
+    return decodeURIComponent(text.replaceAll('+', ' '))
+  } catch {
+    return text
+  }
+}
+
 function parseQuery(query = ''): Params {
   const params: Params = {}
 
   for (const pair of query.split('&').filter(Boolean)) {
-    const [key, value = ''] = pair.split('=')
-    params[decodeURIComponent(key)] = decodeURIComponent(value)
+    const separatorIndex = pair.includes('=') ? pair.indexOf('=') : pair.length // ?token=abc== keeps its ==
+    const key = pair.slice(0, separatorIndex)
+    params[decodeURIComponentSafely(key)] = decodeURIComponentSafely(pair.slice(separatorIndex + 1))
   }
 
   return params
@@ -304,7 +314,10 @@ function childNodesOf(layout: RouteNode): RouteNode[] {
 // Where a layout starts when opened without a destination: its index page.
 function initialRouteOf(layout: LayoutNode): Route {
   const descendants = pages.filter((page) => page.layouts.includes(layout))
-  const page = descendants.find((candidate) => candidate.name.endsWith('index')) ?? descendants[0]
+  const page =
+    descendants.find(
+      (candidate) => candidate.layouts.at(-1) === layout && candidate.name === 'index',
+    ) ?? descendants[0]
 
   return {
     chain: [...page.layouts.slice(page.layouts.indexOf(layout) + 1), page],
@@ -467,13 +480,30 @@ export function useRouter() {
   return router
 }
 
-// Type the params you expect: useLocalSearchParams<{ id: string }>()
-export function useLocalSearchParams<RouteParams extends Params = Params>(): RouteParams {
-  return inject(ENTRY_KEY)!.params as RouteParams
+function injectPageEntry(hookName: string): Entry {
+  const entry = inject(ENTRY_KEY, null)
+  if (!entry) throw new Error(`${hookName}() works in a page, not in a _layout.vue`)
+
+  return entry
 }
 
+// Type the params you expect: useLocalSearchParams<{ id: string }>(). Reactive: a tab opened again
+// with other params (router.navigate('/search?q=shoes')) updates it.
+export function useLocalSearchParams<RouteParams extends Params = Params>(): RouteParams {
+  const entry = injectPageEntry('useLocalSearchParams')
+
+  // Reads through to the entry's current params, which navigation may replace.
+  return new Proxy({} as RouteParams, {
+    get: (_target, key) => Reflect.get(entry.params, key),
+    has: (_target, key) => Reflect.has(entry.params, key),
+    ownKeys: () => Reflect.ownKeys(entry.params),
+    getOwnPropertyDescriptor: (_target, key) => Reflect.getOwnPropertyDescriptor(entry.params, key),
+  })
+}
+
+// ponytail: the path when the page opened; make it a ref if pages need to follow in-place navigation.
 export function usePathname(): string {
-  return inject(ENTRY_KEY)!.href.split('?')[0]
+  return injectPageEntry('usePathname').href.split('?')[0]
 }
 
 // Whether this screen is the one on screen: on top of its stack (or the selected tab), inside a

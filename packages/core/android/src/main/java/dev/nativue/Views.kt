@@ -17,6 +17,7 @@ import android.view.inputmethod.InputMethodManager
 import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.ScrollView
+import android.widget.Switch
 import java.net.URL
 import kotlin.concurrent.thread
 import kotlin.math.abs
@@ -81,6 +82,9 @@ class PressableView(context: Context) : ContainerView(context) {
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        // Consumed but ignored, as disabled Android buttons do: the touch doesn't reach a parent.
+        if (!isEnabled) return true
+
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> pressIn()
             MotionEvent.ACTION_UP -> pressOut(pressed = isInside(event))
@@ -109,6 +113,11 @@ class PressableView(context: Context) : ContainerView(context) {
         onEvent("pressout")
 
         if (pressed && !didLongPress) onEvent("press")
+    }
+
+    override fun setEnabled(enabled: Boolean) {
+        super.setEnabled(enabled)
+        if (!enabled) longPressHandler.removeCallbacksAndMessages(null)
     }
 
     private fun isInside(event: MotionEvent) = event.x in 0f..width.toFloat() && event.y in 0f..height.toFloat()
@@ -468,6 +477,8 @@ class TextInputView(context: Context) : android.widget.EditText(context), ThemeA
     // ponytail: a value JS sets on purpose that equals text typed earlier in the same editing session is
     // ignored too; tag each change with a counter if that ever matters.
     private val textsSentToJavaScript = mutableSetOf<String>()
+    var isSettingTextFromJavaScript = false
+        private set
 
     override fun applyThemeColors() {
         setTextColor(styleColor ?: ThemeColors.text)
@@ -490,7 +501,21 @@ class TextInputView(context: Context) : android.widget.EditText(context), ThemeA
     fun setTextFromJavaScript(newText: String) {
         if (newText == text.toString() || newText in textsSentToJavaScript) return
 
+        isSettingTextFromJavaScript = true
         setText(newText)
         setSelection(newText.length)
+        isSettingTextFromJavaScript = false
+    }
+}
+
+/** A Switch that tells JS's own changes (v-model) apart from the user's. */
+class ToggleSwitch(context: Context) : Switch(context) {
+    var isSettingFromJavaScript = false
+        private set
+
+    fun setCheckedFromJavaScript(checked: Boolean) {
+        isSettingFromJavaScript = true
+        isChecked = checked
+        isSettingFromJavaScript = false
     }
 }

@@ -28,7 +28,8 @@ public final class PluginRegistry {
         functions[name] = function
     }
 
-    /// For work that takes time (a permission prompt, the camera): JavaScript gets a Promise.
+    /// For work that takes time (a permission prompt, the camera): JavaScript gets a Promise. Runs off the
+    /// main thread: use `await MainActor.run { ... }` for UIKit.
     public func addAsyncFunction(_ name: String, _ function: @escaping AsyncFunction) {
         asyncFunctions[name] = function
     }

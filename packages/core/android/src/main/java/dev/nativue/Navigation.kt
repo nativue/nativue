@@ -380,7 +380,7 @@ fun ripple(cornerRadius: Float): RippleDrawable {
  */
 class ScreenStackView(context: Context) : ContainerView(context) {
     private val screens: List<ScreenView>
-        get() = (0 until childCount).mapNotNull { getChildAt(it) as? ScreenView }
+        get() = screenChildren()
 
     init {
         clipChildren = true
@@ -553,7 +553,7 @@ class TabBarView(context: Context) : ContainerView(context), ThemeAware {
     private val bar = LinearLayout(context)
 
     private val screens: List<ScreenView>
-        get() = (0 until childCount).mapNotNull { getChildAt(it) as? ScreenView }
+        get() = screenChildren()
 
     init {
         clipChildren = true
@@ -694,3 +694,6 @@ private class TabItemView(context: Context) : LinearLayout(context) {
         badge.visibility = if (badgeText.isNullOrEmpty()) View.GONE else View.VISIBLE
     }
 }
+
+/** The screens among a container's children, in order. */
+private fun ViewGroup.screenChildren(): List<ScreenView> = (0 until childCount).mapNotNull { getChildAt(it) as? ScreenView }
