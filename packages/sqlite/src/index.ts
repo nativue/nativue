@@ -6,7 +6,6 @@
 //   const todos = await db.all<Todo>('SELECT * FROM todos')
 // Limitation: Integers beyond Number.MAX_SAFE_INTEGER lose precision; store them as TEXT.
 import { requireNativeFunction } from '@nativue/core'
-import { fromByteArray, toByteArray } from 'base64-js'
 import { numberNamedParameters, splitStatements } from './statements'
 
 export type Value = number | string | null | Uint8Array
@@ -25,16 +24,13 @@ export interface RunResult {
 /** A statement and its parameters, for `batch()`. */
 export type BatchStatement = [sql: string, parameters?: QueryParameters]
 
-/** BLOBs cross as base64, in an object to tell them from text. */
-type NativeValue = number | string | null | { base64: string }
-
 interface NativeResult extends RunResult {
   columns: string[]
-  rows: NativeValue[][]
+  rows: Value[][]
 }
 
 interface NativeChunk {
-  rows: NativeValue[][]
+  rows: Value[][]
   /** No rows left: the native side has closed the cursor. */
   done: boolean
 }
@@ -46,18 +42,18 @@ interface NativeFirstChunk extends NativeChunk {
 
 const nativeQuery =
   requireNativeFunction<
-    (database: string, sql: string, parameters: NativeValue[]) => Promise<NativeResult>
+    (database: string, sql: string, parameters: Value[]) => Promise<NativeResult>
   >('sqlite.query')
 const nativeBatch =
-  requireNativeFunction<
-    (database: string, statements: [string, NativeValue[]][]) => Promise<RunResult>
-  >('sqlite.batch')
+  requireNativeFunction<(database: string, statements: [string, Value[]][]) => Promise<RunResult>>(
+    'sqlite.batch',
+  )
 const nativeIterate =
   requireNativeFunction<
     (
       database: string,
       sql: string,
-      parameters: NativeValue[],
+      parameters: Value[],
       chunkSize: number,
     ) => Promise<NativeFirstChunk>
   >('sqlite.iterate')
@@ -100,7 +96,7 @@ export class Statements {
   async values(sql: string, parameters: QueryParameters = []): Promise<Value[][]> {
     const { rows } = await this.query(sql, parameters)
 
-    return rows.map((row) => row.map(value))
+    return rows
   }
 
   /**
@@ -205,7 +201,7 @@ export const SQLite = {
   },
 }
 
-function nativeStatement(sql: string, parameters: QueryParameters): [string, NativeValue[]] {
+function nativeStatement(sql: string, parameters: QueryParameters): [string, Value[]] {
   if (Array.isArray(parameters)) return [sql, parameters.map(nativeParameter)]
 
   const numbered = numberNamedParameters(sql, parameters)
@@ -213,25 +209,17 @@ function nativeStatement(sql: string, parameters: QueryParameters): [string, Nat
   return [numbered.sql, numbered.parameters.map(nativeParameter)]
 }
 
-function nativeParameter(parameter: Parameter): NativeValue {
+function nativeParameter(parameter: Parameter): Value {
   if (parameter === undefined) return null
   if (typeof parameter === 'boolean') return Number(parameter)
-  if (parameter instanceof ArrayBuffer) return { base64: fromByteArray(new Uint8Array(parameter)) }
-  if (parameter instanceof Uint8Array) return { base64: fromByteArray(parameter) }
+  if (parameter instanceof ArrayBuffer) return new Uint8Array(parameter)
 
   return parameter
 }
 
-function rowObject(columns: string[], values: NativeValue[]): Row {
+function rowObject(columns: string[], values: Value[]): Row {
   const row: Row = {}
-  columns.forEach((column, index) => (row[column] = value(values[index])))
+  columns.forEach((column, index) => (row[column] = values[index]))
 
   return row
-}
-
-function value(nativeValue: NativeValue): Value {
-  if (nativeValue !== null && typeof nativeValue === 'object')
-    return toByteArray(nativeValue.base64)
-
-  return nativeValue
 }

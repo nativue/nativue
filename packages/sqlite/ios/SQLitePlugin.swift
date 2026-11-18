@@ -269,8 +269,11 @@ private final class Database: @unchecked Sendable {
         case let text as String:
             return sqlite3_bind_text(statement, index, text, -1, Self.transient)
 
-        case let blob as [String: Any]:
-            let data = Data(base64Encoded: blob["base64"] as? String ?? "") ?? Data()
+        // Empty bytes have no address, which SQLite would bind as NULL.
+        case let data as Data where data.isEmpty:
+            return sqlite3_bind_zeroblob(statement, index, 0)
+
+        case let data as Data:
             return data.withUnsafeBytes {
                 sqlite3_bind_blob(statement, index, $0.baseAddress, Int32(data.count), Self.transient)
             }
@@ -294,8 +297,7 @@ private final class Database: @unchecked Sendable {
         case SQLITE_BLOB:
             let size = Int(sqlite3_column_bytes(statement, column))
             let bytes = sqlite3_column_blob(statement, column)
-            let data = bytes.map { Data(bytes: $0, count: size) } ?? Data()
-            return ["base64": data.base64EncodedString()]
+            return bytes.map { Data(bytes: $0, count: size) } ?? Data()
 
         default:
             return NSNull()

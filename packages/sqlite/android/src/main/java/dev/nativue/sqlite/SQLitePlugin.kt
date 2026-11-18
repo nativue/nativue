@@ -5,7 +5,6 @@ import android.database.Cursor
 import android.database.sqlite.SQLiteCursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteQuery
-import android.util.Base64
 import dev.nativue.NativuePlugin
 import dev.nativue.Promise
 import dev.nativue.PluginRegistry
@@ -200,7 +199,7 @@ private class Database(context: Context, name: String) {
                 if (isInteger) query.bindLong(index, number.toLong()) else query.bindDouble(index, number)
             }
             is String -> query.bindString(index, parameter)
-            is Map<*, *> -> query.bindBlob(index, Base64.decode(parameter["base64"] as? String ?: "", Base64.NO_WRAP))
+            is ByteArray -> query.bindBlob(index, parameter)
             else -> query.bindNull(index)
         }
     }
@@ -209,7 +208,7 @@ private class Database(context: Context, name: String) {
         Cursor.FIELD_TYPE_INTEGER -> cursor.getLong(column)
         Cursor.FIELD_TYPE_FLOAT -> cursor.getDouble(column)
         Cursor.FIELD_TYPE_STRING -> cursor.getString(column)
-        Cursor.FIELD_TYPE_BLOB -> mapOf("base64" to Base64.encodeToString(cursor.getBlob(column), Base64.NO_WRAP))
+        Cursor.FIELD_TYPE_BLOB -> cursor.getBlob(column)
         else -> null
     }
 }

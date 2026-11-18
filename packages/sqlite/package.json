@@ -26,9 +26,6 @@
     "test": "node test/statements.test.mjs",
     "typecheck": "vue-tsc"
   },
-  "dependencies": {
-    "base64-js": "^1.5.1"
-  },
   "devDependencies": {
     "kysely": "^0.29.9"
   },
