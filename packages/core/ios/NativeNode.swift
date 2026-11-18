@@ -119,6 +119,7 @@ final class NativeNode {
                 childView.bounds.size = frame.size
                 childView.center = CGPoint(x: frame.midX, y: frame.midY)
             }
+            childView.applyCornerRadius()
 
             applyFrames(of: child)
 

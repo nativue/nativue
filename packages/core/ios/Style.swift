@@ -35,7 +35,8 @@ extension NativeNode {
             view.backgroundColor = UIColor(rgba: value)
 
         case "borderRadius":
-            view.layer.cornerRadius = CGFloat(number(value) ?? 0)
+            view.layer.setValue(CGFloat(number(value) ?? 0), forKey: UIView.requestedCornerRadiusKey)
+            view.applyCornerRadius()
 
         case "borderWidth":
             view.layer.borderWidth = CGFloat(number(value) ?? 0)
@@ -353,5 +354,17 @@ extension NativeNode {
         let number = CGFloat(Double(text.trimmingCharacters(in: .letters)) ?? 0)
 
         return text.hasSuffix("deg") ? number * .pi / 180 : number
+    }
+}
+
+extension UIView {
+    static let requestedCornerRadiusKey = "nativueCornerRadius"
+
+    /// A radius over half the view's side (rounded-full is 9999) makes Core Animation draw nothing:
+    /// capped to a circle's, and applied again as the frame changes.
+    func applyCornerRadius() {
+        guard let requestedRadius = layer.value(forKey: Self.requestedCornerRadiusKey) as? CGFloat else { return }
+
+        layer.cornerRadius = min(requestedRadius, min(bounds.width, bounds.height) / 2)
     }
 }
