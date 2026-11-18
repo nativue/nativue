@@ -9,6 +9,9 @@ units):
 
 To use Tailwind classes instead, see [`@nativue/tailwind`](../packages/tailwind/README.md).
 
+A `.vue` file's `<style>` block has no effect: native views don't read CSS, so the build warns and
+leaves it out. Use style objects, or Tailwind's classes.
+
 ## StyleSheet
 
 `StyleSheet.create` keeps a screen's styles together and types them, so `flexDirection: 'row'` is

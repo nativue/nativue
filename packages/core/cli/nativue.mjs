@@ -13,7 +13,7 @@ import net from 'node:net'
 import { execFileSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { dirname } from 'node:path'
+import { dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { linkIosPlugins } from './link.mjs'
 import { runOnAndroid, runOnIOS } from './run.mjs'
@@ -86,6 +86,30 @@ function finishBundle(mode) {
   }
 }
 
+// A .vue file's <style> would become CSS that native views never read: warn instead of dropping it
+// silently, once per file, and leave the CSS out of the build.
+function ignoreStyleBlocks() {
+  const warnedFiles = new Set()
+
+  return {
+    name: 'nativue-ignore-style-blocks',
+    enforce: 'pre',
+    load(id) {
+      if (!id.includes('?vue&type=style')) return null
+
+      const file = relative(process.cwd(), id.split('?')[0])
+      if (!warnedFiles.has(file)) {
+        warnedFiles.add(file)
+        this.warn(
+          `${file}: <style> blocks aren't supported, native views don't read CSS. Use StyleSheet or @nativue/tailwind instead: https://github.com/nativue/nativue/blob/main/docs/styling.md`,
+        )
+      }
+
+      return ''
+    },
+  }
+}
+
 const CONFIG_FILES = [
   'nativue.config.ts',
   'nativue.config.mts',
@@ -143,6 +167,7 @@ function viteConfig({ mode, plugins = [], watch = null, sourcemap = false }) {
           compilerOptions: { isCustomElement: (tag) => NATIVE_COMPONENT_TAGS.includes(tag) },
         },
       }),
+      ignoreStyleBlocks(),
       ...APP_VITE_PLUGINS,
       finishBundle(mode),
       ...plugins,
