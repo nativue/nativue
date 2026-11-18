@@ -1,12 +1,13 @@
-// Design tokens shared by every screen of the demo. The first ones are the nativue brand colors.
-import type { Style } from 'vue'
+// Design tokens shared by every screen of the demo, light or dark with the system. The first ones
+// are the nativue brand colors.
+import { Appearance, shallowReactive, type ColorScheme, type Style } from 'vue'
 
-export const colors = {
-  ink: '#0b1220',
+const LIGHT_COLORS = {
+  ink: '#0b1220', // filled buttons and the hero
   inkSoft: '#0b12200f',
-  green: '#0e9f84', // the "vue" of the logo: accents on light backgrounds
+  green: '#0e9f84', // the "vue" of the logo: accents
   greenSoft: '#0e9f841f',
-  mint: '#4af2ae', // accents on dark backgrounds
+  mint: '#4af2ae', // accents on ink
   seaGreen: '#10b39b',
   background: '#f1f5f9',
   surface: '#ffffff',
@@ -22,6 +23,30 @@ export const colors = {
   pink: '#ff2d55',
   teal: '#30b0c7',
 }
+
+// Ink is the background; ink-filled things lift off it.
+const DARK_COLORS: typeof LIGHT_COLORS = {
+  ...LIGHT_COLORS,
+  ink: '#2b3852',
+  inkSoft: '#f1f5f914',
+  greenSoft: '#0e9f8433',
+  background: '#0b1220',
+  surface: '#161f30',
+  text: '#f1f5f9',
+  secondaryText: '#98a2b3',
+  tertiaryText: '#5d6b82',
+  separator: '#253047',
+  pressed: '#1f2a3d',
+}
+
+function colorsFor(colorScheme: ColorScheme) {
+  return colorScheme === 'dark' ? DARK_COLORS : LIGHT_COLORS
+}
+
+export const colors = shallowReactive({ ...colorsFor(Appearance.getColorScheme()) })
+
+// Read inside a computed (`computed(() => StyleSheet.create({...}))`), styles follow the scheme.
+Appearance.addChangeListener((colorScheme) => Object.assign(colors, colorsFor(colorScheme)))
 
 export const spacing = { small: 8, medium: 16, large: 24 }
 

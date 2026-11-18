@@ -18,6 +18,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsAnimation
+import android.view.WindowInsetsController
 import android.graphics.Insets
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -115,8 +116,15 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         null
     }
 
-    /** The system may have switched between light and dark: JS ignores a scheme it already has. */
+    /** The system may have switched between light and dark: nativue's views repaint, then JS is told. */
     fun onConfigurationChanged() {
+        if (!ThemeColors.update(activity)) return
+
+        applyThemeColors(activity.window.decorView)
+        // The theme set them when the window was created; it isn't recreated (configChanges has uiMode).
+        val lightBars = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
+            WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+        activity.window.insetsController?.setSystemBarsAppearance(if (ThemeColors.isDark) 0 else lightBars, lightBars)
         evaluate { runtime?.call("__colorSchemeChanged", colorScheme()) }
     }
 
@@ -490,7 +498,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         // A text button: tinted title, a ripple on press, faded when disabled.
         "Button" -> {
             val button = makeTextView()
-            button.setTextColor(BUTTON_TINT)
+            button.styleColor = BUTTON_TINT
             button.gravity = Gravity.CENTER
             button.foreground = ripple(button.dp(8f).toFloat())
             button.setOnClickListener { dispatchEvent("press", id) }
@@ -574,8 +582,8 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         }
     }
 
-    private fun makeTextView() = TextView(activity).apply {
-        setTextColor(DEFAULT_TEXT_COLOR)
+    private fun makeTextView() = TextLabel(activity).apply {
+        applyThemeColors()
         setTextSize(TypedValue.COMPLEX_UNIT_DIP, 17f)
         includeFontPadding = false
     }
@@ -584,7 +592,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         val textInput = TextInputView(activity)
         textInput.background = null
         textInput.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 17f)
-        textInput.setTextColor(DEFAULT_TEXT_COLOR)
+        textInput.applyThemeColors()
         textInput.isSingleLine = true
         textInput.gravity = Gravity.CENTER_VERTICAL
         textInput.addTextChangedListener(object : TextWatcher {
@@ -729,7 +737,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
 
             "color" -> {
                 (view as? ProgressBar)?.indeterminateTintList = androidColor(value)?.let(ColorStateList::valueOf)
-                (view as? SvgView)?.color = androidColor(value) ?: DEFAULT_TEXT_COLOR
+                (view as? SvgView)?.color = androidColor(value) ?: SVG_DEFAULT_COLOR
             }
 
             "viewBox" -> SvgView.rect(value)?.let { (view as? SvgView)?.viewBox = it }
@@ -911,7 +919,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         const val JAVASCRIPT_STACK_SIZE = 8L * 1024 * 1024
         const val SYMBOLICATE_TIMEOUT_MS = 2000
         const val RECONNECT_DELAY_MS = 2000L
-        const val DEFAULT_TEXT_COLOR = 0xFF000000.toInt()
+        const val SVG_DEFAULT_COLOR = 0xFF000000.toInt()
         const val BUTTON_TINT = 0xFF007AFF.toInt()
         val EDGES = listOf(YogaEdge.LEFT, YogaEdge.TOP, YogaEdge.RIGHT, YogaEdge.BOTTOM)
         val SYSTEM_BARS = WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()

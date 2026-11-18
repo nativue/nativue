@@ -29,11 +29,7 @@ import kotlin.math.roundToInt
 
 private const val TRANSITION_DURATION_MS = 350L
 private val emphasizedInterpolator = PathInterpolator(0.2f, 0f, 0f, 1f)
-private const val ON_SURFACE = 0xFF1D1B20.toInt()
-private const val ON_SURFACE_VARIANT = 0xFF49454F.toInt()
-private const val SURFACE = 0xFFFFFFFF.toInt()
 private const val SCRIM = 0x52000000
-private const val BAR_BACKGROUND = 0xFFF3EDF7.toInt() // Material 3 surface container
 
 fun View.dp(value: Float): Int = (value * resources.displayMetrics.density).roundToInt()
 
@@ -60,7 +56,7 @@ fun View.offsetIn(ancestor: View): Pair<Int, Int> {
  * The screen's Yoga node is padded by the header's height, so the content starts below it.
  */
 @SuppressLint("ViewConstructor")
-class ScreenView(context: Context) : ContainerView(context) {
+class ScreenView(context: Context) : ContainerView(context), ThemeAware {
     val content = ContainerView(context)
     val header = ScreenHeader(context)
 
@@ -102,11 +98,15 @@ class ScreenView(context: Context) : ContainerView(context) {
     private val sheetDrag = SheetDrag(this) { onEvent("dismissed", null) }
 
     init {
-        background = GradientDrawable().apply { setColor(SURFACE) }
+        applyThemeColors()
         clipChildren = true
         addView(content)
         addView(header)
         header.onEvent = { eventName, payload -> onEvent(eventName, payload) }
+    }
+
+    override fun applyThemeColors() {
+        background = GradientDrawable().apply { setColor(ThemeColors.surface) }
     }
 
     /** dp the content starts at: below the header, or at the top without one. */
@@ -197,7 +197,7 @@ class SheetDrag(private val sheet: View, private val onDismiss: () -> Unit) {
 }
 
 /** Material 3's small top app bar (large with `headerLargeTitle`): back arrow, title and text actions. */
-class ScreenHeader(context: Context) : LinearLayout(context) {
+class ScreenHeader(context: Context) : LinearLayout(context), ThemeAware {
     var onEvent: (eventName: String, payload: Any?) -> Unit = { _, _ -> }
 
     private val dragHandle = View(context)
@@ -211,14 +211,14 @@ class ScreenHeader(context: Context) : LinearLayout(context) {
     var tintColor: Int? = null
         set(value) {
             field = value
-            navigationButton.color = value ?: ON_SURFACE
+            navigationButton.color = value ?: ThemeColors.onSurface
             listOf(leftItems, rightItems).forEach { items ->
                 for (index in 0 until items.childCount) tint(items.getChildAt(index))
             }
         }
 
     private val actionColor: Int
-        get() = tintColor ?: ON_SURFACE_VARIANT
+        get() = tintColor ?: ThemeColors.onSurfaceVariant
 
     var showsDragHandle = false
         set(value) {
@@ -239,12 +239,8 @@ class ScreenHeader(context: Context) : LinearLayout(context) {
 
     init {
         orientation = VERTICAL
-        setBackgroundColor(SURFACE)
-
-        dragHandle.background = GradientDrawable().apply {
-            setColor(ON_SURFACE_VARIANT and 0x66FFFFFF)
-            cornerRadius = dp(2f).toFloat()
-        }
+        dragHandle.background = GradientDrawable().apply { cornerRadius = dp(2f).toFloat() }
+        applyThemeColors()
         dragHandle.visibility = View.GONE
         addView(dragHandle, LayoutParams(dp(32f), dp(4f)).apply {
             gravity = Gravity.CENTER_HORIZONTAL
@@ -265,6 +261,13 @@ class ScreenHeader(context: Context) : LinearLayout(context) {
         largeTitle.setPadding(dp(16f), 0, dp(16f), dp(28f))
         largeTitle.gravity = Gravity.BOTTOM
         addView(largeTitle, LayoutParams(LayoutParams.MATCH_PARENT, dp(88f)))
+    }
+
+    override fun applyThemeColors() {
+        setBackgroundColor(ThemeColors.surface)
+        (dragHandle.background as GradientDrawable).setColor(ThemeColors.onSurfaceVariant and 0x66FFFFFF)
+        listOf(title, largeTitle).forEach { it.setTextColor(ThemeColors.onSurface) }
+        tintColor = tintColor // repaints the navigation button and the items
     }
 
     fun setTitle(text: String?) {
@@ -314,7 +317,7 @@ class ScreenHeader(context: Context) : LinearLayout(context) {
 
     private fun textView(size: Float, style: Int) = TextView(context).apply {
         setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
-        setTextColor(ON_SURFACE)
+        setTextColor(ThemeColors.onSurface)
         typeface = Typeface.create(Typeface.DEFAULT, if (style == Typeface.BOLD) 500 else 400, false)
         isSingleLine = true
         ellipsize = android.text.TextUtils.TruncateAt.END
@@ -323,7 +326,7 @@ class ScreenHeader(context: Context) : LinearLayout(context) {
 
     private fun iconButton(elements: List<List<Any>>) = IconButton(context).apply {
         this.elements = elements
-        color = ON_SURFACE
+        color = ThemeColors.onSurface
     }
 
     companion object {
@@ -367,7 +370,7 @@ fun ripple(cornerRadius: Float): RippleDrawable {
         this.cornerRadius = cornerRadius
     }
 
-    return RippleDrawable(ColorStateList.valueOf(0x1F000000), null, mask)
+    return RippleDrawable(ColorStateList.valueOf(ThemeColors.ripple), null, mask)
 }
 
 /**
@@ -505,7 +508,7 @@ private fun ValueAnimator.doOnEnd(action: () -> Unit) {
  * showing. A tap on the bar is reported so JS switches; a tap on the selected tab goes back to its first
  * screen, or scrolls it to the top.
  */
-class TabBarView(context: Context) : ContainerView(context) {
+class TabBarView(context: Context) : ContainerView(context), ThemeAware {
     var onTabChange: (index: Int) -> Unit = {}
 
     var selectedIndex = 0
@@ -531,7 +534,7 @@ class TabBarView(context: Context) : ContainerView(context) {
     var barBackgroundColor: Int? = null
         set(value) {
             field = value
-            bar.setBackgroundColor(value ?: BAR_BACKGROUND)
+            bar.setBackgroundColor(value ?: ThemeColors.barBackground)
         }
 
     /** Pixels the system navigation bar covers; the bar extends under it. */
@@ -554,8 +557,13 @@ class TabBarView(context: Context) : ContainerView(context) {
 
     init {
         clipChildren = true
-        bar.setBackgroundColor(BAR_BACKGROUND)
+        bar.setBackgroundColor(ThemeColors.barBackground)
         addView(bar)
+    }
+
+    override fun applyThemeColors() {
+        barBackgroundColor = barBackgroundColor
+        updateItems()
     }
 
     override fun onViewAdded(child: View) {
@@ -661,13 +669,13 @@ private class TabItemView(context: Context) : LinearLayout(context) {
         label.isSingleLine = true
         addView(label, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4f) })
 
-        background = RippleDrawable(ColorStateList.valueOf(0x1F000000), null, null)
+        background = RippleDrawable(ColorStateList.valueOf(ThemeColors.ripple), null, null)
     }
 
     /** Only svg icons (@nativue/icons) draw on Android; SF Symbol names are iOS-only. */
     fun update(item: Map<*, *>, isSelected: Boolean, activeTintColor: Int?, inactiveTintColor: Int?) {
-        val activeColor = activeTintColor ?: ON_SURFACE
-        val color = if (isSelected) activeColor else inactiveTintColor ?: ON_SURFACE_VARIANT
+        val activeColor = activeTintColor ?: ThemeColors.onSurface
+        val color = if (isSelected) activeColor else inactiveTintColor ?: ThemeColors.onSurfaceVariant
         val svg = item["svg"] as? Map<*, *>
 
         icon.elements = svg?.get("elements") as? List<*> ?: emptyList<Any>()

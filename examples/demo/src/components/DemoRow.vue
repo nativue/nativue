@@ -1,6 +1,6 @@
 <!-- A row of the Explore catalog: opens its demo. -->
 <script setup lang="ts">
-import { StyleSheet } from 'vue'
+import { computed, StyleSheet } from 'vue'
 import { ChevronRightIcon } from '@nativue/icons/lucide'
 import { Link } from '@nativue/core/router'
 import type { Demo } from '@/lib/demos'
@@ -9,19 +9,21 @@ import IconTile from './IconTile.vue'
 
 defineProps<{ demo: Demo }>()
 
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    paddingHorizontal: spacing.medium,
-    paddingVertical: 12,
-  },
-  pressed: { backgroundColor: colors.pressed },
-  texts: { flex: 1, gap: 2 },
-  title: { fontSize: 17, fontWeight: '600', color: colors.text },
-  subtitle: { fontSize: 14, color: colors.secondaryText },
-})
+const styles = computed(() =>
+  StyleSheet.create({
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 14,
+      paddingHorizontal: spacing.medium,
+      paddingVertical: 12,
+    },
+    pressed: { backgroundColor: colors.pressed },
+    texts: { flex: 1, gap: 2 },
+    title: { fontSize: 17, fontWeight: '600', color: colors.text },
+    subtitle: { fontSize: 14, color: colors.secondaryText },
+  }),
+)
 </script>
 
 <template>

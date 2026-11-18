@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import {
   Animated,
+  computed,
   Dimensions,
   LayoutAnimation,
   onMounted,
   onUnmounted,
   ref,
-  StyleSheet,
   type Style,
+  StyleSheet,
 } from 'vue'
 import { Stack } from '@nativue/core/router'
 import Page from '@/components/Page.vue'
@@ -79,42 +80,49 @@ const pulseMotion = {
 }
 const ballTransform = [{ translateX: ballPosition }]
 
-const styles = StyleSheet.create({
-  banner: {
-    height: 150,
-    borderRadius: radius.large,
-    backgroundColor: colors.purple,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 4,
-  },
-  bannerTitle: { color: '#ffffff', fontSize: 26, fontWeight: '800' },
-  bannerText: { color: '#ffffffcc', fontSize: 15, fontWeight: '500' },
-  loops: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', height: 80 },
-  spinner: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    borderWidth: 5,
-    borderColor: colors.purple,
-    alignItems: 'center',
-  },
-  spinnerMark: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.ink },
-  pulse: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.pink },
-  track: { height: BALL_SIZE, borderRadius: BALL_SIZE / 2, backgroundColor: colors.background },
-  ball: {
-    width: BALL_SIZE,
-    height: BALL_SIZE,
-    borderRadius: BALL_SIZE / 2,
-    backgroundColor: colors.purple,
-  },
-  buttons: { flexDirection: 'row', gap: 12 },
-  button: { flex: 1 },
-  presets: { flexDirection: 'row', gap: 8 },
-  presetText: { fontSize: 14, fontWeight: '600' },
-  panelTitle: { color: '#ffffff', fontSize: 20, fontWeight: '800' },
-  panelText: { color: '#ffffffcc', fontSize: 15 },
-})
+const styles = computed(() =>
+  StyleSheet.create({
+    banner: {
+      height: 150,
+      borderRadius: radius.large,
+      backgroundColor: colors.purple,
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: 4,
+    },
+    bannerTitle: { color: '#ffffff', fontSize: 26, fontWeight: '800' },
+    bannerText: { color: '#ffffffcc', fontSize: 15, fontWeight: '500' },
+    loops: {
+      flexDirection: 'row',
+      justifyContent: 'space-around',
+      alignItems: 'center',
+      height: 80,
+    },
+    spinner: {
+      width: 52,
+      height: 52,
+      borderRadius: 26,
+      borderWidth: 5,
+      borderColor: colors.purple,
+      alignItems: 'center',
+    },
+    spinnerMark: { width: 12, height: 12, borderRadius: 6, backgroundColor: colors.text },
+    pulse: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.pink },
+    track: { height: BALL_SIZE, borderRadius: BALL_SIZE / 2, backgroundColor: colors.background },
+    ball: {
+      width: BALL_SIZE,
+      height: BALL_SIZE,
+      borderRadius: BALL_SIZE / 2,
+      backgroundColor: colors.purple,
+    },
+    buttons: { flexDirection: 'row', gap: 12 },
+    button: { flex: 1 },
+    presets: { flexDirection: 'row', gap: 8 },
+    presetText: { fontSize: 14, fontWeight: '600' },
+    panelTitle: { color: '#ffffff', fontSize: 20, fontWeight: '800' },
+    panelText: { color: '#ffffffcc', fontSize: 15 },
+  }),
+)
 
 function presetStyle(name: PresetName): Style {
   const selected = name === presetName.value
@@ -200,7 +208,7 @@ onUnmounted(() => loops.forEach((loop) => loop.stop())) // native would keep run
           @press="presetName = name"
         >
           <Text
-            :style="{ ...styles.presetText, color: name === presetName ? '#ffffff' : colors.ink }"
+            :style="{ ...styles.presetText, color: name === presetName ? '#ffffff' : colors.text }"
           >
             {{ PRESET_LABELS[name] }}
           </Text>

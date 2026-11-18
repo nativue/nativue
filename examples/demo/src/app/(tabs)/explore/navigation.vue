@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, StyleSheet } from 'vue'
+import { computed, ref, StyleSheet } from 'vue'
 import { Stack, useFocusEffect, useRouter } from '@nativue/core/router'
 import Page from '@/components/Page.vue'
 import PrimaryButton from '@/components/PrimaryButton.vue'
@@ -14,10 +14,12 @@ useFocusEffect(() => {
   focusCount.value++
 })
 
-const styles = StyleSheet.create({
-  counter: { fontSize: 48, fontWeight: '800', color: colors.green, textAlign: 'center' },
-  code: { fontSize: 15, fontWeight: '600', color: colors.ink },
-})
+const styles = computed(() =>
+  StyleSheet.create({
+    counter: { fontSize: 48, fontWeight: '800', color: colors.green, textAlign: 'center' },
+    code: { fontSize: 15, fontWeight: '600', color: colors.text },
+  }),
+)
 </script>
 
 <template>

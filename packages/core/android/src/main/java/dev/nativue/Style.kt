@@ -58,7 +58,11 @@ private fun NativeNode.applyVisualProperty(property: String, value: Any?) {
         "opacity" -> view.alpha = number(value) ?: 1f
         "transform" -> view.applyTransform(value)
         "overflow" -> setClipsContent(value == "hidden")
-        "color" -> androidColor(value)?.let { textView?.setTextColor(it) }
+        "color" -> when (val view = textView) {
+            is TextLabel -> view.styleColor = androidColor(value)
+            is TextInputView -> view.styleColor = androidColor(value)
+            else -> androidColor(value)?.let { view?.setTextColor(it) }
+        }
         "textAlign" -> textView?.gravity = textGravities[value] ?: Gravity.START
     }
 }

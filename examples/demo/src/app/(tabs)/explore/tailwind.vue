@@ -36,9 +36,9 @@ const selectedPlan = ref('Pro')
         <View
           v-for="number in 4"
           :key="number"
-          class="aspect-square flex-1 items-center justify-center rounded-xl bg-emerald-100"
+          class="aspect-square flex-1 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-950"
         >
-          <Text class="text-lg font-bold text-emerald-700">{{ number }}</Text>
+          <Text class="text-lg font-bold text-emerald-700 dark:text-emerald-300">{{ number }}</Text>
         </View>
       </View>
     </Section>
@@ -49,12 +49,16 @@ const selectedPlan = ref('Pro')
           v-for="plan in PLANS"
           :key="plan"
           class="flex-1 items-center rounded-full border-2 py-2"
-          :class="plan === selectedPlan ? 'border-brand bg-brand' : 'border-slate-200 bg-white'"
+          :class="
+            plan === selectedPlan
+              ? 'border-brand bg-brand'
+              : 'border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800'
+          "
           @press="selectedPlan = plan"
         >
           <Text
             class="font-semibold"
-            :class="plan === selectedPlan ? 'text-white' : 'text-slate-600'"
+            :class="plan === selectedPlan ? 'text-white' : 'text-slate-600 dark:text-slate-300'"
           >
             {{ plan }}
           </Text>
@@ -78,7 +82,7 @@ const selectedPlan = ref('Pro')
         <View
           v-for="color in BRAND_COLORS"
           :key="color"
-          class="h-10 flex-1 rounded-lg border border-slate-200"
+          class="h-10 flex-1 rounded-lg border border-slate-200 dark:border-slate-700"
           :class="color"
         />
       </View>
@@ -112,7 +116,9 @@ const selectedPlan = ref('Pro')
         <View class="size-10 rotate-45 rounded-md bg-amber-400" />
         <View class="size-10 scale-75 rounded-md bg-amber-400" />
         <View class="size-10 translate-y-2 rounded-md bg-amber-400" />
-        <Text class="flex-1 text-sm text-slate-500">rotate-45, scale-75, translate-y-2</Text>
+        <Text class="flex-1 text-sm text-slate-500 dark:text-slate-400">
+          rotate-45, scale-75, translate-y-2
+        </Text>
       </View>
     </Section>
   </Page>

@@ -70,11 +70,11 @@ class ModalHost(private val activity: Activity) {
         content.background = when {
             transparent -> null
             isSheet -> GradientDrawable().apply {
-                setColor(0xFFFFFFFF.toInt())
+                setColor(ThemeColors.surface)
                 val radius = overlay.dp(28f).toFloat()
                 cornerRadii = floatArrayOf(radius, radius, radius, radius, 0f, 0f, 0f, 0f)
             }
-            else -> GradientDrawable().apply { setColor(0xFFFFFFFF.toInt()) }
+            else -> GradientDrawable().apply { setColor(ThemeColors.surface) }
         }
         content.clipToOutline = isSheet
         (content.parent as? ViewGroup)?.removeView(content)

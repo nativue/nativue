@@ -6,7 +6,8 @@ import Section from '@/components/Section.vue'
 
 const IMPACT_STYLES: ImpactStyle[] = ['light', 'medium', 'heavy']
 const NOTIFICATION_TYPES: NotificationType[] = ['success', 'warning', 'error']
-const BUTTON_CLASS = 'flex-1 items-center rounded-xl bg-white py-3 active:bg-slate-200'
+const BUTTON_CLASS =
+  'flex-1 items-center rounded-xl bg-white py-3 active:bg-slate-200 dark:bg-slate-800 dark:active:bg-slate-700'
 </script>
 
 <template>
@@ -24,7 +25,7 @@ const BUTTON_CLASS = 'flex-1 items-center rounded-xl bg-white py-3 active:bg-sla
           :class="BUTTON_CLASS"
           @press="Haptics.impact(style)"
         >
-          <Text class="font-semibold text-slate-900">{{ style }}</Text>
+          <Text class="font-semibold text-slate-900 dark:text-white">{{ style }}</Text>
         </Pressable>
       </View>
     </Section>
@@ -37,7 +38,7 @@ const BUTTON_CLASS = 'flex-1 items-center rounded-xl bg-white py-3 active:bg-sla
           :class="BUTTON_CLASS"
           @press="Haptics.notification(type)"
         >
-          <Text class="font-semibold text-slate-900">{{ type }}</Text>
+          <Text class="font-semibold text-slate-900 dark:text-white">{{ type }}</Text>
         </Pressable>
       </View>
     </Section>
@@ -45,7 +46,7 @@ const BUTTON_CLASS = 'flex-1 items-center rounded-xl bg-white py-3 active:bg-sla
     <Section title="Selection" footer="Simulators and emulators don't vibrate: try it on a phone.">
       <View class="flex-row">
         <Pressable :class="BUTTON_CLASS" @press="Haptics.selection()">
-          <Text class="font-semibold text-slate-900">selection</Text>
+          <Text class="font-semibold text-slate-900 dark:text-white">selection</Text>
         </Pressable>
       </View>
     </Section>

@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import {
   Animated,
-  StyleSheet,
+  computed,
   type GestureState,
   type PanEvent,
   type PinchEvent,
   type RotateEvent,
+  StyleSheet,
 } from 'vue'
 import { MoveIcon, RotateCwIcon, ZoomInIcon } from '@nativue/icons/lucide'
 import { Stack } from '@nativue/core/router'
@@ -30,41 +31,43 @@ const HINTS = [
   { icon: RotateCwIcon, label: 'Rotate' },
 ]
 
-const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    padding: spacing.large,
-    backgroundColor: colors.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 48,
-  },
-  card: {
-    width: 200,
-    height: 200,
-    borderRadius: 44,
-    backgroundColor: colors.green,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 4,
-    ...cardShadow,
-    shadowOpacity: 0.2,
-  },
-  cardTitle: { color: '#ffffff', fontSize: 34, fontWeight: '800' },
-  cardText: { color: '#ffffffcc', fontSize: 15, fontWeight: '600' },
-  hints: { flexDirection: 'row', gap: 10 },
-  hint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: radius.medium,
-    backgroundColor: colors.surface,
-  },
-  hintText: { fontSize: 15, fontWeight: '500', color: colors.ink },
-  footnote: { fontSize: 13, color: colors.secondaryText, textAlign: 'center' },
-})
+const styles = computed(() =>
+  StyleSheet.create({
+    screen: {
+      flex: 1,
+      padding: spacing.large,
+      backgroundColor: colors.background,
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: 48,
+    },
+    card: {
+      width: 200,
+      height: 200,
+      borderRadius: 44,
+      backgroundColor: colors.green,
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: 4,
+      ...cardShadow,
+      shadowOpacity: 0.2,
+    },
+    cardTitle: { color: '#ffffff', fontSize: 34, fontWeight: '800' },
+    cardText: { color: '#ffffffcc', fontSize: 15, fontWeight: '600' },
+    hints: { flexDirection: 'row', gap: 10 },
+    hint: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: radius.medium,
+      backgroundColor: colors.surface,
+    },
+    hintText: { fontSize: 15, fontWeight: '500', color: colors.text },
+    footnote: { fontSize: 13, color: colors.secondaryText, textAlign: 'center' },
+  }),
+)
 
 // Released, each value springs back to rest.
 function springBackWhenReleased(values: Animated.Value[], restingValue: number) {

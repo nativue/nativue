@@ -733,10 +733,20 @@ const darkCardId = findViewId(
   tailwindId,
 )
 assert.equal(viewsById[darkCardId].style.backgroundColor, processColor('#ffffff'))
+// The demo's own styles (themedStyles in lib/theme.ts) follow the scheme too: the page's background.
+const pageId = findViewId(
+  (view) => view.type === 'ScrollView' && view.children.length > 0,
+  tailwindId,
+)
+assert.equal(viewsById[pageId].style.backgroundColor, processColor('#f1f5f9'))
 globalThis.__colorSchemeChanged('dark')
+await settle()
 assert.equal(viewsById[darkCardId].style.backgroundColor, inkColor)
+assert.equal(viewsById[pageId].style.backgroundColor, inkColor)
 globalThis.__colorSchemeChanged('light')
+await settle()
 assert.equal(viewsById[darkCardId].style.backgroundColor, processColor('#ffffff'))
+assert.equal(viewsById[pageId].style.backgroundColor, processColor('#f1f5f9'))
 
 const platformCardId = findViewId(
   (view) => view.children.some((childId) => viewsById[childId].text === 'Blue on iOS'),

@@ -1,16 +1,18 @@
 <script setup lang="ts">
-import { StyleSheet } from 'vue'
+import { computed, StyleSheet } from 'vue'
 import { Link, Stack, usePathname } from '@nativue/core/router'
 import Page from '@/components/Page.vue'
 import { colors } from '@/lib/theme'
 
 const pathname = usePathname()
 
-const styles = StyleSheet.create({
-  title: { fontSize: 28, fontWeight: '800', color: colors.text },
-  body: { fontSize: 17, color: colors.secondaryText },
-  link: { fontSize: 17, fontWeight: '600', color: colors.green },
-})
+const styles = computed(() =>
+  StyleSheet.create({
+    title: { fontSize: 28, fontWeight: '800', color: colors.text },
+    body: { fontSize: 17, color: colors.secondaryText },
+    link: { fontSize: 17, fontWeight: '600', color: colors.green },
+  }),
+)
 </script>
 
 <template>

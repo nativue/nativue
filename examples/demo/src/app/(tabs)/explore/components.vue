@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Keyboard, ref, StyleSheet } from 'vue'
+import { computed, Keyboard, ref, StyleSheet } from 'vue'
 import {
   BellIcon,
   CameraIcon,
@@ -19,14 +19,15 @@ import { colors, radius, spacing } from '@/lib/theme'
 
 const REMOTE_IMAGE_URL = 'https://picsum.photos/id/1018/800/400'
 
+// Color names, so the icons follow the color scheme.
 const COLORED_ICONS = [
-  { icon: HeartIcon, color: colors.red },
-  { icon: StarIcon, color: colors.orange },
-  { icon: BellIcon, color: colors.blue },
-  { icon: CameraIcon, color: colors.ink },
-  { icon: MessageCircleIcon, color: colors.green },
-  { icon: SettingsIcon, color: colors.purple },
-]
+  { icon: HeartIcon, color: 'red' },
+  { icon: StarIcon, color: 'orange' },
+  { icon: BellIcon, color: 'blue' },
+  { icon: CameraIcon, color: 'text' },
+  { icon: MessageCircleIcon, color: 'green' },
+  { icon: SettingsIcon, color: 'purple' },
+] as const
 const STROKE_WIDTHS = [1, 1.5, 2, 2.5, 3]
 
 const name = ref('')
@@ -34,41 +35,43 @@ const notifications = ref(true)
 const tapCount = ref(0)
 const sheetVisible = ref(false)
 
-const styles = StyleSheet.create({
-  largeTitle: { fontSize: 34, fontWeight: '800', color: colors.text },
-  title: { fontSize: 22, fontWeight: '600', color: colors.text },
-  body: { fontSize: 17, color: colors.text },
-  caption: { fontSize: 13, color: colors.secondaryText },
-  accent: { fontSize: 17, fontWeight: '600', color: colors.green },
-  pressable: {
-    padding: spacing.medium,
-    borderRadius: radius.small,
-    borderWidth: 2,
-    borderColor: colors.green,
-    alignItems: 'center',
-  },
-  pressablePressed: { backgroundColor: colors.greenSoft, transform: [{ scale: 0.97 }] },
-  input: {
-    height: 48,
-    paddingHorizontal: 14,
-    borderRadius: radius.small,
-    backgroundColor: colors.background,
-    fontSize: 17,
-  },
-  iconRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  indicators: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
-  images: { flexDirection: 'row', gap: 12 },
-  localImage: {
-    width: 96,
-    height: 96,
-    padding: 16,
-    borderRadius: radius.small,
-    backgroundColor: colors.background,
-  },
-  remoteImage: { flex: 1, height: 96, borderRadius: radius.small },
-  sheet: { flex: 1, padding: spacing.large, gap: spacing.medium },
-  sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-})
+const styles = computed(() =>
+  StyleSheet.create({
+    largeTitle: { fontSize: 34, fontWeight: '800', color: colors.text },
+    title: { fontSize: 22, fontWeight: '600', color: colors.text },
+    body: { fontSize: 17, color: colors.text },
+    caption: { fontSize: 13, color: colors.secondaryText },
+    accent: { fontSize: 17, fontWeight: '600', color: colors.green },
+    pressable: {
+      padding: spacing.medium,
+      borderRadius: radius.small,
+      borderWidth: 2,
+      borderColor: colors.green,
+      alignItems: 'center',
+    },
+    pressablePressed: { backgroundColor: colors.greenSoft, transform: [{ scale: 0.97 }] },
+    input: {
+      height: 48,
+      paddingHorizontal: 14,
+      borderRadius: radius.small,
+      backgroundColor: colors.background,
+      fontSize: 17,
+    },
+    iconRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    indicators: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
+    images: { flexDirection: 'row', gap: 12 },
+    localImage: {
+      width: 96,
+      height: 96,
+      padding: 16,
+      borderRadius: radius.small,
+      backgroundColor: colors.background,
+    },
+    remoteImage: { flex: 1, height: 96, borderRadius: radius.small },
+    sheet: { flex: 1, padding: spacing.large, gap: spacing.medium },
+    sheetHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  }),
+)
 </script>
 
 <template>
@@ -113,7 +116,7 @@ const styles = StyleSheet.create({
           v-for="coloredIcon in COLORED_ICONS"
           :key="coloredIcon.color"
           :size="28"
-          :color="coloredIcon.color"
+          :color="colors[coloredIcon.color]"
         />
       </View>
       <View :style="styles.iconRow">

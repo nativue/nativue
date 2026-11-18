@@ -1,7 +1,15 @@
 <!-- Onboarding: three pages swiped natively; their content and the dots follow the scroll on the
      native driver (no JS per frame). -->
 <script setup lang="ts">
-import { Animated, Dimensions, onMounted, onUnmounted, StyleSheet } from 'vue'
+import {
+  Animated,
+  computed,
+  Dimensions,
+  onMounted,
+  onUnmounted,
+  StyleSheet,
+  useColorScheme,
+} from 'vue'
 import {
   CodeIcon,
   DatabaseIcon,
@@ -17,9 +25,12 @@ import {
 } from '@nativue/icons/lucide'
 import { useRouter } from '@nativue/core/router'
 import logo from '@/assets/logo-mark.png'
+import logoDark from '@/assets/logo-mark-dark.png'
 import IconTile from '@/components/IconTile.vue'
 import PrimaryButton from '@/components/PrimaryButton.vue'
 import { cardShadow, colors, radius, spacing } from '@/lib/theme'
+
+const colorScheme = useColorScheme()
 
 const PAGE_COUNT = 3
 
@@ -113,77 +124,79 @@ function dotStyle(index: number) {
 const pageParallax = Array.from({ length: PAGE_COUNT }, (_, index) => parallaxStyle(index))
 const dots = Array.from({ length: PAGE_COUNT }, (_, index) => dotStyle(index))
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.surface },
-  glowTop: {
-    position: 'absolute',
-    top: -120,
-    right: -120,
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    backgroundColor: colors.greenSoft,
-  },
-  glowBottom: {
-    position: 'absolute',
-    bottom: 80,
-    left: -140,
-    width: 280,
-    height: 280,
-    borderRadius: 140,
-    backgroundColor: colors.inkSoft,
-  },
-  pager: { flex: 1 },
-  page: { paddingHorizontal: 32, justifyContent: 'center' },
-  pageContent: { gap: spacing.large },
-  kicker: { fontSize: 13, fontWeight: '700', color: colors.green },
-  title: { fontSize: 38, fontWeight: '800', color: colors.ink },
-  body: { fontSize: 18, color: colors.secondaryText },
-  logoHalo: {
-    width: 168,
-    height: 168,
-    borderRadius: 84,
-    backgroundColor: colors.greenSoft,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: spacing.medium,
-  },
-  logoCore: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: colors.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...cardShadow,
-  },
-  logo: { width: 84, height: 84 },
-  featureCard: {
-    padding: spacing.medium,
-    gap: spacing.medium,
-    borderRadius: radius.large,
-    backgroundColor: colors.surface,
-    ...cardShadow,
-  },
-  feature: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  featureTexts: { flex: 1, gap: 2 },
-  featureTitle: { fontSize: 17, fontWeight: '600', color: colors.text },
-  featureText: { fontSize: 15, color: colors.secondaryText },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 20,
-    backgroundColor: colors.background,
-  },
-  chipText: { fontSize: 15, fontWeight: '500', color: colors.ink },
-  footer: { paddingHorizontal: 32, paddingBottom: spacing.large, gap: spacing.large },
-  dots: { flexDirection: 'row', justifyContent: 'center', gap: 12 },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.green },
-})
+const styles = computed(() =>
+  StyleSheet.create({
+    screen: { flex: 1, backgroundColor: colors.surface },
+    glowTop: {
+      position: 'absolute',
+      top: -120,
+      right: -120,
+      width: 320,
+      height: 320,
+      borderRadius: 160,
+      backgroundColor: colors.greenSoft,
+    },
+    glowBottom: {
+      position: 'absolute',
+      bottom: 80,
+      left: -140,
+      width: 280,
+      height: 280,
+      borderRadius: 140,
+      backgroundColor: colors.inkSoft,
+    },
+    pager: { flex: 1 },
+    page: { paddingHorizontal: 32, justifyContent: 'center' },
+    pageContent: { gap: spacing.large },
+    kicker: { fontSize: 13, fontWeight: '700', color: colors.green },
+    title: { fontSize: 38, fontWeight: '800', color: colors.text },
+    body: { fontSize: 18, color: colors.secondaryText },
+    logoHalo: {
+      width: 168,
+      height: 168,
+      borderRadius: 84,
+      backgroundColor: colors.greenSoft,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginBottom: spacing.medium,
+    },
+    logoCore: {
+      width: 120,
+      height: 120,
+      borderRadius: 60,
+      backgroundColor: colors.surface,
+      justifyContent: 'center',
+      alignItems: 'center',
+      ...cardShadow,
+    },
+    logo: { width: 84, height: 84 },
+    featureCard: {
+      padding: spacing.medium,
+      gap: spacing.medium,
+      borderRadius: radius.large,
+      backgroundColor: colors.surface,
+      ...cardShadow,
+    },
+    feature: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+    featureTexts: { flex: 1, gap: 2 },
+    featureTitle: { fontSize: 17, fontWeight: '600', color: colors.text },
+    featureText: { fontSize: 15, color: colors.secondaryText },
+    chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+    chip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderRadius: 20,
+      backgroundColor: colors.background,
+    },
+    chipText: { fontSize: 15, fontWeight: '500', color: colors.text },
+    footer: { paddingHorizontal: 32, paddingBottom: spacing.large, gap: spacing.large },
+    dots: { flexDirection: 'row', justifyContent: 'center', gap: 12 },
+    dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.green },
+  }),
+)
 
 onMounted(() => floatLoop.start())
 onUnmounted(() => floatLoop.stop())
@@ -205,7 +218,11 @@ onUnmounted(() => floatLoop.stop())
         <View :style="{ ...styles.pageContent, ...pageParallax[0] }">
           <View :style="{ ...styles.logoHalo, transform: logoFloat }">
             <View :style="styles.logoCore">
-              <Image :source="logo" resize-mode="contain" :style="styles.logo" />
+              <Image
+                :source="colorScheme === 'dark' ? logoDark : logo"
+                resize-mode="contain"
+                :style="styles.logo"
+              />
             </View>
           </View>
           <Text :style="styles.kicker">WELCOME TO NATIVUE</Text>

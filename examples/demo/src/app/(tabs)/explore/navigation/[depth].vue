@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { StyleSheet } from 'vue'
+import { computed, StyleSheet } from 'vue'
 import { Stack, useLocalSearchParams, useRouter } from '@nativue/core/router'
 import Page from '@/components/Page.vue'
 import PrimaryButton from '@/components/PrimaryButton.vue'
@@ -9,10 +9,12 @@ import { colors } from '@/lib/theme'
 const router = useRouter()
 const depth = Number(useLocalSearchParams<{ depth: string }>().depth)
 
-const styles = StyleSheet.create({
-  depth: { fontSize: 96, fontWeight: '800', color: colors.green, textAlign: 'center' },
-  caption: { fontSize: 15, color: colors.secondaryText, textAlign: 'center' },
-})
+const styles = computed(() =>
+  StyleSheet.create({
+    depth: { fontSize: 96, fontWeight: '800', color: colors.green, textAlign: 'center' },
+    caption: { fontSize: 15, color: colors.secondaryText, textAlign: 'center' },
+  }),
+)
 </script>
 
 <template>

@@ -34,45 +34,52 @@ const screenOptions = computed(() => ({
   ],
 }))
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
-  top: { paddingHorizontal: spacing.medium, paddingTop: spacing.medium, gap: 12 },
-  summary: { fontSize: 13, fontWeight: '600', color: colors.secondaryText },
-  form: { flexDirection: 'row', gap: 10 },
-  input: {
-    flex: 1,
-    height: 48,
-    paddingHorizontal: 14,
-    borderRadius: radius.small,
-    backgroundColor: colors.surface,
-    fontSize: 17,
-  },
-  addButton: {
-    width: 48,
-    height: 48,
-    borderRadius: radius.small,
-    backgroundColor: colors.green,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  list: { flex: 1, paddingHorizontal: spacing.medium },
-  row: { flex: 1, marginBottom: 8 },
-  rowContent: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: spacing.medium,
-    borderRadius: radius.small,
-    backgroundColor: colors.surface,
-  },
-  rowText: { flex: 1, fontSize: 17, color: colors.text },
-  action: { width: 84, borderRadius: radius.small, justifyContent: 'center', alignItems: 'center' },
-  doneAction: { marginRight: 8, backgroundColor: colors.green },
-  deleteAction: { marginLeft: 8, backgroundColor: colors.red },
-  actionText: { color: '#ffffff', fontSize: 15, fontWeight: '600' },
-  note: { paddingVertical: 14, textAlign: 'center', fontSize: 13, color: colors.secondaryText },
-})
+const styles = computed(() =>
+  StyleSheet.create({
+    screen: { flex: 1, backgroundColor: colors.background },
+    top: { paddingHorizontal: spacing.medium, paddingTop: spacing.medium, gap: 12 },
+    summary: { fontSize: 13, fontWeight: '600', color: colors.secondaryText },
+    form: { flexDirection: 'row', gap: 10 },
+    input: {
+      flex: 1,
+      height: 48,
+      paddingHorizontal: 14,
+      borderRadius: radius.small,
+      backgroundColor: colors.surface,
+      fontSize: 17,
+    },
+    addButton: {
+      width: 48,
+      height: 48,
+      borderRadius: radius.small,
+      backgroundColor: colors.green,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    list: { flex: 1, paddingHorizontal: spacing.medium },
+    row: { flex: 1, marginBottom: 8 },
+    rowContent: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      paddingHorizontal: spacing.medium,
+      borderRadius: radius.small,
+      backgroundColor: colors.surface,
+    },
+    rowText: { flex: 1, fontSize: 17, color: colors.text },
+    action: {
+      width: 84,
+      borderRadius: radius.small,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    doneAction: { marginRight: 8, backgroundColor: colors.green },
+    deleteAction: { marginLeft: 8, backgroundColor: colors.red },
+    actionText: { color: '#ffffff', fontSize: 15, fontWeight: '600' },
+    note: { paddingVertical: 14, textAlign: 'center', fontSize: 13, color: colors.secondaryText },
+  }),
+)
 
 function checkStyle(item: Item): Style {
   return {

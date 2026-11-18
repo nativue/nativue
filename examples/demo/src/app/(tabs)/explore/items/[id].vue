@@ -18,12 +18,14 @@ watch(
   () => LayoutAnimation.configureNext(LayoutAnimation.Presets.spring),
 )
 
-const styles = StyleSheet.create({
-  title: { fontSize: 34, fontWeight: '800', color: colors.text },
-  badgeText: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
-  link: { fontSize: 17, color: colors.green },
-  empty: { fontSize: 17, color: colors.secondaryText },
-})
+const styles = computed(() =>
+  StyleSheet.create({
+    title: { fontSize: 34, fontWeight: '800', color: colors.text },
+    badgeText: { color: '#ffffff', fontSize: 15, fontWeight: '700' },
+    link: { fontSize: 17, color: colors.green },
+    empty: { fontSize: 17, color: colors.secondaryText },
+  }),
+)
 
 function badgeStyle(done: boolean): Style {
   return {

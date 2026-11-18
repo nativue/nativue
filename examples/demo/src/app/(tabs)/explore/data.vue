@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { AsyncStorage, onMounted, onUnmounted, ref, StyleSheet } from 'vue'
+import { AsyncStorage, computed, onMounted, onUnmounted, ref, StyleSheet } from 'vue'
 import { Stack } from '@nativue/core/router'
 import FieldRow from '@/components/FieldRow.vue'
 import Page from '@/components/Page.vue'
@@ -24,12 +24,14 @@ const ticking = ref(true)
 
 let clockId: number | null = null
 
-const styles = StyleSheet.create({
-  post: { padding: 14, borderRadius: radius.small, backgroundColor: colors.background },
-  postTitle: { fontSize: 15, color: colors.text },
-  error: { fontSize: 15, color: colors.red },
-  value: { fontSize: 17, fontWeight: '700', color: colors.green },
-})
+const styles = computed(() =>
+  StyleSheet.create({
+    post: { padding: 14, borderRadius: radius.small, backgroundColor: colors.background },
+    postTitle: { fontSize: 15, color: colors.text },
+    error: { fontSize: 15, color: colors.red },
+    value: { fontSize: 17, fontWeight: '700', color: colors.green },
+  }),
+)
 
 async function loadPosts() {
   loading.value = true

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { StyleSheet } from 'vue'
+import { computed, StyleSheet } from 'vue'
 import { Stack, useRouter } from '@nativue/core/router'
 import { AppWindowIcon } from '@nativue/icons/lucide'
 import IconTile from '@/components/IconTile.vue'
@@ -11,11 +11,13 @@ const router = useRouter()
 
 const screenOptions = { headerRight: [{ title: 'Close', onPress: () => router.back() }] }
 
-const styles = StyleSheet.create({
-  hero: { alignItems: 'center', gap: 16, paddingVertical: 24 },
-  title: { fontSize: 28, fontWeight: '800', color: colors.text, textAlign: 'center' },
-  body: { fontSize: 17, color: colors.secondaryText, textAlign: 'center' },
-})
+const styles = computed(() =>
+  StyleSheet.create({
+    hero: { alignItems: 'center', gap: 16, paddingVertical: 24 },
+    title: { fontSize: 28, fontWeight: '800', color: colors.text, textAlign: 'center' },
+    body: { fontSize: 17, color: colors.secondaryText, textAlign: 'center' },
+  }),
+)
 </script>
 
 <template>

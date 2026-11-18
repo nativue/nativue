@@ -318,7 +318,7 @@ private class RefreshIndicator(context: Context) : FrameLayout(context) {
     init {
         background = android.graphics.drawable.GradientDrawable().apply {
             shape = android.graphics.drawable.GradientDrawable.OVAL
-            setColor(0xFFFFFFFF.toInt())
+            setColor(ThemeColors.surface)
         }
         elevation = dp(6f).toFloat()
         val spinnerSize = dp(24f)
@@ -457,10 +457,22 @@ class RemoteImageView(context: Context) : ImageView(context) {
 }
 
 /** Single-line text field behind <TextInput>. Mirrors ios/TextInputView.swift. */
-class TextInputView(context: Context) : android.widget.EditText(context) {
+class TextInputView(context: Context) : android.widget.EditText(context), ThemeAware {
+    /** Without a `color` style, the text follows the theme. */
+    var styleColor: Int? = null
+        set(value) {
+            field = value
+            applyThemeColors()
+        }
+
     // ponytail: a value JS sets on purpose that equals text typed earlier in the same editing session is
     // ignored too; tag each change with a counter if that ever matters.
     private val textsSentToJavaScript = mutableSetOf<String>()
+
+    override fun applyThemeColors() {
+        setTextColor(styleColor ?: ThemeColors.text)
+        setHintTextColor(ThemeColors.placeholder)
+    }
 
     fun recordTextSentToJavaScript() {
         textsSentToJavaScript.add(text.toString())

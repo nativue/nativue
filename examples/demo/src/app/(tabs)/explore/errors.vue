@@ -1,6 +1,6 @@
 <!-- Each button breaks the app on purpose, to show the error screen of development builds. -->
 <script setup lang="ts">
-import { ref, StyleSheet } from 'vue'
+import { computed, ref, StyleSheet } from 'vue'
 import { Stack } from '@nativue/core/router'
 import Page from '@/components/Page.vue'
 import PrimaryButton from '@/components/PrimaryButton.vue'
@@ -13,10 +13,12 @@ interface Profile {
 
 const profile = ref<Profile | null>({ name: 'Ada' })
 
-const styles = StyleSheet.create({
-  text: { fontSize: 15, color: colors.secondaryText },
-  greeting: { fontSize: 17, fontWeight: '600', color: colors.text },
-})
+const styles = computed(() =>
+  StyleSheet.create({
+    text: { fontSize: 15, color: colors.secondaryText },
+    greeting: { fontSize: 17, fontWeight: '600', color: colors.text },
+  }),
+)
 
 function throwInHandler() {
   throw new Error('Something went wrong in a press handler')
