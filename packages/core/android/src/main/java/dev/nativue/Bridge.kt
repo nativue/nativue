@@ -731,8 +731,13 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         node.yogaNode.setHeight(side)
     }
 
-    /** @layout fires for the views whose box changed: { x, y, width, height }, in dp, in its parent. */
+    /**
+     * @layout fires for the views whose box changed: { x, y, width, height }, in dp, in its parent.
+     * All of a layout pass's changes go in one call, so JS re-renders once for them, not once per view.
+     */
     private fun reportLayoutChanges() {
+        val changedLayouts = mutableListOf<Map<String, Any>>()
+
         for ((id, reportedLayout) in reportedLayoutsByNodeId) {
             val yogaNode = nodesById[id]?.yogaNode ?: continue
             val layout = mapOf(
@@ -744,8 +749,11 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
             if (yogaNode.layoutWidth.isNaN() || layout == reportedLayout) continue
 
             reportedLayoutsByNodeId[id] = layout
-            dispatchEvent("layout", id, layout)
+            changedLayouts.add(layout + ("id" to id))
         }
+        if (changedLayouts.isEmpty()) return
+
+        evaluate { runtime?.call("__layoutsChanged", changedLayouts) }
     }
 
     private fun dispatchEvent(eventName: String, id: Int, payload: Any? = null) {

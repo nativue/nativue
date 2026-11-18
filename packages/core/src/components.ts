@@ -94,6 +94,9 @@ const ESTIMATED_ROW_HEIGHT = 50
 // Renders only the rows near the visible area; the rest is empty padding of the same height.
 // Slots: #item="{ item, index }", plus #header, #footer and #empty. With `item-height`, every row is that
 // tall; without it, rows size to their content and are measured as they render. Vertical only.
+// Limitation: Rows not rendered yet count as the average measured height, so jumping far (dragging the
+// scroll indicator) can shift the rows a few points once they're measured; anchor the scroll position
+// to the first visible row if that shows.
 // Limitation: Items are `any` in the #item slot; make FlatList generic if typed rows are wanted.
 // Limitation: An Animated.event `:on-scroll` replaces the window's own scroll handler, and a mapped event
 // reaches JS only when a scroll starts and ends; report frames to both natively if that's needed.

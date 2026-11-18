@@ -377,6 +377,11 @@ globalThis.__dispatch = (nodeId, eventName, payload) => {
   updateModel(nodeId, eventName, payload, handlers['update:modelvalue'])
 }
 
+// One call per layout pass: the handlers' changes then render together, once.
+globalThis.__layoutsChanged = (layouts) => {
+  for (const { id, ...layout } of layouts) globalThis.__dispatch(id, 'layout', layout)
+}
+
 // v-model's modifiers, as on the web: .lazy updates when editing ends rather than on every keystroke;
 // .trim and .number change the value the model gets.
 function updateModel(nodeId: number, eventName: string, payload: unknown, update?: EventHandler) {

@@ -433,7 +433,10 @@ final class Bridge {
     }
 
     /// @layout fires for the views whose box changed: { x, y, width, height }, in points, in its parent.
+    /// All of a layout pass's changes go in one call, so JS re-renders once for them, not once per view.
     private func reportLayoutChanges() {
+        var changedLayouts: [[String: Any]] = []
+
         for (id, reportedLayout) in reportedLayoutsByNodeId {
             guard let yogaNode = nodesById[id]?.yogaNode else { continue }
 
@@ -446,9 +449,11 @@ final class Bridge {
             guard !layout.width.isNaN, layout != reportedLayout else { continue }
 
             reportedLayoutsByNodeId[id] = layout
-            let payload = ["x": layout.minX, "y": layout.minY, "width": layout.width, "height": layout.height]
-            dispatchEvent("layout", toNodeId: id, payload: payload)
+            changedLayouts.append(["id": id, "x": layout.minX, "y": layout.minY, "width": layout.width, "height": layout.height])
         }
+        guard !changedLayouts.isEmpty else { return }
+
+        evaluate { [unowned self] in runtime?.call("__layoutsChanged", arguments: [changedLayouts]) }
     }
 
     private func modalController(_ id: Int) -> ModalController? {

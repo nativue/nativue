@@ -1,11 +1,12 @@
 // What the JavaScript engine has globally: the bridge, the hooks native calls into, and the web APIs
 // prelude.ts (timers, console) and fetch.ts provide. No DOM.
 import type { ColorScheme, WindowSize } from './appearance'
-import type { NativeModule } from './types'
+import type { LayoutEvent, NativeModule } from './types'
 
 declare global {
   var __native: NativeModule
   var __dispatch: (nodeId: number, eventName: string, payload: unknown) => void
+  var __layoutsChanged: (layouts: ({ id: number } & LayoutEvent)[]) => void
   var __openURL: (url: string) => void
   var __fireTimer: (timerId: number) => void
   var __colorSchemeChanged: (colorScheme: ColorScheme) => void
