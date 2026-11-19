@@ -106,6 +106,7 @@ final class Bridge {
         run(try! Data(contentsOf: bundleURL))
         #if DEBUG
         Task { await listenForReload() }
+        rootView.onReloadShortcut = { [unowned self] in Task { try? await reload() } }
         #endif
     }
 
@@ -229,7 +230,6 @@ final class Bridge {
     #if DEBUG
     @MainActor func listenForReload() async {
         let eventsURL = Self.devServerURL.appendingPathComponent("events")
-        let bundleURL = Self.devServerURL.appendingPathComponent("bundle.js")
 
         while true {
             do {
@@ -237,9 +237,7 @@ final class Bridge {
 
                 for try await line in events.lines {
                     if line == "data: reload" {
-                        let data = try await download(bundleURL)
-                        print("[Nativue] reload")
-                        run(data)
+                        try await reload()
                     } else if line.hasPrefix("data: hot ") {
                         let update = String(line.dropFirst("data: hot ".count))
                         evaluate { [unowned self] in runtime?.call("__hotUpdate", arguments: [update]) }
@@ -249,6 +247,12 @@ final class Bridge {
 
             try? await Task.sleep(nanoseconds: 2_000_000_000) // dev server is down: retry
         }
+    }
+
+    @MainActor func reload() async throws {
+        let data = try await download(Self.devServerURL.appendingPathComponent("bundle.js"))
+        print("[Nativue] reload")
+        run(data)
     }
 
     @MainActor private func download(_ url: URL) async throws -> Data {

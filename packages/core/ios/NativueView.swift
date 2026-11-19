@@ -48,4 +48,23 @@ final class RootView: UIView {
         super.traitCollectionDidChange(previous)
         onTraitCollectionChange?(previous)
     }
+
+    #if DEBUG
+    var onReloadShortcut: (() -> Void)?
+
+    override var canBecomeFirstResponder: Bool { true }
+
+    override var keyCommands: [UIKeyCommand]? {
+        [UIKeyCommand(input: "r", modifierFlags: .command, action: #selector(reloadShortcutPressed))]
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        becomeFirstResponder()
+    }
+
+    @objc private func reloadShortcutPressed() {
+        onReloadShortcut?()
+    }
+    #endif
 }

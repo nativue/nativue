@@ -436,6 +436,15 @@ async function dev() {
     // Limitation: Every interface, so phones reach it, and anyone on the network can download the bundle.
     .listen(PORT, () => console.log(`dev server: http://localhost:${PORT}`))
 
+  if (process.stdin.isTTY) {
+    console.log('press r to reload the app')
+    process.stdin.setRawMode(true)
+    process.stdin.on('data', (key) => {
+      if (key[0] === 3) process.exit(130) // ctrl+c, which raw mode turns into a key
+      if (key.toString() === 'r') reloadApps()
+    })
+  }
+
   // The bundle only watches the files it has: one added or removed (a new route) needs a new build.
   // Editors that save by renaming a temporary file keep the file there, which isn't a change.
   const sourceFiles = new Set(readdirSync('src', { recursive: true }))

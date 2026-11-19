@@ -535,9 +535,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
                 connection.inputStream.bufferedReader().useLines { lines ->
                     lines.forEach { line ->
                         if (line == "data: reload") {
-                            val bundle = download(URL("$devServerURL/bundle.js"))
-                            Log.i(TAG, "reload")
-                            mainHandler.post { run(bundle) }
+                            downloadAndRun()
                         } else if (line.startsWith("data: hot ")) {
                             val update = line.removePrefix("data: hot ")
                             evaluate { runtime?.call("__hotUpdate", update) }
@@ -548,6 +546,16 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
 
             Thread.sleep(RECONNECT_DELAY_MS) // dev server is down: retry
         }
+    }
+
+    fun reload() {
+        if (isDebuggable) thread(isDaemon = true) { runCatching { downloadAndRun() } }
+    }
+
+    private fun downloadAndRun() {
+        val bundle = download(URL("$devServerURL/bundle.js"))
+        Log.i(TAG, "reload")
+        mainHandler.post { run(bundle) }
     }
 
     private fun download(url: URL): ByteArray {
