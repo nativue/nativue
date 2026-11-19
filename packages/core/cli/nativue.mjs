@@ -190,7 +190,11 @@ function viteConfig({ mode, plugins = [], watch = null, sourcemap = false }) {
     plugins: [
       vue({
         template: {
-          compilerOptions: { isCustomElement: (tag) => NATIVE_COMPONENT_TAGS.includes(tag) },
+          compilerOptions: {
+            isCustomElement: (tag) => NATIVE_COMPONENT_TAGS.includes(tag),
+            // Long static runs would become an HTML string for innerHTML, which native views can't take.
+            hoistStatic: false,
+          },
         },
       }),
       ignoreStyleBlocks(),
