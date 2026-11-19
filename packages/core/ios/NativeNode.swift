@@ -85,7 +85,6 @@ final class NativeNode {
     /// After every layout pass, of the root or of a screen's or modal's content: for @layout.
     static var onLayoutCalculated: (() -> Void)?
 
-    /// Whether an Animated value sets the view's opacity or transform: a layout animation leaves them alone.
     static var isDrivenByAnimated: (UIView) -> Bool = { _ in false }
 
     func calculateLayout(width: CGFloat, height: CGFloat) {
@@ -94,8 +93,7 @@ final class NativeNode {
         Self.onLayoutCalculated?()
     }
 
-    /// A view inserted during a layout animation would grow from the corner: it fades in where it lands,
-    /// unless an Animated value drives its opacity (the fade would hold it at its first value).
+    /// A view inserted during a layout animation would grow from the corner: it fades in where it lands.
     private static func appearWithoutMoving(_ view: UIView, at frame: CGRect) {
         let fades = !isDrivenByAnimated(view)
         let finalAlpha = view.alpha

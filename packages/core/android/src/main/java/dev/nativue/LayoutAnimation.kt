@@ -45,11 +45,7 @@ class LayoutAnimation(config: Map<*, *>) {
         statesByView = HashMap(nodes.associate { node -> node.view to State(node.view, node.view.background as? BoxDrawable) })
     }
 
-    /**
-     * Call after the batch is applied and laid out: animates every view from where it was. The opacity
-     * and transform of a view an Animated value drives are left to it: animating them here too would
-     * overwrite its frames, and end on the value captured now.
-     */
+    /** Call after the batch is applied and laid out: animates every view from where it was. */
     fun animateChanges(nodes: Collection<NativeNode>, isDrivenByAnimated: (View) -> Boolean) {
         val changes = nodes.mapNotNull { node ->
             val start = statesByView[node.view]?.takeIf { it.isPlaced }

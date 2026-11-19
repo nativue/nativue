@@ -81,7 +81,6 @@ final class AnimatedGraph {
         updateBoundViews()
     }
 
-    /// Whether an Animated value sets this view's opacity or transform.
     func drives(_ view: UIView) -> Bool {
         bindingsByViewId.values.contains { $0.view === view }
     }
