@@ -83,6 +83,7 @@ const textInputsById = new Map<number, Node>()
  */
 export function setClassStyleResolver(resolver: ClassStyleResolver): void {
   resolveClassStyle = resolver
+  nodesWithClass.forEach((node) => updateStyle(node, {}))
 }
 
 function createNode(type: string): Node {

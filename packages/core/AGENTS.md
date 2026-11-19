@@ -86,7 +86,8 @@ Import the runtime from `vue`: `ref`, `computed`, `StyleSheet`, `Animated`, `Lay
 - Official packages: `@nativue/icons` (icon components), `@nativue/tailwind`, `@nativue/haptics`,
   `@nativue/sqlite`. A package with native code needs the app rebuilt with `npm run ios` or
   `npm run android`, not just a reload.
-- Commands: `npm run ios` / `npm run android` build and open the app, then reload on save;
+- Commands: `npm run ios` / `npm run android` build and open the app, then update it on save
+  (template edits keep the component's state; script edits re-create the component);
   `npm run typecheck` checks scripts and templates; `npm run build` makes the release bundle;
   `npm run format` formats with Prettier.
 - Native code the app needs (a platform API no package covers) goes in `native/<name>/ios` and

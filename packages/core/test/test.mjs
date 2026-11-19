@@ -1108,14 +1108,24 @@ assert.ok(renderError.details.includes('  in src/app/(tabs)/explore/errors.vue\n
 
 // "AAAA;AACA;AACA": the bundle's lines 1 to 3 come from the same lines of the source. Frames outside
 // the app's src/ collapse.
-const symbolicate = createSymbolicator(
-  {
-    version: 3,
-    sources: ['../../src/app/index.vue', '../../node_modules/vue/index.js'],
-    names: [],
-    mappings: 'AAAA;AACA;ACCA',
+const symbolicate = createSymbolicator({
+  'main.bundle.js': {
+    sourceMap: {
+      version: 3,
+      sources: ['../../src/app/index.vue', '../../node_modules/vue/index.js'],
+      names: [],
+      mappings: 'AAAA;AACA;ACCA',
+    },
+    directory: 'ios/App',
   },
-  'ios/App',
+  'hmr_patch_1.js': {
+    sourceMap: { version: 3, sources: ['../../src/app/detail.vue'], names: [], mappings: 'AAAA' },
+    directory: 'ios/App',
+  },
+})
+assert.equal(
+  symbolicate('Error: boom\n    at setup (hmr_patch_1.js:1:1)'),
+  'Error: boom\n    at setup (src/app/detail.vue:1:1)',
 )
 // Hermes' native frames count as framework frames.
 assert.equal(

@@ -28,7 +28,8 @@ npm run android    # the same on an Android emulator
 npm run dev        # only the dev server, when the app is already installed
 ```
 
-Save a file, in the demo or in `packages/core/src`, and the app reloads. Changes to native code
+Save a file, in the demo or in `packages/core/src`, and the app updates in place, or reloads when
+it can't. Changes to native code
 (`packages/core/ios`, `packages/core/android`) need a new build: run `npm run ios` or
 `npm run android` again.
 

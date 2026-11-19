@@ -1,20 +1,31 @@
-// Maps stack frames of the bundle back to the app's files with the bundle's source map: Hermes'
-// `at name (main.bundle.js:8161:20)` becomes `at name (src/app/index.vue:22:9)`. Consecutive
+// Maps stack frames of the bundle (and of hot updates) back to the app's files with their source maps:
+// Hermes' `at name (main.bundle.js:8161:20)` becomes `at name (src/app/index.vue:22:9)`. Consecutive
 // frames from outside src/ (Vue, nativue, Hermes' native ones) collapse into one line, so the app's
 // own frames stand out. Other lines are kept.
 import { SourceMap } from 'node:module'
 import { relative, resolve } from 'node:path'
 
-// Groups: before the location, the location's line and column, after it.
-const HERMES_FRAME = /^(\s*at .* \()(?:.*main\.bundle\.js):(\d+):(\d+)(\))$/
+// Groups: before the location, the file, the location's line and column, after it.
+const HERMES_FRAME = /^(\s*at .* \()(?:.*\/)?([^/()]+\.js):(\d+):(\d+)(\))$/
 const HERMES_NATIVE_FRAME = /^\s*at .* \(native\)$/
 
-// sourceMapPayload: the map as JSON; its sources are relative to bundleDirectory.
-export function createSymbolicator(sourceMapPayload, bundleDirectory) {
-  const sourceMap = new SourceMap(sourceMapPayload)
+export function framedFiles(text) {
+  return new Set(text.split('\n').flatMap((line) => HERMES_FRAME.exec(line)?.[2] ?? []))
+}
 
-  function displayPath(source) {
-    const absolutePath = resolve(bundleDirectory, source)
+// sourceMapsByFile: for each file (main.bundle.js, a hot update), { sourceMap: the map as JSON,
+// directory: the one its sources are relative to, lineOffset: how many lines above the file's first
+// line the map starts }.
+export function createSymbolicator(sourceMapsByFile) {
+  const mapsByFile = new Map(
+    Object.entries(sourceMapsByFile).map(([file, { sourceMap, directory, lineOffset = 0 }]) => [
+      file,
+      { sourceMap: new SourceMap(sourceMap), directory, lineOffset },
+    ]),
+  )
+
+  function displayPath(directory, source) {
+    const absolutePath = resolve(directory, source)
     const nodeModulesIndex = absolutePath.lastIndexOf('node_modules/')
 
     return nodeModulesIndex === -1
@@ -26,14 +37,15 @@ export function createSymbolicator(sourceMapPayload, bundleDirectory) {
   function symbolicateLine(line) {
     if (HERMES_NATIVE_FRAME.test(line)) return { text: line, isInternal: true }
 
-    const frame = HERMES_FRAME.exec(line)
-    if (!frame) return { text: line, isInternal: false }
+    const [, before, file, lineNumber, columnNumber, after] = HERMES_FRAME.exec(line) ?? []
+    const map = mapsByFile.get(file)
+    if (!map) return { text: line, isInternal: false }
 
-    const [, before, lineNumber, columnNumber, after] = frame
-    const entry = sourceMap.findEntry(Number(lineNumber) - 1, Number(columnNumber) - 1)
+    const { sourceMap, directory, lineOffset } = map
+    const entry = sourceMap.findEntry(Number(lineNumber) - 1 - lineOffset, Number(columnNumber) - 1)
     if (!entry.originalSource) return { text: line, isInternal: false }
 
-    const path = displayPath(entry.originalSource)
+    const path = displayPath(directory, entry.originalSource)
     const text = `${before}${path}:${entry.originalLine + 1}:${entry.originalColumn + 1}${after}`
 
     return { text, isInternal: !path.startsWith('src/') }

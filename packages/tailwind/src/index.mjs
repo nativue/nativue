@@ -130,7 +130,8 @@ function vitePlugin() {
       const styles = await buildStyles((file) => this.addWatchFile(file))
 
       return `import { registerClassStyles } from '@nativue/tailwind/runtime'
-registerClassStyles(${JSON.stringify(styles)})`
+registerClassStyles(${JSON.stringify(styles)})
+import.meta.hot?.accept()`
     },
   }
 }
