@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
+import androidx.annotation.RequiresApi
 import com.facebook.soloader.SoLoader
 
 /** The app's activity: runs assets/main.bundle.js (or, in debug builds, the dev server's bundle). */
@@ -60,17 +61,14 @@ open class NativueActivity : Activity() {
         bridge.onConfigurationChanged()
     }
 
-    /**
-     * Android 13+ takes back gestures only when registered for (predictive back); older versions call
-     * onBackPressed.
-     */
-    private val backCallback = OnBackInvokedCallback { bridge.goBack() }
+    /** Android 13+ takes back gestures only when registered for (predictive back); older versions call onBackPressed. */
+    private var predictiveBack: PredictiveBack? = null
 
     private fun setHandlesBack(handlesBack: Boolean) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
 
-        if (handlesBack) onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, backCallback)
-        else onBackInvokedDispatcher.unregisterOnBackInvokedCallback(backCallback)
+        val predictiveBack = predictiveBack ?: PredictiveBack(this) { bridge.goBack() }.also { predictiveBack = it }
+        predictiveBack.setRegistered(handlesBack)
     }
 
     @Deprecated("Deprecated in Java")
@@ -81,5 +79,20 @@ open class NativueActivity : Activity() {
     override fun onDestroy() {
         bridge.destroy()
         super.onDestroy()
+    }
+}
+
+/**
+ * Its own class, created only on Android 13+: older versions can't load OnBackInvokedCallback, and a
+ * release build crashes on launch if the activity itself refers to it.
+ */
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+private class PredictiveBack(private val activity: Activity, onBack: () -> Unit) {
+    private val callback = OnBackInvokedCallback(onBack)
+
+    fun setRegistered(isRegistered: Boolean) {
+        val dispatcher = activity.onBackInvokedDispatcher
+        if (isRegistered) dispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, callback)
+        else dispatcher.unregisterOnBackInvokedCallback(callback)
     }
 }
