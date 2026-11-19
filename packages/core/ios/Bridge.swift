@@ -55,6 +55,9 @@ final class Bridge {
     /// The bundle running now, for the error overlay's Reload.
     private var bundle = Data()
     private let errorOverlay = ErrorOverlay()
+    #if DEBUG
+    private let downloadBanner = DownloadBanner()
+    #endif
     private let pluginRegistry: PluginRegistry
 
     init(plugins: [NativuePlugin]) {
@@ -234,7 +237,7 @@ final class Bridge {
 
                 for try await line in events.lines {
                     if line == "data: reload" {
-                        let (data, _) = try await URLSession.shared.data(from: bundleURL)
+                        let data = try await download(bundleURL)
                         print("[Nativue] reload")
                         run(data)
                     } else if line.hasPrefix("data: hot ") {
@@ -245,6 +248,25 @@ final class Bridge {
             } catch {}
 
             try? await Task.sleep(nanoseconds: 2_000_000_000) // dev server is down: retry
+        }
+    }
+
+    @MainActor private func download(_ url: URL) async throws -> Data {
+        try await withCheckedThrowingContinuation { continuation in
+            var observation: NSKeyValueObservation?
+            let task = URLSession.shared.dataTask(with: url) { [unowned self] data, _, error in
+                DispatchQueue.main.async {
+                    observation?.invalidate()
+                    self.downloadBanner.hide()
+                    if let data { continuation.resume(returning: data) } else { continuation.resume(throwing: error!) }
+                }
+            }
+            observation = task.observe(\.countOfBytesReceived) { [unowned self] task, _ in
+                let progress = Double(task.countOfBytesReceived) / Double(max(task.countOfBytesExpectedToReceive, 1))
+                DispatchQueue.main.async { self.downloadBanner.show(progress: progress) }
+            }
+            downloadBanner.show(progress: 0)
+            task.resume()
         }
     }
     #endif

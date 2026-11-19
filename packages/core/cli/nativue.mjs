@@ -367,8 +367,12 @@ async function dev() {
 
     const clientId = randomUUID()
     connectToVite(clientId)
-    response.writeHead(200, { 'Content-Type': 'application/javascript' })
-    response.end(hotPrelude(clientId, `http://${request.headers.host}`) + (await bundle.text()))
+    const body = hotPrelude(clientId, `http://${request.headers.host}`) + (await bundle.text())
+    response.writeHead(200, {
+      'Content-Type': 'application/javascript',
+      'Content-Length': Buffer.byteLength(body),
+    })
+    response.end(body)
   }
 
   async function handleHotMessage(request, response) {
