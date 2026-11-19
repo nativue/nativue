@@ -1,5 +1,6 @@
 package dev.nativue
 
+import android.content.Context
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.util.TypedValue
@@ -7,6 +8,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
+import androidx.core.graphics.TypefaceCompat
 import com.facebook.yoga.YogaAlign
 import com.facebook.yoga.YogaDisplay
 import com.facebook.yoga.YogaEdge
@@ -117,13 +119,17 @@ private fun degrees(value: Any?): Float {
     return if (text.endsWith("rad")) Math.toDegrees(amount.toDouble()).toFloat() else amount
 }
 
+/** The system font at a weight (100 to 900). */
+fun typefaceOfWeight(context: Context, weight: Int): Typeface =
+    TypefaceCompat.create(context, Typeface.DEFAULT, weight, false)
+
 /** Font size and weight can change independently, so the node remembers both. */
 private fun NativeNode.applyFont(changes: Map<String, Any?>) {
     if ("fontSize" in changes) fontSize = number(changes["fontSize"]) ?: DEFAULT_FONT_SIZE
     if ("fontWeight" in changes) fontWeight = changes["fontWeight"]?.let(::fontWeightOf) ?: 400
 
     val textView = view as? TextView ?: return
-    textView.typeface = Typeface.create(Typeface.DEFAULT, fontWeight, false)
+    textView.typeface = typefaceOfWeight(textView.context, fontWeight)
     updateFontSize()
 }
 

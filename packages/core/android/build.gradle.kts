@@ -20,12 +20,12 @@ fun localNetworkAddress(): String? = NetworkInterface.getNetworkInterfaces().toL
 
 android {
     namespace = "dev.nativue"
-    compileSdk = 36
+    compileSdk = 37
     ndkVersion = "27.1.12297006"
 
     defaultConfig {
-        // Limitation: 30 for the WindowInsets.Type API (safe area, keyboard); lower it with the compat insets if needed.
-        minSdk = 30
+        // Hermes's own minimum.
+        minSdk = 24
         consumerProguardFiles("consumer-rules.pro")
 
         externalNativeBuild {
@@ -71,4 +71,6 @@ dependencies {
     implementation("com.facebook.hermes:hermes-android:260318099.0.8")
     implementation("com.facebook.yoga:yoga:3.2.1")
     implementation("com.facebook.soloader:soloader:0.10.5")
+    // Insets, system bars, fonts and accessibility the same way down to minSdk.
+    implementation("androidx.core:core:1.16.0")
 }

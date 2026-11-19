@@ -5,10 +5,10 @@ plugins {
 
 android {
     namespace = "dev.nativue.haptics"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
-        minSdk = 30
+        minSdk = 24
     }
 
     compileOptions {

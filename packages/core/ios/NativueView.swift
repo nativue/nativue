@@ -37,9 +37,15 @@ struct VueRoot: UIViewRepresentable {
 /// Root of the native tree; runs the Yoga layout pass whenever UIKit lays it out.
 final class RootView: UIView {
     var onLayoutSubviews: (() -> Void)?
+    var onTraitCollectionChange: ((_ previous: UITraitCollection?) -> Void)?
 
     override func layoutSubviews() {
         super.layoutSubviews()
         onLayoutSubviews?()
+    }
+
+    override func traitCollectionDidChange(_ previous: UITraitCollection?) {
+        super.traitCollectionDidChange(previous)
+        onTraitCollectionChange?(previous)
     }
 }

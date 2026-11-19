@@ -7,9 +7,16 @@ extension NativeNode {
         "heading": .header,
         "img": .image,
         "text": .staticText,
-        "switch": .toggleButton,
-        "checkbox": .toggleButton,
+        "switch": toggleTraits,
+        "checkbox": toggleTraits,
     ]
+
+    /// Before iOS 17, VoiceOver has no toggle trait: a button that says its state is the closest.
+    private static var toggleTraits: UIAccessibilityTraits {
+        if #available(iOS 17, *) { return .toggleButton }
+
+        return .button
+    }
 
     /// role, alt and aria-*, from the renderer: all of them, whenever one changes.
     func applyAccessibility(_ attributes: [String: Any]) {
@@ -24,9 +31,15 @@ extension NativeNode {
         view.accessibilityHint = attributes["hint"] as? String
         view.accessibilityTraits = traits(role: role, attributes: attributes)
         // A container read as one element says the text inside it, as a <button> does on the web.
-        view.accessibilityLabelBlock = isElement && label == nil && !defaultAccessibility.isElement
-            ? { [weak view] in view.map { Self.labels(inside: $0).joined(separator: ", ") } }
-            : nil
+        let readsTextInside = isElement && label == nil && !defaultAccessibility.isElement
+        if #available(iOS 17, *) {
+            view.accessibilityLabelBlock = readsTextInside
+                ? { [weak view] in view.map { Self.labels(inside: $0).joined(separator: ", ") } }
+                : nil
+        } else if readsTextInside {
+            // ponytail: before iOS 17 the label is read once, here: text changed later inside keeps the old one.
+            view.accessibilityLabel = Self.labels(inside: view).joined(separator: ", ")
+        }
 
         if role == "switch" || role == "checkbox" {
             view.accessibilityValue = attributes["checked"] != nil ? "1" : "0"

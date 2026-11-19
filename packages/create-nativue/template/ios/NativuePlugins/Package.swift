@@ -4,7 +4,7 @@ import PackageDescription
 
 let package = Package(
     name: "NativuePlugins",
-    platforms: [.iOS(.v17)],
+    platforms: [.iOS("15.1")],
     products: [.library(name: "NativuePlugins", targets: ["NativuePlugins"])],
     dependencies: [
         .package(path: "../../node_modules/@nativue/core"),

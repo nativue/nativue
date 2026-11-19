@@ -69,14 +69,12 @@ final class Bridge {
         let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene
         windowSize = windowScene?.screen.bounds.size ?? .zero
         colorScheme = Self.colorScheme(of: windowScene?.traitCollection ?? rootView.traitCollection)
-        // start runs on the main thread, from makeUIView.
-        MainActor.assumeIsolated {
-            _ = rootView.registerForTraitChanges([UITraitUserInterfaceStyle.self]) {
-                [unowned self] (rootView: RootView, _: UITraitCollection) in
-                colorSchemeDidChange(to: Self.colorScheme(of: rootView.traitCollection))
+        rootView.onTraitCollectionChange = { [unowned self, unowned rootView] previous in
+            let traits = rootView.traitCollection
+            if traits.userInterfaceStyle != previous?.userInterfaceStyle {
+                colorSchemeDidChange(to: Self.colorScheme(of: traits))
             }
-            _ = rootView.registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
-                [unowned self] (rootView: RootView, _: UITraitCollection) in
+            if traits.preferredContentSizeCategory != previous?.preferredContentSizeCategory {
                 nodesById.values.forEach { $0.updateFont() }
                 rootView.setNeedsLayout()
             }
@@ -206,8 +204,8 @@ final class Bridge {
 
     #if DEBUG
     @MainActor func listenForReload() async {
-        let eventsURL = Self.devServerURL.appending(path: "events")
-        let bundleURL = Self.devServerURL.appending(path: "bundle.js")
+        let eventsURL = Self.devServerURL.appendingPathComponent("events")
+        let bundleURL = Self.devServerURL.appendingPathComponent("bundle.js")
 
         while true {
             do {
@@ -220,7 +218,7 @@ final class Bridge {
                 }
             } catch {}
 
-            try? await Task.sleep(for: .seconds(2)) // dev server is down: retry
+            try? await Task.sleep(nanoseconds: 2_000_000_000) // dev server is down: retry
         }
     }
     #endif
@@ -368,7 +366,7 @@ final class Bridge {
     /// The dev server maps main.bundle.js lines back to the app's files with the bundle's source map.
     /// Without a dev server, the stack stays as it is.
     private func symbolicated(_ text: String) async -> String {
-        var request = URLRequest(url: Self.devServerURL.appending(path: "symbolicate"), timeoutInterval: 2)
+        var request = URLRequest(url: Self.devServerURL.appendingPathComponent("symbolicate"), timeoutInterval: 2)
         request.httpMethod = "POST"
         request.httpBody = Data(text.utf8)
 
