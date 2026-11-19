@@ -20,7 +20,7 @@ const PLATFORM_VARIANTS = `
 @custom-variant android (@media (nativue-platform: android));`
 const SOURCE_EXTENSIONS = /\.(vue|[cm]?[jt]sx?)$/
 const QUOTED_TEXT = /(["'`])((?:\\.|(?!\1)[^\\])*)\1/g
-const CLASS_ATTRIBUTE = /(?:^|\s)(?::class|v-bind:class|class)\s*=\s*(["'])([\s\S]*?)\1/g
+const CLASS_ATTRIBUTE = /(?:^|\s)(:class|v-bind:class|class)\s*=\s*(["'])([\s\S]*?)\2/g
 
 const tailwindDirectory = dirname(
   createRequire(import.meta.url).resolve('tailwindcss/package.json'),
@@ -54,8 +54,8 @@ function addCandidates(text, candidates) {
 
 /** The class names written in class and :class attributes: the ones worth a warning. */
 function addClassAttributeCandidates(text, candidates) {
-  for (const [, , content] of text.matchAll(CLASS_ATTRIBUTE)) {
-    addWords(content, candidates)
+  for (const [, attribute, , content] of text.matchAll(CLASS_ATTRIBUTE)) {
+    if (attribute === 'class') addWords(content, candidates)
     addCandidates(content, candidates)
   }
 }

@@ -1,10 +1,12 @@
 // Converts what Tailwind generates for a set of classes and checks the native styles.
 import assert from 'node:assert'
-import { readFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
-import { dirname } from 'node:path'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 import { compile } from 'tailwindcss'
 import { color, evaluateLength, stylesFromCss } from '../src/convert.mjs'
+import tailwind from '../src/index.mjs'
 
 const tailwindDirectory = dirname(
   createRequire(import.meta.url).resolve('tailwindcss/package.json'),
@@ -176,5 +178,33 @@ assert.deepEqual(themedStyles, {
   'bg-brand': { backgroundColor: '#0e9f84' },
   'p-18': { padding: 36 },
 })
+
+// ---------- Warnings ----------
+
+async function warningsFor(template) {
+  const appDirectory = mkdtempSync(join(tmpdir(), 'nativue-tailwind-'))
+  mkdirSync(join(appDirectory, 'src'))
+  writeFileSync(join(appDirectory, 'src/App.vue'), template)
+
+  const warnings = []
+  const warn = console.warn
+  const workingDirectory = process.cwd()
+  console.warn = (message) => warnings.push(message)
+  process.chdir(appDirectory)
+  try {
+    await tailwind().vite.load.call({ addWatchFile() {} }, '\0virtual:nativue-tailwind')
+  } finally {
+    process.chdir(workingDirectory)
+    console.warn = warn
+  }
+
+  return warnings.join('\n')
+}
+
+const warnings = await warningsFor(
+  `<template><View :class="['p-4', block && 'self-stretch']" class="z-10" /></template>`,
+)
+assert.doesNotMatch(warnings, /"block"/)
+assert.match(warnings, /"z-10"/)
 
 console.log('ok')
