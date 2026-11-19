@@ -18,6 +18,7 @@ open class NativueActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         SoLoader.init(this, false) // Yoga loads its native library through it
+        SystemBars.drawBehind(window)
         ThemeColors.update(this)
 
         val rootView = RootView(this)

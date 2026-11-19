@@ -19,7 +19,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsAnimation
-import android.view.WindowInsetsController
 import android.graphics.Insets
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
@@ -184,9 +183,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         // Content not in the window now, like a hidden <Modal>'s, is repainted too.
         nodesById.values.forEach { applyThemeColors(it.view) }
         // The theme set them when the window was created; it isn't recreated (configChanges has uiMode).
-        val lightBars = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or
-            WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-        activity.window.insetsController?.setSystemBarsAppearance(if (ThemeColors.isDark) 0 else lightBars, lightBars)
+        SystemBars.setLight(activity.window, !ThemeColors.isDark)
         evaluate { runtime?.call("__colorSchemeChanged", colorScheme()) }
     }
 
