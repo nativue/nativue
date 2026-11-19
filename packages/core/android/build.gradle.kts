@@ -26,6 +26,8 @@ android {
     defaultConfig {
         // Hermes's own minimum.
         minSdk = 24
+        // Built against 37, but apps still on 35 or 36 build with it: none of its code needs 37.
+        aarMetadata { minCompileSdk = 35 }
         consumerProguardFiles("consumer-rules.pro")
 
         externalNativeBuild {
