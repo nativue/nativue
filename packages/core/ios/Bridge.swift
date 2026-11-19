@@ -485,7 +485,7 @@ final class Bridge {
     private func makeUnstyledNode(type: String, id: Int) -> NativeNode {
         switch type {
         case "Text":
-            let label = UILabel()
+            let label = TextLabel()
             label.numberOfLines = 0
             return NativeNode(view: label, measuresContent: true)
 
