@@ -5,8 +5,10 @@ import android.content.Intent
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
+import android.widget.EditText
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import androidx.annotation.RequiresApi
@@ -15,6 +17,7 @@ import com.facebook.soloader.SoLoader
 /** The app's activity: runs assets/main.bundle.js (or, in debug builds, the dev server's bundle). */
 open class NativueActivity : Activity() {
     private lateinit var bridge: Bridge
+    private var lastRKeyTime = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -71,6 +74,15 @@ open class NativueActivity : Activity() {
         predictiveBack.setRegistered(handlesBack)
     }
 
+    override fun onKeyUp(keyCode: Int, event: KeyEvent): Boolean {
+        if (keyCode != KeyEvent.KEYCODE_R || currentFocus is EditText) return super.onKeyUp(keyCode, event)
+
+        if (event.eventTime - lastRKeyTime < DOUBLE_PRESS_MS) bridge.reload()
+        lastRKeyTime = event.eventTime
+
+        return true
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         if (!bridge.goBack()) super.onBackPressed()
@@ -96,3 +108,5 @@ private class PredictiveBack(private val activity: Activity, onBack: () -> Unit)
         else dispatcher.unregisterOnBackInvokedCallback(callback)
     }
 }
+
+private const val DOUBLE_PRESS_MS = 500
