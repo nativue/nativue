@@ -1,6 +1,6 @@
 {
   "name": "@nativue/tailwind",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Tailwind CSS classes for nativue apps, turned into native styles",
   "keywords": [
     "vue",
