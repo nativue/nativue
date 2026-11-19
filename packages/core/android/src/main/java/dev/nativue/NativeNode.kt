@@ -2,7 +2,7 @@ package dev.nativue
 
 import android.view.View
 import android.view.ViewGroup
-import android.widget.EditText
+import android.widget.TextView
 import com.facebook.yoga.YogaConfigFactory
 import com.facebook.yoga.YogaEdge
 import com.facebook.yoga.YogaMeasureMode
@@ -96,7 +96,7 @@ class NativeNode(val view: View, measuresContent: Boolean) {
             scrollView.setContentSize(pixels(width), pixels(height))
         }
 
-        (view as? EditText)?.setPadding(
+        (view as? TextView)?.setPadding(
             pixels(yogaNode.getLayoutPadding(YogaEdge.LEFT)),
             pixels(yogaNode.getLayoutPadding(YogaEdge.TOP)),
             pixels(yogaNode.getLayoutPadding(YogaEdge.RIGHT)),
@@ -130,13 +130,18 @@ class NativeNode(val view: View, measuresContent: Boolean) {
         height: Float,
         heightMode: YogaMeasureMode,
     ): Long {
-        view.measure(measureSpec(width, widthMode), measureSpec(height, heightMode))
+        val horizontalPadding = view.paddingLeft + view.paddingRight
+        val verticalPadding = view.paddingTop + view.paddingBottom
+        view.measure(measureSpec(width, widthMode, horizontalPadding), measureSpec(height, heightMode, verticalPadding))
 
-        return YogaMeasureOutput.make(view.measuredWidth / density, view.measuredHeight / density)
+        return YogaMeasureOutput.make(
+            (view.measuredWidth - horizontalPadding) / density,
+            (view.measuredHeight - verticalPadding) / density,
+        )
     }
 
-    private fun measureSpec(size: Float, mode: YogaMeasureMode): Int {
-        val pixels = if (size.isNaN()) 0 else (size * density).toInt()
+    private fun measureSpec(size: Float, mode: YogaMeasureMode, padding: Int): Int {
+        val pixels = if (size.isNaN()) 0 else (size * density).toInt() + padding
 
         return when (mode) {
             YogaMeasureMode.EXACTLY -> View.MeasureSpec.makeMeasureSpec(pixels, View.MeasureSpec.EXACTLY)
