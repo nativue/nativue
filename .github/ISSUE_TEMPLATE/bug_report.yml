@@ -1,0 +1,71 @@
+name: Bug report
+description: Something works differently than documented, or differently on iOS and Android.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: "@nativue/core version"
+      placeholder: "0.11.1"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platforms
+    attributes:
+      label: Platforms
+      multiple: true
+      options:
+        - iOS
+        - Android
+    validations:
+      required: true
+
+  - type: input
+    id: devices
+    attributes:
+      label: Devices and OS versions
+      description: Where it happens, and where it works if you compared.
+      placeholder: "Android 11 emulator (API 30): broken. iOS 26 simulator: works."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: build
+    attributes:
+      label: Build
+      multiple: true
+      options:
+        - Development (npm run dev)
+        - Release
+
+  - type: textarea
+    id: what-happens
+    attributes:
+      label: What happens
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: The smallest app that shows it, file by file (`src/app/...`), and the steps.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual
+      placeholder: |
+        Expected: ...
+        Actual: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Logs, screenshots, a workaround, or where in the code you think it comes from.
