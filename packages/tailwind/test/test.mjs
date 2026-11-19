@@ -147,6 +147,7 @@ const { entries: variantEntries, ignored: variantIgnored } = await stylesOf(
     'focus:p-7',
     'disabled:p-8',
     'focus-visible:p-9',
+    'dark:bg-black/50',
   ],
   platformVariants,
 )
@@ -158,6 +159,7 @@ assert.deepEqual(conditionsOf('android:p-4'), ['android'])
 assert.deepEqual(conditionsOf('dark:active:p-5'), ['dark', 'pressed'])
 assert.deepEqual(conditionsOf('focus:p-7'), ['focused'])
 assert.deepEqual(conditionsOf('disabled:p-8'), ['disabled'])
+assert.deepEqual(conditionsOf('dark:bg-black/50'), ['dark'])
 assert.deepEqual(variantEntries['dark:p-1'][1], { padding: 4 })
 assert.deepEqual(Object.keys(variantIgnored).sort(), ['focus-visible:p-9', 'md:p-6'])
 
