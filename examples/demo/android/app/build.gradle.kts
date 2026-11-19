@@ -4,11 +4,11 @@ plugins {
 
 android {
     namespace = "dev.nativue.demo"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "dev.nativue.app"
-        minSdk = 30
+        minSdk = 24
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"

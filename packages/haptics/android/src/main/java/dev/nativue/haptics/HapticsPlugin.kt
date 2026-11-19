@@ -1,6 +1,7 @@
 package dev.nativue.haptics
 
 import android.app.Activity
+import android.os.Build
 import android.view.HapticFeedbackConstants
 import dev.nativue.NativuePlugin
 import dev.nativue.PluginRegistry
@@ -12,11 +13,11 @@ class HapticsPlugin : NativuePlugin {
         "medium" to HapticFeedbackConstants.VIRTUAL_KEY,
         "heavy" to HapticFeedbackConstants.LONG_PRESS,
     )
-    private val notificationFeedback = mapOf(
-        "success" to HapticFeedbackConstants.CONFIRM,
-        "warning" to HapticFeedbackConstants.REJECT,
-        "error" to HapticFeedbackConstants.REJECT,
-    )
+    // CONFIRM and REJECT are Android 11+; before, the closest older ones.
+    private val isAndroid11OrLater = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+    private val confirm = if (isAndroid11OrLater) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.VIRTUAL_KEY
+    private val reject = if (isAndroid11OrLater) HapticFeedbackConstants.REJECT else HapticFeedbackConstants.LONG_PRESS
+    private val notificationFeedback = mapOf("success" to confirm, "warning" to reject, "error" to reject)
 
     override fun register(registry: PluginRegistry) {
         val window = (registry.context as Activity).window
@@ -29,7 +30,7 @@ class HapticsPlugin : NativuePlugin {
             perform(impactFeedback[arguments.firstOrNull()] ?: HapticFeedbackConstants.VIRTUAL_KEY)
         }
         registry.addFunction("haptics.notification") { arguments ->
-            perform(notificationFeedback[arguments.firstOrNull()] ?: HapticFeedbackConstants.CONFIRM)
+            perform(notificationFeedback[arguments.firstOrNull()] ?: confirm)
         }
         registry.addFunction("haptics.selection") { _ -> perform(HapticFeedbackConstants.CLOCK_TICK) }
     }

@@ -41,8 +41,8 @@ const count = ref(0)
 ## Requirements
 
 - Node.js 20.19 or later
-- iOS: a Mac with Xcode. Apps run on iOS 17 or later.
-- Android: Android Studio. Apps run on Android 11 (API 30) or later.
+- iOS: a Mac with Xcode. Apps run on iOS 15.1 or later.
+- Android: Android Studio. Apps run on Android 7.0 (API 24) or later.
 
 ## Create an app
 

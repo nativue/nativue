@@ -3,9 +3,10 @@
 ## Requirements
 
 - **Node.js** 20.19 or later
-- **iOS:** a Mac with Xcode. Apps run on iOS 17 or later.
-- **Android:** Android Studio, with an emulator or a phone. Apps run on Android 11 (API 30) or
-  later. Without `JAVA_HOME`, the build uses the JDK inside Android Studio.
+- **iOS:** a Mac with Xcode. Apps run on iOS 15.1 or later.
+- **Android:** Android Studio, with an emulator or a phone. Apps run on Android 7.0 (API 24) or
+  later. Without `JAVA_HOME`, the build uses the JDK inside Android Studio. Android 7.0 doesn't trust
+  Let's Encrypt certificates: HTTPS to servers that use them fails there (7.1.1 and later trust them).
 
 ## Create an app
 

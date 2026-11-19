@@ -55,7 +55,7 @@ final class KeyValueStorage {
     }
 
     private func load() -> [String: String] {
-        let path = directory.appending(path: "async-storage.db").path
+        let path = directory.appendingPathComponent("async-storage.db").path
         guard sqlite3_open(path, &database) == SQLITE_OK else { return [:] }
 
         execute("PRAGMA journal_mode = WAL")
@@ -72,7 +72,7 @@ final class KeyValueStorage {
 
     /// Before SQLite, values were saved to a JSON file: moved into the table once, then deleted.
     private func importJSONFile() {
-        let fileURL = directory.appending(path: "async-storage.json")
+        let fileURL = directory.appendingPathComponent("async-storage.json")
         guard let data = try? Data(contentsOf: fileURL),
               let saved = try? JSONDecoder().decode([String: String].self, from: data)
         else { return }

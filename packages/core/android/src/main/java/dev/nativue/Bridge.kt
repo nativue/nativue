@@ -17,9 +17,10 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
-import android.view.WindowInsets
-import android.view.WindowInsetsAnimation
-import android.graphics.Insets
+import androidx.core.graphics.Insets
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsAnimationCompat
+import androidx.core.view.WindowInsetsCompat
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
@@ -75,7 +76,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     private val reportedLayoutsByNodeId = mutableMapOf<Int, Map<String, Float>?>()
 
     /** The latest window insets, mid-animation while the keyboard moves. */
-    private var windowInsets: WindowInsets? = null
+    private var windowInsets: WindowInsetsCompat? = null
 
     /** Whether the system back gesture has something to close or pop (NativueActivity listens). */
     var onCanGoBackChange: (canGoBack: Boolean) -> Unit = {}
@@ -88,19 +89,23 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         NativeNode.setPixelDensity(density)
         rootView.onLayoutPass = ::layout
         NativeNode.onLayoutCalculated = ::reportLayoutChanges
-        rootView.setOnApplyWindowInsetsListener { view, insets ->
+        ViewCompat.setOnApplyWindowInsetsListener(rootView) { view, insets ->
             windowInsets = insets
             view.requestLayout() // safe area and keyboard paddings
             insets
         }
         // Keyboard avoiding views follow the keyboard frame by frame, like on iOS.
-        rootView.setWindowInsetsAnimationCallback(object : WindowInsetsAnimation.Callback(DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
-            override fun onProgress(insets: WindowInsets, animations: List<WindowInsetsAnimation>): WindowInsets {
+        val keyboardAnimation = object : WindowInsetsAnimationCompat.Callback(DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
+            override fun onProgress(
+                insets: WindowInsetsCompat,
+                runningAnimations: List<WindowInsetsAnimationCompat>,
+            ): WindowInsetsCompat {
                 windowInsets = insets
                 layout()
                 return insets
             }
-        })
+        }
+        ViewCompat.setWindowInsetsAnimationCallback(rootView, keyboardAnimation)
 
         val bundle = runCatching { activity.assets.open("main.bundle.js").use { it.readBytes() } }.getOrNull()
         if (bundle != null) run(bundle)
@@ -167,7 +172,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
      * (tab labels) keeps its size.
      */
     private fun rescaleText(view: View, nodeViews: Set<View>, ratio: Float) {
-        if (view is TextView && view !in nodeViews && view.textSizeUnit != TypedValue.COMPLEX_UNIT_DIP) {
+        if (view is TextView && view !is FixedSizeTextView && view !in nodeViews) {
             view.setTextSize(TypedValue.COMPLEX_UNIT_PX, view.textSize * ratio)
         }
         if (view !is ViewGroup) return
@@ -370,9 +375,16 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     @Volatile private var windowSize = windowSize()
 
     private fun windowSize(): Map<String, Float> {
-        val bounds = activity.windowManager.currentWindowMetrics.bounds
+        val size = android.graphics.Point()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val bounds = activity.windowManager.currentWindowMetrics.bounds
+            size.set(bounds.width(), bounds.height())
+        } else {
+            @Suppress("DEPRECATION") // its replacement, currentWindowMetrics, is API 30+
+            activity.windowManager.defaultDisplay.getRealSize(size)
+        }
 
-        return mapOf("width" to bounds.width() / density, "height" to bounds.height() / density)
+        return mapOf("width" to size.x / density, "height" to size.y / density)
     }
 
     /** A timer of a runtime that has since been reloaded doesn't fire. */
@@ -985,9 +997,9 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         return didChange
     }
 
-    private fun currentWindowInsets(): WindowInsets? = windowInsets ?: rootView.rootWindowInsets
+    private fun currentWindowInsets(): WindowInsetsCompat? = windowInsets ?: ViewCompat.getRootWindowInsets(rootView)
 
-    private fun fitScreen(node: NativeNode, screen: ScreenView, windowInsets: WindowInsets): Boolean {
+    private fun fitScreen(node: NativeNode, screen: ScreenView, windowInsets: WindowInsetsCompat): Boolean {
         var didChange = false
 
         if (screen.isSheet) {
@@ -1007,7 +1019,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         return didChange
     }
 
-    private fun fitTabBar(node: NativeNode, tabBar: TabBarView, windowInsets: WindowInsets): Boolean {
+    private fun fitTabBar(node: NativeNode, tabBar: TabBarView, windowInsets: WindowInsetsCompat): Boolean {
         tabBar.bottomInset = (overlap(tabBar, windowInsets.getInsets(SYSTEM_BARS))[3] * density).toInt()
 
         var didChange = false
@@ -1063,8 +1075,8 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         const val SVG_DEFAULT_COLOR = 0xFF000000.toInt()
         const val BUTTON_TINT = 0xFF007AFF.toInt()
         val EDGES = listOf(YogaEdge.LEFT, YogaEdge.TOP, YogaEdge.RIGHT, YogaEdge.BOTTOM)
-        val SYSTEM_BARS = WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()
-        val IME = WindowInsets.Type.ime()
+        val SYSTEM_BARS = WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+        val IME = WindowInsetsCompat.Type.ime()
         const val SHEET_TOP_GAP = 12f
 
         val keyboardInputTypes = mapOf(

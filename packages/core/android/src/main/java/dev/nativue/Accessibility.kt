@@ -6,6 +6,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityManager
 import android.view.accessibility.AccessibilityNodeInfo
+import androidx.core.view.ViewCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 
 private val CLASS_NAME_BY_ROLE = mapOf(
     "button" to "android.widget.Button",
@@ -30,8 +32,8 @@ fun View.applyAccessibility(attributes: Map<*, *>) {
         else -> View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
     }
     // TalkBack reads a focusable container as one element: the text inside it, as a <button> does on the web.
-    isScreenReaderFocusable = isElement && this is ViewGroup
-    isAccessibilityHeading = role == "heading"
+    ViewCompat.setScreenReaderFocusable(this, isElement && this is ViewGroup)
+    ViewCompat.setAccessibilityHeading(this, role == "heading")
     accessibilityDelegate = AccessibilityAttributes(role, attributes)
 }
 
@@ -46,7 +48,7 @@ private class AccessibilityAttributes(
         // Where TalkBack reads a role description (androidx sets the same key).
         // Limitation: Android has no link role for views; this description is English whatever the language.
         if (role == "link") info.extras.putCharSequence("AccessibilityNodeInfo.roleDescription", "link")
-        (attributes["hint"] as? String)?.let { info.hintText = it }
+        (attributes["hint"] as? String)?.let { AccessibilityNodeInfoCompat.wrap(info).hintText = it }
         if (attributes["disabled"] != null) info.isEnabled = false
         if (attributes["selected"] != null) info.isSelected = true
         if (role == "switch" || role == "checkbox") {

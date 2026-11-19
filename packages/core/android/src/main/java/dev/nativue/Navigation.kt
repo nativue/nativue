@@ -318,7 +318,7 @@ class ScreenHeader(context: Context) : LinearLayout(context), ThemeAware {
     private fun textView(size: Float, style: Int) = TextView(context).apply {
         setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
         setTextColor(ThemeColors.onSurface)
-        typeface = Typeface.create(Typeface.DEFAULT, if (style == Typeface.BOLD) 500 else 400, false)
+        typeface = typefaceOfWeight(context, if (style == Typeface.BOLD) 500 else 400)
         isSingleLine = true
         ellipsize = android.text.TextUtils.TruncateAt.END
         includeFontPadding = false
@@ -633,12 +633,15 @@ fun ScreenStackView.popToFirst() {
     for (index in childCount - 1 downTo 1) (getChildAt(index) as? ScreenView)?.onEvent?.invoke("dismissed", null)
 }
 
+/** Text in dp, which keeps its size whatever the system's text size (tab labels, like iOS's). */
+class FixedSizeTextView(context: Context) : TextView(context)
+
 /** One destination of the navigation bar: an icon in a pill when selected, a label and a badge. */
 private class TabItemView(context: Context) : LinearLayout(context) {
     private val indicator = FrameLayout(context)
     private val icon = SvgView(context)
-    private val label = TextView(context)
-    private val badge = TextView(context)
+    private val label = FixedSizeTextView(context)
+    private val badge = FixedSizeTextView(context)
 
     init {
         orientation = VERTICAL
@@ -665,7 +668,7 @@ private class TabItemView(context: Context) : LinearLayout(context) {
         addView(indicator, LayoutParams(dp(64f), dp(32f)))
 
         label.setTextSize(TypedValue.COMPLEX_UNIT_DIP, 12f)
-        label.typeface = Typeface.create(Typeface.DEFAULT, 500, false)
+        label.typeface = typefaceOfWeight(context, 500)
         label.gravity = Gravity.CENTER
         label.isSingleLine = true
         addView(label, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4f) })

@@ -7,11 +7,12 @@ import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.ViewGroup
-import android.view.WindowInsets
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 
 /**
  * Development only: shows a JS error over the whole app, modals included. The first error stays until
@@ -42,8 +43,8 @@ class ErrorOverlay(private val activity: Activity) {
         layout.orientation = LinearLayout.VERTICAL
         layout.setBackgroundColor(BACKGROUND)
         layout.isClickable = true // keeps touches from reaching the app below
-        layout.setOnApplyWindowInsetsListener { view, insets ->
-            val bars = insets.getInsets(WindowInsets.Type.systemBars())
+        ViewCompat.setOnApplyWindowInsetsListener(layout) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.setPadding(bars.left + dp(20), bars.top + dp(24), bars.right + dp(20), bars.bottom + dp(16))
             insets
         }
@@ -99,7 +100,7 @@ class ErrorOverlay(private val activity: Activity) {
         setTextSize(TypedValue.COMPLEX_UNIT_SP, size)
         setTextColor(Color.WHITE)
         this.alpha = alpha
-        typeface = Typeface.create(Typeface.DEFAULT, weight, false)
+        typeface = typefaceOfWeight(context, weight)
     }
 
     private fun rounded(color: Int) = GradientDrawable().apply {
