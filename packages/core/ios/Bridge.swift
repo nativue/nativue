@@ -107,6 +107,13 @@ final class Bridge {
     /// Discards the current node tree and runtime, then runs the bundle from scratch: JavaScript, or
     /// Hermes bytecode (production builds).
     func run(_ bundle: Data) {
+        // UIKit ignores a dismissal while a modal is presenting or dismissing, so resetNodeTree would leave
+        // the old tree's modal up, and the new tree's couldn't present.
+        if let transition = modalTransitionInProgress() {
+            transition.animate(alongsideTransition: nil) { [unowned self] _ in run(bundle) }
+            return
+        }
+
         self.bundle = bundle
         errorOverlay.hide()
 
@@ -116,6 +123,16 @@ final class Bridge {
             runtime = makeRuntime()
             runtime?.evaluate(bundle, sourceURL: "main.bundle.js")
         }
+    }
+
+    private func modalTransitionInProgress() -> UIViewControllerTransitionCoordinator? {
+        guard let presentedViewController = rootView.window?.rootViewController?.presentedViewController else {
+            return nil
+        }
+
+        return sequence(first: presentedViewController, next: \.presentedViewController)
+            .compactMap(\.transitionCoordinator)
+            .last
     }
 
     /// Runs `work` on the JS queue, then applies every native operation it produced, in one batch, on the
