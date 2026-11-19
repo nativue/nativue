@@ -201,6 +201,7 @@ final class Bridge {
     /// UIKit coalesces these requests, so the layout pass runs once per batch.
     func requestLayout() {
         rootView.setNeedsLayout()
+        if rootView.window == nil { rootView.layoutIfNeeded() }
     }
 
     #if DEBUG
