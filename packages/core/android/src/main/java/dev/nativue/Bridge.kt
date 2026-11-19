@@ -31,6 +31,7 @@ import com.facebook.yoga.YogaDisplay
 import com.facebook.yoga.YogaEdge
 import com.facebook.yoga.YogaFlexDirection
 import com.facebook.yoga.YogaPositionType
+import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.concurrent.thread
@@ -87,6 +88,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     /** The bundle running now, for the error screen's Reload. */
     private var bundle = ByteArray(0)
     private val errorOverlay = ErrorOverlay(activity)
+    private val downloadBanner = DownloadBanner(activity)
 
     fun start() {
         NativeNode.setPixelDensity(density)
@@ -533,7 +535,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
                 connection.inputStream.bufferedReader().useLines { lines ->
                     lines.forEach { line ->
                         if (line == "data: reload") {
-                            val bundle = URL("$devServerURL/bundle.js").readBytes()
+                            val bundle = download(URL("$devServerURL/bundle.js"))
                             Log.i(TAG, "reload")
                             mainHandler.post { run(bundle) }
                         } else if (line.startsWith("data: hot ")) {
@@ -546,6 +548,33 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
 
             Thread.sleep(RECONNECT_DELAY_MS) // dev server is down: retry
         }
+    }
+
+    private fun download(url: URL): ByteArray {
+        val connection = url.openConnection() as HttpURLConnection
+        val length = connection.contentLengthLong
+        val bundle = ByteArrayOutputStream()
+        val buffer = ByteArray(64 * 1024)
+
+        mainHandler.post { downloadBanner.show(0.0) }
+        try {
+            connection.inputStream.use { input ->
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+
+                    bundle.write(buffer, 0, count)
+                    if (length > 0) {
+                        val progress = bundle.size().toDouble() / length
+                        mainHandler.post { downloadBanner.show(progress) }
+                    }
+                }
+            }
+        } finally {
+            mainHandler.post { downloadBanner.hide() }
+        }
+
+        return bundle.toByteArray()
     }
 
     // ---------- Main thread ----------
