@@ -728,5 +728,7 @@ export function stylesFromCss(css) {
     }
   }
 
+  for (const className of Object.keys(styles)) delete ignored[className]
+
   return { styles, ignored }
 }
