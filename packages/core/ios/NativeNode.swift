@@ -153,6 +153,9 @@ final class NativeNode {
             if let textInput = childView as? TextInputView {
                 textInput.contentPadding = padding(of: child)
             }
+            if let label = childView as? TextLabel {
+                label.contentPadding = padding(of: child)
+            }
         }
     }
 
