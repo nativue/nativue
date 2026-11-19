@@ -89,6 +89,9 @@ class AnimatedGraph {
         updateBoundViews()
     }
 
+    /** Whether an Animated value sets this view's opacity or transform. */
+    fun drives(view: View): Boolean = bindingsByViewId.values.any { it.view.get() === view }
+
     // ---------- Animations ----------
 
     fun startAnimation(animationId: Int, nodeId: Int, config: Map<*, *>) {

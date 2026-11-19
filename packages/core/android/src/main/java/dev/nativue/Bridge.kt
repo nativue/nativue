@@ -248,7 +248,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         layoutAnimation.captureStart(nodesById.values)
         operations.forEach { it() }
         layout()
-        layoutAnimation.animateChanges(nodesById.values)
+        layoutAnimation.animateChanges(nodesById.values, animatedGraph::drives)
     }
 
     private fun startJavaScriptThread(): Handler {

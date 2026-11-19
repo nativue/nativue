@@ -81,6 +81,11 @@ final class AnimatedGraph {
         updateBoundViews()
     }
 
+    /// Whether an Animated value sets this view's opacity or transform.
+    func drives(_ view: UIView) -> Bool {
+        bindingsByViewId.values.contains { $0.view === view }
+    }
+
     // MARK: - Animations
 
     func startAnimation(id: Int, nodeId: Int, config: [String: Any]) {
@@ -124,19 +129,23 @@ final class AnimatedGraph {
 
     // MARK: - Views
 
+    /// Never animated by UIKit: a binding made in a layout animation's batch would hold the view at
+    /// its first value until the layout animation ends.
     private func updateBoundViews() {
-        for (viewId, binding) in bindingsByViewId {
-            guard let view = binding.view else {
-                bindingsByViewId[viewId] = nil
-                continue
-            }
+        UIView.performWithoutAnimation {
+            for (viewId, binding) in bindingsByViewId {
+                guard let view = binding.view else {
+                    bindingsByViewId[viewId] = nil
+                    continue
+                }
 
-            if let opacityNodeId = binding.opacityNodeId {
-                view.alpha = CGFloat(value(ofNode: opacityNodeId))
-            }
-            if let steps = binding.transformSteps {
-                let resolvedSteps = steps.map { step in [step.name: step.nodeId.map(value(ofNode:)) ?? step.value] }
-                view.transform = NativeNode.affineTransform(resolvedSteps)
+                if let opacityNodeId = binding.opacityNodeId {
+                    view.alpha = CGFloat(value(ofNode: opacityNodeId))
+                }
+                if let steps = binding.transformSteps {
+                    let resolvedSteps = steps.map { step in [step.name: step.nodeId.map(value(ofNode:)) ?? step.value] }
+                    view.transform = NativeNode.affineTransform(resolvedSteps)
+                }
             }
         }
     }

@@ -85,22 +85,37 @@ final class NativeNode {
     /// After every layout pass, of the root or of a screen's or modal's content: for @layout.
     static var onLayoutCalculated: (() -> Void)?
 
+    /// Whether an Animated value sets the view's opacity or transform: a layout animation leaves them alone.
+    static var isDrivenByAnimated: (UIView) -> Bool = { _ in false }
+
     func calculateLayout(width: CGFloat, height: CGFloat) {
         YGNodeCalculateLayout(yogaNode, Float(width), Float(height), .LTR)
         Self.applyFrames(of: yogaNode)
         Self.onLayoutCalculated?()
     }
 
-    /// A view inserted during a layout animation would grow from the corner: it fades in where it lands.
+    /// A view inserted during a layout animation would grow from the corner: it fades in where it lands,
+    /// unless an Animated value drives its opacity (the fade would hold it at its first value).
     private static func appearWithoutMoving(_ view: UIView, at frame: CGRect) {
+        let fades = !isDrivenByAnimated(view)
         let finalAlpha = view.alpha
 
         UIView.performWithoutAnimation {
-            view.frame = frame
-            view.alpha = 0
+            place(view, at: frame)
+            if fades { view.alpha = 0 }
             view.layoutIfNeeded()
         }
-        view.alpha = finalAlpha
+        if fades { view.alpha = finalAlpha }
+    }
+
+    private static func place(_ view: UIView, at frame: CGRect) {
+        if view.transform == .identity {
+            if view.frame != frame { view.frame = frame }
+        } else {
+            // With a transform, `frame` is the transformed box: place the untransformed one.
+            view.bounds.size = frame.size
+            view.center = CGPoint(x: frame.midX, y: frame.midY)
+        }
     }
 
     /// Only visits subtrees Yoga laid out again; untouched subtrees keep their frames.
@@ -121,14 +136,12 @@ final class NativeNode {
 
             // Yoga flags whole dirty paths as new layout. Reassigning a scroll view's frame or content
             // size, even unchanged, makes UIKit readjust its offset and shakes a bounce, so skip no-ops.
-            if childView.frame == .zero, UIView.inheritedAnimationDuration > 0 {
+            // Never placed: a transform moves `frame`, so check its untransformed box.
+            let isNew = childView.bounds.size == .zero && childView.center == .zero
+            if isNew, UIView.inheritedAnimationDuration > 0 {
                 appearWithoutMoving(childView, at: frame)
-            } else if childView.transform == .identity {
-                if childView.frame != frame { childView.frame = frame }
             } else {
-                // With a transform, `frame` is the transformed box: place the untransformed one.
-                childView.bounds.size = frame.size
-                childView.center = CGPoint(x: frame.midX, y: frame.midY)
+                place(childView, at: frame)
             }
             childView.applyCornerRadius()
 
