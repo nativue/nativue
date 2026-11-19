@@ -200,7 +200,6 @@ final class Bridge {
     /// UIKit coalesces these requests, so the layout pass runs once per batch.
     func requestLayout() {
         rootView.setNeedsLayout()
-        // A fullScreen modal takes the root out of the window, and UIKit stops laying it out.
         if rootView.window == nil { rootView.layoutIfNeeded() }
     }
 
