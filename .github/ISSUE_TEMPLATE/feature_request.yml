@@ -1,0 +1,24 @@
+name: Feature request
+description: A component, prop, API or package nativue doesn't have yet.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you're trying to do
+      description: The app feature, not the API you have in mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: How you'd like to write it in a Vue template or script.
+      render: vue
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: What you do today
+      description: A workaround, native code in `native/`, or nothing.
