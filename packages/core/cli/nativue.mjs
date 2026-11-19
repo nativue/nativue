@@ -193,7 +193,6 @@ function viteConfig({ mode, plugins = [], watch = null, sourcemap = false }) {
           compilerOptions: {
             isCustomElement: (tag) => NATIVE_COMPONENT_TAGS.includes(tag),
             // Long static runs would become an HTML string for innerHTML, which native views can't take.
-            // ponytail: also skips caching static nodes; a compiler without stringifyStatic keeps it.
             hoistStatic: false,
           },
         },
