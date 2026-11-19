@@ -46,7 +46,7 @@ class LayoutAnimation(config: Map<*, *>) {
     }
 
     /** Call after the batch is applied and laid out: animates every view from where it was. */
-    fun animateChanges(nodes: Collection<NativeNode>) {
+    fun animateChanges(nodes: Collection<NativeNode>, isDrivenByAnimated: (View) -> Boolean) {
         val changes = nodes.mapNotNull { node ->
             val start = statesByView[node.view]?.takeIf { it.isPlaced }
             val end = State(node.view, node.view.background as? BoxDrawable)
@@ -54,23 +54,24 @@ class LayoutAnimation(config: Map<*, *>) {
         }
         if (changes.isEmpty()) return
 
-        changes.forEach { (view, start, end) -> apply(view, start, end, 0f) }
+        val drivenViews = changes.map { it.first }.filterTo(HashSet(), isDrivenByAnimated)
+        changes.forEach { (view, start, end) -> apply(view, start, end, 0f, view in drivenViews) }
 
         ValueAnimator.ofFloat(0f, 1f).apply {
             duration = this@LayoutAnimation.duration
             interpolator = interpolator()
             addUpdateListener { animator ->
                 val progress = animator.animatedValue as Float
-                changes.forEach { (view, start, end) -> apply(view, start, end, progress) }
+                changes.forEach { (view, start, end) -> apply(view, start, end, progress, view in drivenViews) }
             }
             start()
         }
     }
 
     /** A view without a start state (new, or never placed) only fades in. */
-    private fun apply(view: View, start: State?, end: State, progress: Float) {
+    private fun apply(view: View, start: State?, end: State, progress: Float, isDrivenByAnimated: Boolean) {
         if (start == null) {
-            view.alpha = end.alpha * progress
+            if (!isDrivenByAnimated) view.alpha = end.alpha * progress
             return
         }
 
@@ -83,12 +84,14 @@ class LayoutAnimation(config: Map<*, *>) {
             view.layout(left, top, right, bottom)
         }
 
-        view.alpha = lerp(start.alpha, end.alpha, progress)
-        view.translationX = lerp(start.translationX, end.translationX, progress)
-        view.translationY = lerp(start.translationY, end.translationY, progress)
-        view.scaleX = lerp(start.scaleX, end.scaleX, progress)
-        view.scaleY = lerp(start.scaleY, end.scaleY, progress)
-        view.rotation = lerp(start.rotation, end.rotation, progress)
+        if (!isDrivenByAnimated) {
+            view.alpha = lerp(start.alpha, end.alpha, progress)
+            view.translationX = lerp(start.translationX, end.translationX, progress)
+            view.translationY = lerp(start.translationY, end.translationY, progress)
+            view.scaleX = lerp(start.scaleX, end.scaleX, progress)
+            view.scaleY = lerp(start.scaleY, end.scaleY, progress)
+            view.rotation = lerp(start.rotation, end.rotation, progress)
+        }
 
         end.box?.takeIf { start.backgroundColor != end.backgroundColor }?.let { box ->
             box.backgroundColor = argbEvaluator.evaluate(progress.coerceIn(0f, 1f), start.backgroundColor, end.backgroundColor) as Int

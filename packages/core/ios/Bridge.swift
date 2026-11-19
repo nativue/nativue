@@ -63,6 +63,7 @@ final class Bridge {
         self.rootView = rootView
         rootView.onLayoutSubviews = { [unowned self] in layout() }
         NativeNode.onLayoutCalculated = { [unowned self] in reportLayoutChanges() }
+        NativeNode.isDrivenByAnimated = { [unowned self] view in animatedGraph.drives(view) }
         networking.onEvent = { [unowned self] owner, requestId, eventName, payload in
             sendNetworkEvent(owner: owner, requestId: requestId, eventName: eventName, payload: payload)
         }
