@@ -5,6 +5,7 @@ import type { LayoutEvent, NativeModule, NetworkEventPayloads } from './types'
 
 declare global {
   var __native: NativeModule
+  var __NATIVUE_HOT__: { clientId: string; serverURL: string } | undefined
   var __dispatch: (nodeId: number, eventName: string, payload: unknown) => void
   var __layoutsChanged: (layouts: ({ id: number } & LayoutEvent)[]) => void
   var __openURL: (url: string) => void

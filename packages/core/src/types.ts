@@ -115,6 +115,9 @@ export interface NativeModule {
   windowSize(): { width: number; height: number }
   platform(): 'ios' | 'android'
   colorScheme(): 'light' | 'dark'
+  /** Development: the navigation saveNavigation kept, which outlives the JavaScript runtime. */
+  savedNavigation(): string | null
+  saveNavigation(routes: string): void
   accessibilityInfo(): { screenReaderEnabled: boolean; reduceMotionEnabled: boolean }
   announce(message: string): void
   create(id: number, type: string): void

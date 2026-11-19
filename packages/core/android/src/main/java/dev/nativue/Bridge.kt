@@ -51,6 +51,9 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     @Volatile
     private var reloadConnection: HttpURLConnection? = null
 
+    /** The router's screens, reopened after a reload in development. Only touched on the JS thread. */
+    private var savedNavigation: String? = null
+
     private val javaScriptHandler = startJavaScriptThread()
     private val isDebuggable = activity.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
     private val density = activity.resources.displayMetrics.density
@@ -329,6 +332,8 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         put("windowSize") { _ -> windowSize }
         put("platform") { _ -> "android" }
         put("colorScheme") { _ -> colorScheme() }
+        put("savedNavigation") { _ -> savedNavigation }
+        put("saveNavigation") { arguments -> savedNavigation = arguments[0] as String }
         put("accessibilityInfo") { _ -> accessibilityStatus(activity) }
         put("announce") { arguments ->
             val message = arguments[0] as String
@@ -513,7 +518,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         return hosts.map { "http://$it:$DEV_SERVER_PORT" }
     }
 
-    /** The dev server sends `data: reload` on connect and after each rebuild. */
+    /** The dev server sends `data: reload` on connect and when the app must reload, `data: hot` with an update. */
     private fun listenForReload() {
         val candidateURLs = devServerURLs()
         var attempt = 0
@@ -526,10 +531,15 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
                 reloadConnection = connection
 
                 connection.inputStream.bufferedReader().useLines { lines ->
-                    lines.filter { it == "data: reload" }.forEach { _ ->
-                        val bundle = URL("$devServerURL/bundle.js").readBytes()
-                        Log.i(TAG, "reload")
-                        mainHandler.post { run(bundle) }
+                    lines.forEach { line ->
+                        if (line == "data: reload") {
+                            val bundle = URL("$devServerURL/bundle.js").readBytes()
+                            Log.i(TAG, "reload")
+                            mainHandler.post { run(bundle) }
+                        } else if (line.startsWith("data: hot ")) {
+                            val update = line.removePrefix("data: hot ")
+                            evaluate { runtime?.call("__hotUpdate", update) }
+                        }
                     }
                 }
             }

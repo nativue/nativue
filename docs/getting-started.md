@@ -28,7 +28,9 @@ npm run android    # an Android emulator
 ```
 
 Each one builds the app, opens it on a simulator or emulator (starting one if none is running) and
-then runs the dev server. Save a file and the app reloads with your change.
+then runs the dev server. Save a file and the app updates in place: the screen you're on and its
+state stay. When a change can't be applied in place (a new file, an edited `main.ts`), the app
+reloads and reopens the screens you had open.
 
 If a dev server is already running, they only build and open the app, and it connects to that
 server. `--no-dev` never starts one: `npm run ios -- --no-dev`. To run the dev server alone:

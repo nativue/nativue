@@ -832,6 +832,34 @@ export const Link = defineComponent({
 })
 
 type RouteFiles = Record<string, { default: Component }>
+type OpenedRoute = [href: string, mode: NavigationMode]
+
+// The routes to open again for the same screens: each stack's screens above its first, and the active
+// tab. The tabs in the background start over.
+function openedRoutes(entry: Entry): OpenedRoute[] {
+  const navigator = entry.navigator
+  if (!navigator) return []
+
+  if ('tabs' in navigator) {
+    const { tabs, state } = navigator as TabsNavigator
+    const activeTab = tabs[state.activeIndex]
+
+    return [[activeTab.href, 'navigate'], ...openedRoutes(activeTab)]
+  }
+
+  return (navigator as StackNavigator).entries.flatMap((child, index): OpenedRoute[] => [
+    ...(index > 0 ? [[child.href, 'push'] as OpenedRoute] : []),
+    ...openedRoutes(child),
+  ])
+}
+
+function keepNavigationAcrossReloads() {
+  const savedRoutes = __native.savedNavigation()
+  if (savedRoutes)
+    for (const [href, mode] of JSON.parse(savedRoutes) as OpenedRoute[]) go(href, mode)
+
+  watchEffect(() => __native.saveNavigation(JSON.stringify(openedRoutes(rootEntry))))
+}
 
 // routeFiles: import.meta.glob('/src/app/**/*.vue', { eager: true }), see entry.ts
 export function createRouterApp(routeFiles: RouteFiles) {
@@ -839,6 +867,7 @@ export function createRouterApp(routeFiles: RouteFiles) {
 
   const { chain, target } = resolveHref('/')
   rootEntry = createEntry(layoutsByDirectory.get('')!, chain.slice(1), target)
+  if (globalThis.__NATIVUE_HOT__) keepNavigationAcrossReloads()
 
   return createApp(defineComponent(() => () => h(LayoutContent, { entry: rootEntry })))
 }

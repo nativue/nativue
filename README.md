@@ -34,7 +34,8 @@ const count = ref(0)
 - **Animations and gestures** that run natively, without JavaScript on every frame.
 - **Styling** with style objects, or Tailwind CSS classes through `@nativue/tailwind`.
 - **2,000+ icons** with `@nativue/icons`, drawn natively.
-- **Hot reload:** save a file and the app reloads, on simulators, emulators and phones.
+- **Hot reload:** save a file and the app updates, keeping its screens and state, on simulators,
+  emulators and phones.
 - **Dev tooling:** errors show on a red screen, with the stack mapped to your files.
 - **Your own native code:** packages can add native functions and views, in Swift and Kotlin.
 

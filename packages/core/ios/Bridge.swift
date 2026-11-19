@@ -36,6 +36,8 @@ final class Bridge {
     private var colorScheme = "light"
     /// Kept on the JS queue, for AccessibilityInfo.
     private var accessibilityStatus = AccessibilityStatus()
+    /// Kept on the JS queue: the router's screens, reopened after a reload in development.
+    private var savedNavigation: String?
 
     // Only touched on the main thread.
     var rootView: RootView!
@@ -230,10 +232,15 @@ final class Bridge {
             do {
                 let (events, _) = try await URLSession.shared.bytes(from: eventsURL)
 
-                for try await line in events.lines where line == "data: reload" {
-                    let (data, _) = try await URLSession.shared.data(from: bundleURL)
-                    print("[Nativue] reload")
-                    run(data)
+                for try await line in events.lines {
+                    if line == "data: reload" {
+                        let (data, _) = try await URLSession.shared.data(from: bundleURL)
+                        print("[Nativue] reload")
+                        run(data)
+                    } else if line.hasPrefix("data: hot ") {
+                        let update = String(line.dropFirst("data: hot ".count))
+                        evaluate { [unowned self] in runtime?.call("__hotUpdate", arguments: [update]) }
+                    }
                 }
             } catch {}
 
@@ -308,6 +315,8 @@ final class Bridge {
         }
 
         defineGetter("colorScheme") { [unowned self] _ in colorScheme }
+        defineGetter("savedNavigation") { [unowned self] _ in savedNavigation }
+        define("saveNavigation") { [unowned self] arguments in savedNavigation = arguments[0] as? String }
 
         define("create") { [unowned self] arguments in
             let (id, type) = (int(arguments[0]), string(arguments[1]))

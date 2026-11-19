@@ -17,7 +17,7 @@ This package holds:
 
 ```sh
 nativue run ios          # or android: builds, opens the app on a simulator or emulator, then dev
-nativue dev              # rebuilds on save and reloads the running app
+nativue dev              # updates the running app on save
 nativue build            # bundles the app into ios/ and android/ (--production for releases)
 ```
 

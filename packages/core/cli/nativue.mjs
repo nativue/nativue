@@ -3,31 +3,40 @@
 //   nativue build                  bundles src/app/ into ios/App/main.bundle.js (and, with an android/
 //                                    folder, android/app/src/main/assets/main.bundle.js); Hermes bytecode
 //                                    with --production
-//   nativue dev                    rebuilds on save and tells the app (via SSE) to reload the bundle
+//   nativue dev                    serves the app and updates it on save, keeping its state where it can
 //   nativue run <ios | android>    builds, installs and opens the app on a simulator or emulator, then
 //                                    keeps going as `nativue dev` (unless one is already running);
 //                                    --device for a phone, --device <name or id> for a given one;
 //                                    --no-dev only opens the app
-import { build, loadConfigFromFile, transformWithOxc } from 'vite'
+import { build, createServer, loadConfigFromFile, transformWithOxc } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import http from 'node:http'
 import net from 'node:net'
 import { execFileSync } from 'node:child_process'
-import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'node:fs'
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  watch,
+} from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { linkIosPlugins } from './link.mjs'
 import { runOnAndroid, runOnIOS } from './run.mjs'
-import { createSymbolicator } from './symbolicate.mjs'
+import { createSymbolicator, framedFiles } from './symbolicate.mjs'
 
 const PORT = 40836 // 0x9F84, from #0E9F84, the nativue green
 const MAX_STACK_LENGTH = 1_000_000 // characters, of a stack the app posts to /symbolicate
 const BUNDLE_DIRECTORY = 'ios/App'
 const BUNDLE_PATH = `${BUNDLE_DIRECTORY}/main.bundle.js`
-const SOURCE_MAP_PATH = `${BUNDLE_PATH}.map`
 const ANDROID_ASSETS_DIRECTORY = 'android/app/src/main/assets'
 const KEEPALIVE_INTERVAL_MS = 15000
+const UNANSWERED_UPDATE_TIMEOUT_MS = 10000
 
 const NATIVE_COMPONENT_TAGS = [
   'View',
@@ -179,7 +188,7 @@ const APP_VITE_PLUGINS = [
   ...appPlugins.flatMap((plugin) => plugin.vite ?? []),
 ]
 
-function viteConfig({ mode, plugins = [], watch = null, sourcemap = false }) {
+function viteConfig({ mode, plugins = [] }) {
   // Vite reads the mode from NODE_ENV: development builds keep each component's file (for errors).
   process.env.NODE_ENV = mode
 
@@ -222,16 +231,124 @@ function viteConfig({ mode, plugins = [], watch = null, sourcemap = false }) {
       outDir: BUNDLE_DIRECTORY,
       emptyOutDir: false,
       minify: mode === 'production',
-      sourcemap,
-      watch,
     },
   }
 }
 
-function startDevServer() {
+// Full bundle mode skips the plugins' handleHotUpdate. @vitejs/plugin-vue's tells a template-only change
+// apart, so the component re-renders and keeps its state, and tells the app which file changed: run it
+// for every change, before it's rebuilt.
+function vueHotUpdates(sendToApps) {
+  let vuePlugin
+
+  return {
+    name: 'nativue-vue-hot-updates',
+
+    configResolved(config) {
+      vuePlugin = config.plugins.find((plugin) => plugin.name === 'vite:vue')
+    },
+
+    async watchChange(file) {
+      if (!existsSync(file)) return
+
+      await vuePlugin.handleHotUpdate({
+        file,
+        modules: [],
+        read: () => readFileSync(file, 'utf8'),
+        server: { ws: { send: sendToApps } },
+      })
+    },
+  }
+}
+
+function hotPrelude(clientId, serverURL) {
+  const viteRequire = createRequire(createRequire(import.meta.url).resolve('vite'))
+  const runtime = readFileSync(viteRequire.resolve('rolldown/experimental/runtime'), 'utf8')
+  const client = readFileSync(frameworkPath('cli/hot-client.js'), 'utf8')
+  const options = JSON.stringify({ clientId, serverURL })
+
+  return `${runtime.replace(/^export \{[^}]*\};?$/m, '')}\nvar __NATIVUE_HOT__ = ${options};\n${client}\n`
+}
+
+// Vite's full bundle mode builds the app and, on save, a patch with the changed modules. Each app
+// runtime is a Vite client: the dev server speaks Vite's protocol for it and relays updates over SSE.
+async function dev() {
   const connectedApps = new Set()
-  let symbolicate = (text) => text
   const sendToApps = (message) => connectedApps.forEach((response) => response.write(message))
+  const config = viteConfig({
+    mode: 'development',
+    plugins: [vueHotUpdates((payload) => sendToApps(`data: hot ${JSON.stringify(payload)}\n\n`))],
+  })
+  const vite = await createServer({
+    ...config,
+    experimental: { bundledDev: true },
+    server: { host: '127.0.0.1', port: PORT + 1, watch: {} },
+    build: {
+      ...config.build,
+      lib: false,
+      rolldownOptions: {
+        input: frameworkPath('src/entry.ts'),
+        experimental: { devMode: { lazy: false } },
+      },
+    },
+  })
+  await vite.listen()
+
+  const viteURL = `http://127.0.0.1:${vite.httpServer.address().port}`
+  const socketsByClientId = new Map()
+  const silenceTimersByClientId = new Map()
+  let reloadTimer = null
+
+  function reloadApps() {
+    clearTimeout(reloadTimer)
+    reloadTimer = setTimeout(() => {
+      socketsByClientId.forEach((socket) => socket.close())
+      socketsByClientId.clear()
+      console.log(`reload -> ${connectedApps.size} app(s)`)
+      sendToApps('data: reload\n\n')
+    }, 50)
+  }
+
+  function sendToVite(clientId, message) {
+    const socket = socketsByClientId.get(clientId)
+    if (!socket) return
+
+    if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message))
+    else socket.addEventListener('open', () => socket.send(JSON.stringify(message)), { once: true })
+  }
+
+  function disconnect(clientId) {
+    socketsByClientId.get(clientId)?.close()
+    socketsByClientId.delete(clientId)
+  }
+
+  // A runtime replaced since (the app reopened or reconnected) never answers an update: forget its client.
+  function expectAnswer(clientId) {
+    if (silenceTimersByClientId.has(clientId)) return
+
+    silenceTimersByClientId.set(
+      clientId,
+      setTimeout(() => disconnect(clientId), UNANSWERED_UPDATE_TIMEOUT_MS),
+    )
+  }
+
+  function connectToVite(clientId) {
+    const socket = new WebSocket(
+      `${viteURL.replace('http', 'ws')}/?token=${vite.config.webSocketToken}`,
+      'vite-hmr',
+    )
+    socketsByClientId.set(clientId, socket)
+    socket.addEventListener('message', ({ data }) => {
+      const payload = JSON.parse(data)
+      if (payload.type === 'bundled-dev-update') {
+        expectAnswer(clientId)
+        sendToApps(`data: hot ${JSON.stringify({ ...payload, clientId })}\n\n`)
+      } else if (payload.type === 'full-reload' && !payload.ifFallback) {
+        reloadApps()
+      }
+    })
+    sendToVite(clientId, { type: 'custom', event: 'vite:client-connected', data: { clientId } })
+  }
 
   function handleEvents(request, response) {
     response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' })
@@ -240,72 +357,110 @@ function startDevServer() {
     request.on('close', () => connectedApps.delete(response))
   }
 
-  function handleBundle(response) {
-    // An installed app can ask before Vite's first build has written it.
-    if (!existsSync(BUNDLE_PATH)) {
+  async function handleBundle(request, response) {
+    const bundle = await fetch(`${viteURL}/assets/entry.js`)
+    if (!bundle.ok) {
       response.writeHead(503, { 'Content-Type': 'text/plain' })
       response.end('The bundle is still building')
       return
     }
 
+    const clientId = randomUUID()
+    connectToVite(clientId)
     response.writeHead(200, { 'Content-Type': 'application/javascript' })
-    response.end(readFileSync(BUNDLE_PATH))
+    response.end(hotPrelude(clientId, `http://${request.headers.host}`) + (await bundle.text()))
+  }
+
+  async function handleHotMessage(request, response) {
+    const { clientId, message } = JSON.parse(await readBody(request))
+    clearTimeout(silenceTimersByClientId.get(clientId))
+    silenceTimersByClientId.delete(clientId)
+    if (message.event !== 'nativue:received') sendToVite(clientId, message)
+    response.writeHead(204).end()
+  }
+
+  // A patch: Vite serves it from memory, as an ES module the app evaluates as a script.
+  async function handlePatch(request, response) {
+    const patch = await fetch(`${viteURL}${request.url}`)
+    response.writeHead(patch.status, { 'Content-Type': 'application/javascript' })
+    response.end((await patch.text()).replace(/;\s*export \{\}\s*$/, ''))
+  }
+
+  async function sourceMapOf(file) {
+    if (file === 'main.bundle.js') {
+      return {
+        sourceMap: await (await fetch(`${viteURL}/assets/entry.js.map`)).json(),
+        directory: `${BUNDLE_DIRECTORY}/assets`,
+        lineOffset: hotPrelude('', '').split('\n').length - 1,
+      }
+    }
+
+    const sourceMap = await fetch(`${viteURL}/${file}.map`)
+
+    return sourceMap.ok ? { sourceMap: await sourceMap.json(), directory: BUNDLE_DIRECTORY } : null
   }
 
   // The app posts an error's stack; it gets it back pointing at the app's files.
   async function handleSymbolicate(request, response) {
-    try {
-      let text = ''
-      for await (const chunk of request) {
-        text += chunk
-        if (text.length > MAX_STACK_LENGTH) throw new Error('stack too long')
-      }
+    const text = await readBody(request)
+    const files = [...framedFiles(text)]
+    const sourceMaps = await Promise.all(files.map(sourceMapOf))
+    const symbolicate = createSymbolicator(
+      Object.fromEntries(
+        files.map((file, index) => [file, sourceMaps[index]]).filter(([, map]) => map),
+      ),
+    )
 
-      response.writeHead(200, { 'Content-Type': 'text/plain' })
-      response.end(symbolicate(text))
-    } catch {
-      response.writeHead(400).end() // an aborted or oversized post: never take the server down
-    }
+    response.writeHead(200, { 'Content-Type': 'text/plain' })
+    response.end(symbolicate(text))
+  }
+
+  const routes = {
+    '/events': handleEvents,
+    '/bundle.js': handleBundle,
+    '/hot': handleHotMessage,
+    '/symbolicate': handleSymbolicate,
   }
 
   http
     .createServer((request, response) => {
-      if (request.url === '/events') handleEvents(request, response)
-      else if (request.url === '/symbolicate') handleSymbolicate(request, response)
-      else handleBundle(response)
+      const handle = routes[request.url] ?? handlePatch
+      Promise.resolve(handle(request, response)).catch(() => {
+        response.writeHead(400).end() // an aborted or oversized post: never take the server down
+      })
     })
     // Limitation: Every interface, so phones reach it, and anyone on the network can download the bundle.
     .listen(PORT, () => console.log(`dev server: http://localhost:${PORT}`))
 
+  // The bundle only watches the files it has: one added or removed (a new route) needs a new build.
+  // Editors that save by renaming a temporary file keep the file there, which isn't a change.
+  const sourceFiles = new Set(readdirSync('src', { recursive: true }))
+  let restartTimer = null
+  watch('src', { recursive: true }, (_event, file) => {
+    if (!file || existsSync(`src/${file}`) === sourceFiles.has(file)) return
+
+    if (sourceFiles.has(file)) sourceFiles.delete(file)
+    else sourceFiles.add(file)
+
+    clearTimeout(restartTimer)
+    restartTimer = setTimeout(async () => {
+      await vite.restart()
+      reloadApps()
+    }, 100)
+  })
+
   // Without a keepalive, URLSession drops the idle connection.
   setInterval(() => sendToApps(':\n\n'), KEEPALIVE_INTERVAL_MS)
-
-  return {
-    name: 'nativue-reload',
-    // The source map stays in memory: removed from ios/App, so the app never ships it.
-    writeBundle() {
-      symbolicate = createSymbolicator(
-        JSON.parse(readFileSync(SOURCE_MAP_PATH, 'utf8')),
-        BUNDLE_DIRECTORY,
-      )
-      rmSync(SOURCE_MAP_PATH)
-
-      console.log(`reload -> ${connectedApps.size} app(s)`)
-      sendToApps('data: reload\n\n')
-    },
-  }
 }
 
-async function dev() {
-  const reloadPlugin = startDevServer()
-  await build(
-    viteConfig({
-      mode: 'development',
-      plugins: [reloadPlugin],
-      watch: {},
-      sourcemap: 'hidden', // no comment in the bundle: the dev server serves the map
-    }),
-  )
+async function readBody(request) {
+  let text = ''
+  for await (const chunk of request) {
+    text += chunk
+    if (text.length > MAX_STACK_LENGTH) throw new Error('body too long')
+  }
+
+  return text
 }
 
 function isPortFree(port) {
