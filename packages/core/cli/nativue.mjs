@@ -358,6 +358,8 @@ async function dev() {
   }
 
   async function handleBundle(request, response) {
+    // Hot updates leave the bundle Vite serves behind: a reload would run the code from before them.
+    await vite.environments.client.bundledDev.devEngine.ensureLatestBuildOutput()
     const bundle = await fetch(`${viteURL}/assets/entry.js`)
     if (!bundle.ok) {
       response.writeHead(503, { 'Content-Type': 'text/plain' })
