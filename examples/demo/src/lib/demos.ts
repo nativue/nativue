@@ -3,6 +3,7 @@ import type { Component } from 'vue'
 import {
   BlocksIcon,
   BugIcon,
+  ClipboardCopyIcon,
   CompassIcon,
   DatabaseIcon,
   HandIcon,
@@ -108,6 +109,13 @@ export const demoSections: DemoSection[] = [
         subtitle: 'Haptic feedback, with native code: @nativue/haptics',
         icon: VibrateIcon,
         tint: colors.red,
+      },
+      {
+        href: '/explore/clipboard',
+        title: 'Clipboard',
+        subtitle: 'Copy text, with native code: @nativue/clipboard',
+        icon: ClipboardCopyIcon,
+        tint: colors.purple,
       },
       {
         href: '/explore/sqlite',

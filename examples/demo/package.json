@@ -10,6 +10,7 @@
     "typecheck": "vue-tsc"
   },
   "dependencies": {
+    "@nativue/clipboard": "*",
     "@nativue/core": "*",
     "@nativue/haptics": "*",
     "@nativue/icons": "*",

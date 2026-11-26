@@ -19,7 +19,7 @@ to the demo.
 ## Run the demo
 
 The demo app, in `examples/demo`, shows every feature: components, navigation, lists, animations,
-gestures, Tailwind, haptics, SQLite, data and errors. It uses the packages from this repository, so a
+gestures, Tailwind, haptics, clipboard, SQLite, data and errors. It uses the packages from this repository, so a
 change to the framework shows up in it right away.
 
 ```sh
@@ -67,6 +67,7 @@ packages/icons/           icon sets as components, drawn by the native <Svg>
   src/lucide.ts           generated from lucide: `npm run generate -w @nativue/icons`
 packages/tailwind/        Tailwind CSS classes, converted to native styles when the app is built
 packages/haptics/         haptic feedback, an example of a package with native code
+packages/clipboard/       copying text to the clipboard
 packages/sqlite/          SQLite databases, on the SQLite that ships with iOS and Android
 packages/create-nativue/  `npm create nativue`: copies template/ and fills in the app's names
 examples/demo/            the demo app, laid out like any nativue app
@@ -130,4 +131,4 @@ npm run build && npm run typecheck && npm run ios
    `create-nativue`'s.
 2. Commit as `chore: release x.y.z` and push.
 3. Publish the changed packages:
-   `npm publish -w @nativue/core -w create-nativue -w @nativue/tailwind -w @nativue/haptics -w @nativue/sqlite`.
+   `npm publish -w @nativue/core -w create-nativue -w @nativue/tailwind -w @nativue/haptics -w @nativue/clipboard -w @nativue/sqlite`.

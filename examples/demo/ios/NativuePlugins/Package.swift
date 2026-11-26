@@ -10,8 +10,9 @@ let package = Package(
         .package(path: "../../../../packages/core"),
     ],
     targets: [
+        .target(name: "NativueClipboard", dependencies: [.product(name: "Nativue", package: "core")], path: "Sources/NativueClipboard"),
         .target(name: "NativueHaptics", dependencies: [.product(name: "Nativue", package: "core")], path: "Sources/NativueHaptics"),
         .target(name: "NativueSqlite", dependencies: [.product(name: "Nativue", package: "core")], path: "Sources/NativueSqlite"),
-        .target(name: "NativuePlugins", dependencies: [.product(name: "Nativue", package: "core"), "NativueHaptics", "NativueSqlite"], path: "Sources/NativuePlugins"),
+        .target(name: "NativuePlugins", dependencies: [.product(name: "Nativue", package: "core"), "NativueClipboard", "NativueHaptics", "NativueSqlite"], path: "Sources/NativuePlugins"),
     ]
 )

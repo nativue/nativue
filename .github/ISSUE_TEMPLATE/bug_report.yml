@@ -11,6 +11,7 @@ body:
       options:
         - "@nativue/core"
         - "@nativue/icons"
+        - "@nativue/clipboard"
         - "@nativue/haptics"
         - "@nativue/sqlite"
         - "@nativue/tailwind"

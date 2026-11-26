@@ -29,6 +29,8 @@ function detachEverywhere(childId) {
 const reportedErrors = []
 // What @nativue/haptics' native side was called with (its functions come from a plugin).
 const hapticsCalls = []
+// The texts @nativue/clipboard copied.
+const copiedTexts = []
 // The statements @nativue/sqlite sent, as [sql, parameters]: it gets no rows back, and a COUNT gets zeros.
 const sqliteQueries = []
 
@@ -54,6 +56,10 @@ globalThis.__native = {
   'plugin:haptics.impact': (style) => hapticsCalls.push(['impact', style]),
   'plugin:haptics.notification': (type) => hapticsCalls.push(['notification', type]),
   'plugin:haptics.selection': () => hapticsCalls.push(['selection']),
+  'pluginAsync:clipboard.copy': (callId, text) => {
+    copiedTexts.push(text)
+    resolvesWith(false)(callId)
+  },
   'pluginAsync:sqlite.query': fakeSqliteQuery,
   'pluginAsync:sqlite.batch': resolvesWith({ changes: 0, lastInsertId: 0 }),
   'pluginAsync:sqlite.iterate': resolvesWith({ cursorId: 1, columns: [], rows: [], done: true }),
@@ -1069,13 +1075,19 @@ const platformCardId = findViewId(
 )
 assert.ok(viewsById[platformCardId].style.backgroundColor) // ios:bg-sky-100, not android:'s
 
-// ---------- Native plugins (@nativue/haptics) ----------
+// ---------- Native plugins (@nativue/haptics, @nativue/clipboard) ----------
 
 const hapticsId = await open('explore/haptics')
 globalThis.__dispatch(pressableContaining('heavy', hapticsId), 'press')
 globalThis.__dispatch(pressableContaining('error', hapticsId), 'press')
 globalThis.__dispatch(pressableContaining('selection', hapticsId), 'press')
 assert.deepEqual(hapticsCalls, [['impact', 'heavy'], ['notification', 'error'], ['selection']])
+
+const clipboardId = await open('explore/clipboard')
+globalThis.__dispatch(pressableContaining('Copy', clipboardId), 'press')
+await settle()
+assert.deepEqual(copiedTexts, ['Hello from nativue'])
+assert.ok(renderedTexts(clipboardId).includes('Copied'))
 
 // @nativue/sqlite: its async plugin function, and named parameters numbered before they're sent.
 const sqliteId = await open('explore/sqlite')
