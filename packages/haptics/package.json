@@ -1,6 +1,6 @@
 {
   "name": "@nativue/haptics",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Haptic feedback for nativue apps",
   "keywords": [
     "vue",
