@@ -1,6 +1,10 @@
 package dev.nativue
 
 import android.annotation.SuppressLint
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import android.content.pm.ApplicationInfo
 import android.content.res.Configuration
 import android.content.res.ColorStateList
@@ -385,6 +389,17 @@ class Bridge(private val activity: ComponentActivity, private val rootView: Root
             val message = arguments[0] as String
             @Suppress("DEPRECATION") // its replacements (live regions, pane titles) need a view to describe
             mainHandler.post { rootView.announceForAccessibility(message) }
+        }
+        // Google: an app details screen "may not exist" on some devices.
+        put("openSettings") { _ ->
+            val packageURI = Uri.fromParts("package", activity.packageName, null)
+
+            try {
+                activity.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, packageURI))
+                true
+            } catch (error: ActivityNotFoundException) {
+                false
+            }
         }
         // Prefixed, so a plugin can't replace nativue's own functions.
         pluginRegistry.functions.forEach { (name, function) -> put("plugin:$name", function) }

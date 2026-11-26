@@ -139,6 +139,68 @@ try {
 }
 ```
 
+### Permissions
+
+A package reports a permission the same way on both platforms, so apps handle every package alike:
+
+```ts
+interface PermissionResponse {
+  status: 'granted' | 'denied' | 'undetermined' // undetermined: never asked
+  granted: boolean // the feature works, maybe partly
+  canAskAgain: boolean // false: only the system's Settings can change it
+}
+```
+
+Give the package a function that reads it and one that asks for it, both async. A partial state goes
+in a field of its own, named after what it means and absent on a platform that doesn't have it
+(`accessPrivileges: 'limited'` for some photos), with `status: 'granted'`. Its README has a table of
+the platform's states and the fields they give.
+
+```swift
+registry.addAsyncFunction("camera.getPermission") { _ in Self.permission() }
+registry.addAsyncFunction("camera.requestPermission") { _ in
+    _ = await AVCaptureDevice.requestAccess(for: .video)
+
+    return Self.permission()
+}
+
+static func permission() -> [String: Any] {
+    switch AVCaptureDevice.authorizationStatus(for: .video) {
+    case .authorized: permissionResponse(.granted)
+    case .notDetermined: permissionResponse(.undetermined)
+    default: permissionResponse(.denied)
+    }
+}
+```
+
+```kotlin
+val camera = listOf(Manifest.permission.CAMERA)
+
+registry.addAsyncFunction("camera.getPermission") { _, promise -> promise.resolve(registry.permissions.status(camera)) }
+registry.addAsyncFunction("camera.requestPermission") { _, promise ->
+    registry.permissions.request(camera) { promise.resolve(it) }
+}
+```
+
+`registry.permissions` shows the system prompt one request at a time, and works out `undetermined`
+and `canAskAgain`, which Android doesn't report. Add a field with `+ ("accessPrivileges" to "limited")`.
+Pass only the permissions the device's Android version asks for (`POST_NOTIFICATIONS` is 13+).
+
+In the app, `usePermission` keeps it up to date: read on mount, after a request, and when the app
+comes back to the front, in case the user changed it in Settings.
+
+```ts
+import { openSettings, usePermission } from 'vue'
+
+const { permission, request } = usePermission(Camera.getPermission, Camera.requestPermission)
+
+async function scan() {
+  const { granted, canAskAgain } = await request()
+
+  if (!granted && !canAskAgain) await openSettings() // rejects with ERR_UNAVAILABLE if there's no such page
+}
+```
+
 ### The app's lifecycle
 
 On iOS, a plugin that also conforms to `AppLifecycleListener` hears the app's events; implement only

@@ -84,6 +84,8 @@ class PluginRegistry private constructor(context: Context) {
     }
     private val activityListeners = plugins.filterIsInstance<ActivityListener>()
 
+    val permissions = Permissions(this)
+
     fun requireActivity(): ComponentActivity =
         activity ?: throw PluginException("ERR_UNAVAILABLE", "The app has no activity open")
 
@@ -93,6 +95,7 @@ class PluginRegistry private constructor(context: Context) {
      */
     internal fun activityCreated(activity: ComponentActivity) {
         this.activity = activity
+        permissions.activityCreated(activity)
         functions = mutableMapOf()
         asyncFunctions = mutableMapOf()
         viewMakers = mutableMapOf()
@@ -102,6 +105,7 @@ class PluginRegistry private constructor(context: Context) {
 
     internal fun activityDestroyed(activity: ComponentActivity) {
         if (this.activity === activity) this.activity = null
+        permissions.activityDestroyed(activity)
         activityListeners.forEach { it.onActivityDestroyed(activity) }
     }
 
