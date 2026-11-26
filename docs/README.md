@@ -14,7 +14,7 @@ New to nativue? Start with [Getting started](getting-started.md).
 - [Accessibility](accessibility.md): VoiceOver and TalkBack, `role` and `aria-*`, `AccessibilityInfo`
 - [APIs](apis.md): `AsyncStorage`, `fetch`, `Platform`, `Appearance`, `Keyboard`, `Dimensions`,
   `useWindowDimensions`, timers
-- [Packages](packages.md): icons, Tailwind, haptics, SQLite, and writing a package with native code
+- [Packages](packages.md): icons, Tailwind, haptics, clipboard, SQLite, and writing a package with native code
 
 ## Components
 

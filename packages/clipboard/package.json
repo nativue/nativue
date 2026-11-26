@@ -1,0 +1,49 @@
+{
+  "name": "@nativue/clipboard",
+  "version": "0.1.0",
+  "description": "Copy text to the clipboard in nativue apps",
+  "keywords": [
+    "vue",
+    "native",
+    "clipboard",
+    "copy",
+    "nativue"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/nativue/nativue#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nativue/nativue.git",
+    "directory": "packages/clipboard"
+  },
+  "bugs": "https://github.com/nativue/nativue/issues",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "vue-tsc"
+  },
+  "peerDependencies": {
+    "@nativue/core": ">=0.3.0"
+  },
+  "nativue": {
+    "ios": {
+      "sources": "ios",
+      "plugin": "ClipboardPlugin"
+    },
+    "android": {
+      "sources": "android",
+      "plugin": "dev.nativue.clipboard.ClipboardPlugin"
+    }
+  },
+  "files": [
+    "src",
+    "ios",
+    "android/build.gradle.kts",
+    "android/src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
