@@ -26,17 +26,24 @@ either let nativue generate them, or keep them by hand.
 3. Run `npx nativue prebuild --force`, then `git diff ios android`. The diff shows what the generated
    projects lose compared with yours.
 4. Move what you still need out of the diff: native code into `native/<name>/` (see "Native code in
-   your app" in [packages](packages.md)), settings into `nativue.config.ts`. Keys the config doesn't
-   have yet (Info.plist keys, Android permissions, signing for release) need the projects kept by
-   hand for now, below.
+   your app" in [packages](packages.md)), and the rest into `nativue.config.ts` ([app config](app-config.md)):
+   - the version and build number, other URL schemes, the icon and launch screen;
+   - `Info.plist` keys (`ios.infoPlist`) and entitlements (`ios.entitlements`);
+   - Android permissions (`android.permissions`);
+   - release signing (`android.signing`): move the keystore out of `android/`, into `credentials/`.
+
+   Other manifest entries (a `<provider>`, a `<service>`) and resources a `native/` module needs
+   can't move yet: keep the projects by hand for now, below.
+
 5. Stop tracking the folders, and commit:
 
    ```sh
    git rm -r --cached ios android
-   printf '/ios/\n/android/\n' >> .gitignore
+   printf '/ios/\n/android/\n/credentials/\n' >> .gitignore
    ```
 
-6. Build and run on both platforms: `npm run ios`, `npm run android`.
+6. Build and run on both platforms (`npm run ios`, `npm run android`), and a signed release:
+   `npm run build && cd android && ./gradlew bundleRelease`.
 
 ## Keep them by hand
 
@@ -50,5 +57,9 @@ export default defineConfig({
 ```
 
 nativue then leaves `ios/` and `android/` alone, as before 0.14, and only writes
-`ios/NativuePlugins`, which links your packages' native code. To start from what nativue generates,
-run `npx nativue prebuild` once without `prebuild: false`, then add it and commit the folders.
+`ios/NativuePlugins`, which links your packages' native code. The config keeps only `plugins`: the
+other fields (`name`, `ios`, `android`...) are what nativue generates the folders from, so they're an
+error here, and their settings live in the folders themselves.
+
+To start from what nativue generates: run `npx nativue prebuild` once with the full config, then
+replace every field but `plugins` with `prebuild: false`, and commit the folders.

@@ -24,12 +24,45 @@ const SNAPSHOTS = {
   'strings.xml': 'android/app/src/main/res/values/strings.xml',
   'build.gradle.kts': 'android/app/build.gradle.kts',
   'settings.gradle.kts': 'android/settings.gradle.kts',
+  'App.entitlements': 'ios/App.entitlements',
+  'LaunchBackground.json': 'ios/App/Assets.xcassets/LaunchBackground.colorset/Contents.json',
+  'styles.xml': 'android/app/src/main/res/values/styles.xml',
 }
 const CONFIG = {
   name: "Tom's App",
-  scheme: 'tomsapp',
-  ios: { bundleIdentifier: 'com.example.tomsapp', appleTeamId: 'ABCDE12345' },
-  android: { package: 'com.example.tomsapp' },
+  scheme: ['tomsapp', 'toms'],
+  version: '1.2.0',
+  buildNumber: 12,
+  splash: { backgroundColor: '#F1F5F9', darkBackgroundColor: '#0B1220' },
+  ios: {
+    bundleIdentifier: 'com.example.tomsapp',
+    appleTeamId: 'ABCDE12345',
+    infoPlist: { NSCameraUsageDescription: 'Scans receipts' },
+    entitlements: { 'aps-environment': 'development' },
+  },
+  android: {
+    package: 'com.example.tomsapp',
+    permissions: ['android.permission.CAMERA'],
+    signing: {
+      storeFile: './credentials/upload.keystore',
+      keyAlias: 'upload',
+      storePasswordEnv: 'ANDROID_STORE_PASSWORD',
+      keyPasswordEnv: 'ANDROID_KEY_PASSWORD',
+    },
+  },
+}
+const MANUAL_CONFIG = { prebuild: false }
+
+/** Only a PNG's header: what prebuild reads of it, besides copying it. */
+function png(width, height, colorType = 2) {
+  const header = Buffer.alloc(26)
+
+  Buffer.from('89504e470d0a1a0a', 'hex').copy(header)
+  header.writeUInt32BE(width, 16)
+  header.writeUInt32BE(height, 20)
+  header[25] = colorType
+
+  return header
 }
 
 function createApp() {
@@ -210,26 +243,166 @@ try {
     writeFileSync(join(appDirectory, 'ios/Info.plist'), 'hand-made')
     mkdirSync(join(appDirectory, 'native/battery/ios'), { recursive: true })
 
-    linkNativePackages({ appDirectory, coreDirectory: CORE_DIRECTORY })
+    linkNativePackages({ config: MANUAL_CONFIG, appDirectory, coreDirectory: CORE_DIRECTORY })
     assert.ok(isPresent(appDirectory, 'ios/NativuePlugins/Sources/AppBattery'))
     assert.strictEqual(read(appDirectory, 'ios/Info.plist'), 'hand-made')
     assert.ok(!existsSync(join(appDirectory, 'ios/.nativue')))
 
     rmSync(join(appDirectory, 'native'), { recursive: true })
-    linkNativePackages({ appDirectory, coreDirectory: CORE_DIRECTORY })
+    linkNativePackages({ config: MANUAL_CONFIG, appDirectory, coreDirectory: CORE_DIRECTORY })
     assert.ok(!isPresent(appDirectory, 'ios/NativuePlugins/Sources/AppBattery'))
-    assert.deepStrictEqual(linkNativePackages({ appDirectory, coreDirectory: CORE_DIRECTORY }), [])
+    assert.deepStrictEqual(
+      linkNativePackages({ config: MANUAL_CONFIG, appDirectory, coreDirectory: CORE_DIRECTORY }),
+      [],
+    )
   })
 
-  test('lists every invalid config field at once', (appDirectory) => {
-    const config = { name: '', scheme: 'my app', ios: {}, android: { package: 'com.my-app' } }
+  test('with prebuild: false, refuses the fields only generated projects use', (appDirectory) => {
+    assert.throws(
+      () =>
+        linkNativePackages({
+          config: { prebuild: false, name: 'App', ios: {} },
+          appDirectory,
+          coreDirectory: CORE_DIRECTORY,
+        }),
+      (error) => error.message.includes('  name:') && error.message.includes('  ios:'),
+    )
+  })
+
+  test("uses the app's icon and splash images", (appDirectory) => {
+    mkdirSync(join(appDirectory, 'assets'))
+    writeFileSync(join(appDirectory, 'assets/icon.png'), png(1024, 1024))
+    writeFileSync(join(appDirectory, 'assets/splash.png'), png(360, 360))
+    const config = {
+      ...CONFIG,
+      icon: './assets/icon.png',
+      splash: { image: './assets/splash.png' },
+    }
+
+    prebuild({ config, appDirectory, coreDirectory: CORE_DIRECTORY })
+
+    const launchLogo = 'ios/App/Assets.xcassets/LaunchLogo.imageset'
+    const resources = 'android/app/src/main/res'
+    assert.deepStrictEqual(
+      readFileSync(join(appDirectory, 'ios/App/Assets.xcassets/AppIcon.appiconset/icon.png')),
+      png(1024, 1024),
+    )
+    assert.ok(isPresent(appDirectory, `${launchLogo}/logo-dark@3x.png`))
+    assert.ok(!isPresent(appDirectory, `${launchLogo}/logo@1x.png`))
+    assert.ok(isPresent(appDirectory, `${resources}/drawable-night-xxhdpi/splash_image.png`))
+    assert.ok(!isPresent(appDirectory, `${resources}/drawable-xxxhdpi/splash_logo.png`))
+    assert.match(
+      read(appDirectory, `${resources}/drawable/splash_logo.xml`),
+      /android:inset="29.17%"/,
+    )
+    // Without an adaptive icon, the legacy one is used on every version.
+    assert.ok(!isPresent(appDirectory, `${resources}/mipmap-anydpi-v26/ic_launcher.xml`))
+    assert.deepStrictEqual(run(appDirectory, { config }), [])
+  })
+
+  test('checks the size of every image', (appDirectory) => {
+    writeFileSync(join(appDirectory, 'icon.png'), png(512, 512))
+    writeFileSync(join(appDirectory, 'splash.jpg'), 'not a png')
+    mkdirSync(join(appDirectory, 'assets'))
+    const config = {
+      ...CONFIG,
+      icon: './icon.png',
+      splash: { image: './splash.jpg', darkImage: './assets' },
+      android: { ...CONFIG.android, adaptiveIcon: { backgroundColor: '#FFFFFF' } },
+    }
+    const problems = [
+      "icon: ./icon.png must be a 1024×1024 PNG, it's 512×512",
+      "splash.image: ./splash.jpg must be a 360×360 PNG, it's not a PNG",
+      "splash.darkImage: ./assets isn't a file",
+      'android.adaptiveIcon.foregroundImage:',
+    ]
 
     assert.throws(
       () => prebuild({ config, appDirectory, coreDirectory: CORE_DIRECTORY }),
-      (error) =>
-        ['name:', 'scheme:', 'ios.bundleIdentifier:', 'android.package:'].every((field) =>
-          error.message.includes(field),
-        ),
+      (error) => problems.every((problem) => error.message.includes(problem)),
+    )
+  })
+
+  test('refuses a transparent icon, a keystore in android/ and a null platform', (appDirectory) => {
+    writeFileSync(join(appDirectory, 'transparent.png'), png(1024, 1024, 6))
+    const signing = { ...CONFIG.android.signing, storeFile: './Android/upload.keystore' }
+    const config = {
+      ...CONFIG,
+      icon: './transparent.png',
+      ios: null,
+      android: { ...CONFIG.android, signing },
+    }
+    const problems = [
+      'icon: ./transparent.png must have no transparency',
+      'ios.bundleIdentifier:',
+      'android.signing.storeFile:',
+    ]
+
+    assert.throws(
+      () => prebuild({ config, appDirectory, coreDirectory: CORE_DIRECTORY }),
+      (error) => problems.every((problem) => error.message.includes(problem)),
+    )
+  })
+
+  test('merges Info.plist dictionaries, and escapes signing values in Gradle', (appDirectory) => {
+    const config = {
+      ...CONFIG,
+      ios: {
+        ...CONFIG.ios,
+        infoPlist: {
+          NSAppTransportSecurity: { NSExceptionDomains: { 'api.example.com': {} } },
+          CFBundleURLTypes: [{ CFBundleURLSchemes: ['com.googleusercontent.apps.123'] }],
+        },
+      },
+      android: { ...CONFIG.android, signing: { ...CONFIG.android.signing, keyAlias: 'my$"key' } },
+    }
+
+    prebuild({ config, appDirectory, coreDirectory: CORE_DIRECTORY })
+
+    const infoPlist = read(appDirectory, 'ios/Info.plist')
+    assert.match(infoPlist, /NSAllowsLocalNetworking/)
+    assert.match(infoPlist, /api\.example\.com/)
+    assert.match(infoPlist, /<string>tomsapp<\/string>/)
+    assert.match(infoPlist, /com\.googleusercontent\.apps\.123/)
+    assert.match(read(appDirectory, 'android/app/build.gradle.kts'), /keyAlias = "my\\\$\\"key"/)
+  })
+
+  test('says where a hand edit belongs', (appDirectory) => {
+    run(appDirectory)
+    writeFileSync(join(appDirectory, 'ios/Info.plist'), 'edited')
+
+    assert.throws(() => run(appDirectory), /Info\.plist {2}→ ios\.infoPlist/)
+  })
+
+  test('lists every invalid config field at once', (appDirectory) => {
+    const config = {
+      name: '',
+      scheme: 'my app',
+      version: '1.2',
+      buildNumber: 0,
+      ios: { infoPlist: { UIBackgroundModes: null } },
+      android: {
+        package: 'com.my-app',
+        permissions: ['CAMERA'],
+        signing: { storeFile: './android/upload.keystore' },
+      },
+    }
+    const fields = [
+      'name:',
+      'scheme:',
+      'version:',
+      'buildNumber:',
+      'ios.bundleIdentifier:',
+      'ios.infoPlist:',
+      'android.package:',
+      'android.permissions:',
+      'android.signing.storeFile:',
+      'android.signing.keyPasswordEnv:',
+    ]
+
+    assert.throws(
+      () => prebuild({ config, appDirectory, coreDirectory: CORE_DIRECTORY }),
+      (error) => fields.every((field) => error.message.includes(field)),
     )
   })
 } finally {

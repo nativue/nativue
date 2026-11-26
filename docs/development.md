@@ -105,7 +105,9 @@ Native code has no automated tests: check changes in the demo, on both platforms
 
 Every app, the demo included, gets its `ios/` and `android/` from `nativue prebuild`
 (`packages/core/cli/prebuild.mjs`): the files in `packages/core/template`, plus the ones it builds
-from `nativue.config.ts` (the Xcode project, `Info.plist`, the Android manifest and strings). Neither
+from `nativue.config.ts` (`cli/ios-project.mjs`: the Xcode project, `Info.plist`, entitlements,
+icon and launch screen; `cli/android-project.mjs`: the manifest, `app/build.gradle.kts`, strings,
+icon and splash). Neither
 folder is committed. `packages/create-nativue/template` holds the rest of a new app: `src`,
 `package.json`, `tsconfig.json`, `nativue.config.ts`. When a change affects how an app is set up,
 update those in the same change.
