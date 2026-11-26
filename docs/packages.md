@@ -139,6 +139,54 @@ try {
 }
 ```
 
+### The app's lifecycle
+
+On iOS, a plugin that also conforms to `AppLifecycleListener` hears the app's events; implement only
+the ones you need:
+
+```swift
+public final class PushPlugin: NativuePlugin, AppLifecycleListener, NotificationCenterListener {
+    public func didRegisterForRemoteNotifications(deviceToken: Data) { /* keep it, send it to JS */ }
+
+    public func didReceiveRemoteNotification(_ userInfo: [AnyHashable: Any]) async -> UIBackgroundFetchResult {
+        .newData
+    }
+
+    /// Before JavaScript's onOpenURL and the router; true: the URL is taken.
+    public func open(url: URL) -> Bool { url.scheme == "com.googleusercontent.apps.123" }
+
+    public func willPresent(_ notification: UNNotification) async -> UNNotificationPresentationOptions? {
+        [.banner, .sound]
+    }
+}
+```
+
+- nativue is the notification center's delegate; never set `UNUserNotificationCenter.current().delegate`.
+  `willPresent` answers add up (nil leaves it to the others; with none, the notification isn't shown
+  while the app is open), and every `didReceive` runs.
+- Listeners of a remote notification run at once; the app reports `newData` if any had new data.
+  nativue stops waiting for listeners after 25 seconds, before iOS's 30.
+
+On Android, plugins live as long as the app's process, in one `PluginRegistry`, which a service
+started with the app closed (a push arriving) gets with `PluginRegistry.get(this)`. `register` runs
+each time the activity is created: only add functions and views there, and keep state the plugin
+must not lose in its own fields. So:
+
+- Use `registry.applicationContext` for system services. `registry.activity` is the activity on
+  screen, or null: read it when you need it and never keep it, since it's replaced when the activity
+  is recreated. `registry.requireActivity()` throws `ERR_UNAVAILABLE` when there's none.
+  (`registry.context`, from before, is deprecated.)
+- A plugin that implements `ActivityListener` gets `onActivityCreated(activity)` each time the
+  activity is created, and `onActivityDestroyed(activity)` when one goes away. Register
+  activity-result launchers there, every time and in the same order, and listen for new intents with
+  `activity.addOnNewIntentListener`. Its `open(url)` returning true takes a URL the app was opened
+  with before JavaScript's `onOpenURL` and the router, as on iOS.
+- Android may kill the app while another activity (the camera) is in front, and the result then
+  reaches a new process. Save what you need to read it (its options, the output file) in
+  `SharedPreferences` before launching; if no call is waiting when the result comes, keep the result
+  there, and give JavaScript a `getPendingResult()` that returns it once, for the app to call when it
+  starts.
+
 ### Changing the app's native files
 
 A package whose native code needs something in the app's `Info.plist`, entitlements, manifest or
@@ -231,7 +279,7 @@ import dev.nativue.PluginRegistry
 
 class BatteryPlugin : NativuePlugin {
     override fun register(registry: PluginRegistry) {
-        val batteryManager = registry.context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        val batteryManager = registry.applicationContext.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
 
         registry.addFunction("battery.level") {
             batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY) / 100.0

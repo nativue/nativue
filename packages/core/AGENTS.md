@@ -103,7 +103,10 @@ Import the runtime from `vue`: `ref`, `computed`, `StyleSheet`, `Animated`, `Lay
 - Native code the app needs (a platform API no package covers) goes in `native/<name>/ios` and
   `native/<name>/android`, as `<Name>Plugin` classes registering functions JavaScript calls with
   `requireNativeFunction`; libraries it uses (Swift packages, Maven) go in `native/<name>/nativue.json`.
-  See the docs' "Native code in your app". Rebuild after changing it.
+  See the docs' "Native code in your app". Rebuild after changing it. On Android, use
+  `registry.applicationContext`, and `registry.activity` only when needed, without keeping it. App
+  events (push token, notification taps, URLs, activity results) reach plugins implementing
+  `AppLifecycleListener` / `NotificationCenterListener` (iOS) or `ActivityListener` (Android).
 - An iOS app extension (a widget, a Notification Service, a share extension) goes in
   `native/extensions/<name>/`: plain Swift files, plus a `nativue.json` with its `ios.target` (`type`,
   `bundleIdSuffix`). See the docs' "iOS app extensions". `ios.appGroups` in `nativue.config.ts`

@@ -73,6 +73,8 @@ dependencies {
     implementation("com.facebook.soloader:soloader:0.10.5")
     // Insets, system bars, fonts and accessibility the same way down to minSdk.
     implementation("androidx.core:core:1.16.0")
+    // ComponentActivity: activity-result launchers and new-intent listeners for plugins.
+    api("androidx.activity:activity:1.13.0")
     // AppState: whether the app, not one activity, is in front.
     implementation("androidx.lifecycle:lifecycle-process:2.11.1")
 }

@@ -4,6 +4,12 @@ import NativuePlugins
 
 @main
 struct MainApp: App {
+    @UIApplicationDelegateAdaptor(NativueAppDelegate.self) private var appDelegate
+
+    init() {
+        NativueAppDelegate.plugins = nativuePlugins
+    }
+
     var body: some Scene {
         WindowGroup {
             NativueView(plugins: nativuePlugins)

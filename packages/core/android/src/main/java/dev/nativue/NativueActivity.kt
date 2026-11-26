@@ -1,8 +1,8 @@
 package dev.nativue
 
-import android.app.Activity
 import android.content.Intent
 import android.content.res.Configuration
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
@@ -11,11 +11,12 @@ import android.view.ViewTreeObserver
 import android.widget.EditText
 import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
+import androidx.activity.ComponentActivity
 import androidx.annotation.RequiresApi
 import com.facebook.soloader.SoLoader
 
 /** The app's activity: runs assets/main.bundle.js (or, in debug builds, the dev server's bundle). */
-open class NativueActivity : Activity() {
+open class NativueActivity : ComponentActivity() {
     private lateinit var bridge: Bridge
     private var lastRKeyTime = 0L
 
@@ -31,7 +32,13 @@ open class NativueActivity : Activity() {
         bridge = Bridge(this, rootView)
         bridge.onCanGoBackChange = ::setHandlesBack
         bridge.start()
-        intent.data?.let { bridge.openURL(it.toString()) }
+        intent.data?.let(::openURL)
+    }
+
+    private fun openURL(uri: Uri) {
+        val url = uri.toString()
+
+        if (!PluginRegistry.get(this).open(url)) bridge.openURL(url)
     }
 
     /**
@@ -55,7 +62,7 @@ open class NativueActivity : Activity() {
     /** Deep links while running: singleTask brings this activity back instead of starting another. */
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        intent.data?.let { bridge.openURL(it.toString()) }
+        intent.data?.let(::openURL)
     }
 
     /** The manifest's configChanges keep the activity (and the JS state) through uiMode changes. */
@@ -99,7 +106,7 @@ open class NativueActivity : Activity() {
  * release build crashes on launch if the activity itself refers to it.
  */
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-private class PredictiveBack(private val activity: Activity, onBack: () -> Unit) {
+private class PredictiveBack(private val activity: ComponentActivity, onBack: () -> Unit) {
     private val callback = OnBackInvokedCallback(onBack)
 
     fun setRegistered(isRegistered: Boolean) {

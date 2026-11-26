@@ -1,6 +1,5 @@
 package dev.nativue.haptics
 
-import android.app.Activity
 import android.os.Build
 import android.view.HapticFeedbackConstants
 import dev.nativue.NativuePlugin
@@ -20,10 +19,10 @@ class HapticsPlugin : NativuePlugin {
     private val notificationFeedback = mapOf("success" to confirm, "warning" to reject, "error" to reject)
 
     override fun register(registry: PluginRegistry) {
-        val window = (registry.context as Activity).window
-
         fun perform(feedback: Int) {
-            window.decorView.post { window.decorView.performHapticFeedback(feedback) }
+            val decorView = registry.activity?.window?.decorView ?: return
+
+            decorView.post { decorView.performHapticFeedback(feedback) }
         }
 
         registry.addFunction("haptics.impact") { arguments ->

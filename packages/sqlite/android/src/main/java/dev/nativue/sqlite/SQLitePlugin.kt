@@ -19,7 +19,8 @@ class SQLitePlugin : NativuePlugin {
     private val databasesByName = ConcurrentHashMap<String, Database>()
 
     override fun register(registry: PluginRegistry) {
-        val context = registry.context.applicationContext
+        val context = registry.applicationContext
+
         fun database(arguments: List<Any?>): Database {
             val name = arguments[0] as String
 
