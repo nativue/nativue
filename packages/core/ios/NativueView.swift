@@ -13,7 +13,11 @@ public struct NativueView: View {
     public var body: some View {
         VueRoot(plugins: plugins)
             .ignoresSafeArea()
-            .onOpenURL { url in NotificationCenter.default.post(name: Bridge.openURLNotification, object: url) }
+            .onOpenURL { url in
+                guard !NativueAppDelegate.open(url, plugins: plugins) else { return }
+
+                NotificationCenter.default.post(name: Bridge.openURLNotification, object: url)
+            }
     }
 }
 

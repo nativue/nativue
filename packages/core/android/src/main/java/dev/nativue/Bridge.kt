@@ -1,7 +1,6 @@
 package dev.nativue
 
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.content.pm.ApplicationInfo
 import android.content.res.Configuration
 import android.content.res.ColorStateList
@@ -17,6 +16,7 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.ComponentActivity
 import androidx.core.graphics.Insets
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
@@ -43,7 +43,7 @@ import kotlin.concurrent.thread
  * Runs the JS bundle on its own thread and applies the operations sent by the Vue renderer
  * (src/renderer.ts) to Android views + Yoga in batches on the main thread. Mirrors ios/Bridge.swift.
  */
-class Bridge(private val activity: Activity, private val rootView: RootView) {
+class Bridge(private val activity: ComponentActivity, private val rootView: RootView) {
     private val mainHandler = Handler(Looper.getMainLooper())
 
     /** The dev server address that answered last (set by listenForReload, read when symbolicating). */
@@ -62,7 +62,12 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     private val isDebuggable = activity.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
     private val density = activity.resources.displayMetrics.density
     private val storage = KeyValueStorage(activity)
-    private val pluginRegistry = PluginRegistry(activity)
+    private val pluginRegistry = PluginRegistry.get(activity)
+    private val sendToJavaScript: (String, Any?) -> Unit = { eventName, payload ->
+        evaluate { runtime?.call("__nativeEvent", eventName, payload) }
+    }
+    /** A URL that came before the bundle (from the dev server, in debug): sent once it has run. */
+    private var pendingURL: String? = null
 
     /** AppState.current: "active" or "background". Only touched on the JS thread. */
     private var appState = "active"
@@ -104,9 +109,8 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
 
     fun start() {
         NativeNode.setPixelDensity(density)
-        pluginRegistry.sendToJavaScript = { eventName, payload ->
-            evaluate { runtime?.call("__nativeEvent", eventName, payload) }
-        }
+        pluginRegistry.sendToJavaScript = sendToJavaScript
+        pluginRegistry.activityCreated(activity)
         ProcessLifecycleOwner.get().lifecycle.addObserver(appStateObserver)
         rootView.onLayoutPass = ::layout
         NativeNode.onLayoutCalculated = ::reportLayoutChanges
@@ -139,6 +143,9 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     fun destroy() {
         isDestroyed = true
         ProcessLifecycleOwner.get().lifecycle.removeObserver(appStateObserver)
+        // Another activity may have taken them over already.
+        if (pluginRegistry.sendToJavaScript === sendToJavaScript) pluginRegistry.sendToJavaScript = { _, _ -> }
+        pluginRegistry.activityDestroyed(activity)
         reloadConnection?.disconnect()
         animatedGraph.reset() // a looping animation would keep running on the dead views
         javaScriptHandler.post {
@@ -235,7 +242,11 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
 
     /** A URL the app was opened with (deep link), for the router (`__openURL`); after the bundle has run. */
     fun openURL(url: String) {
-        evaluate { runtime?.call("__openURL", url) }
+        evaluate {
+            val runningRuntime = runtime
+
+            if (runningRuntime == null) pendingURL = url else runningRuntime.call("__openURL", url)
+        }
     }
 
     /**
@@ -252,6 +263,8 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
             runtime?.destroy()
             runtime = JavaScriptRuntime(nativeFunctions(), ::reportError)
             runtime?.evaluate(bundle, "main.bundle.js")
+            pendingURL?.let { url -> runtime?.call("__openURL", url) }
+            pendingURL = null
         }
     }
 

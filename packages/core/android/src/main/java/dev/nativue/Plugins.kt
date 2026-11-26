@@ -2,6 +2,7 @@ package dev.nativue
 
 import android.content.Context
 import android.view.View
+import androidx.activity.ComponentActivity
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -46,19 +47,72 @@ class PluginException(val code: String, message: String) : Exception(message)
 /** Called on the JavaScript thread; settles `promise` from any thread, when the work is done. */
 typealias AsyncFunction = (arguments: List<Any?>, promise: Promise) -> Unit
 
-/** `context` is the app's activity. */
-class PluginRegistry internal constructor(val context: Context) {
+interface ActivityListener {
+    /** Register activity-result launchers here, every time and in the same order, so results survive a recreation. */
+    fun onActivityCreated(activity: ComponentActivity) {}
+
+    fun onActivityDestroyed(activity: ComponentActivity) {}
+
+    /** A URL the app was opened with, before JavaScript's onOpenURL and the router. true: taken. */
+    fun open(url: String): Boolean = false
+}
+
+/** One for the whole process, so a service (a push with the app closed) reaches the plugins too. */
+class PluginRegistry private constructor(context: Context) {
+    val applicationContext: Context = context.applicationContext
+
+    /** Never keep it: it's replaced when the activity is recreated. */
+    @Volatile
+    var activity: ComponentActivity? = null
+        private set
+
+    /** Plugins from before 0.14 cast it to Activity. */
+    @Deprecated("Use applicationContext, or activity / requireActivity() for the activity.")
+    val context: Context
+        get() = activity ?: applicationContext
+
     /** Set by the Bridge: calls JavaScript's listeners. */
     internal var sendToJavaScript: (eventName: String, payload: Any?) -> Unit = { _, _ -> }
-    internal val functions = mutableMapOf<String, NativeFunction>()
-    internal val asyncFunctions = mutableMapOf<String, AsyncFunction>()
-    internal val viewMakers = mutableMapOf<String, (SendEvent) -> View>()
+    internal var functions = mutableMapOf<String, NativeFunction>()
+        private set
+    internal var asyncFunctions = mutableMapOf<String, AsyncFunction>()
+        private set
+    internal var viewMakers = mutableMapOf<String, (SendEvent) -> View>()
+        private set
+    private val plugins = pluginClassNames(applicationContext).map { className ->
+        Class.forName(className).getDeclaredConstructor().newInstance() as NativuePlugin
+    }
+    private val activityListeners = plugins.filterIsInstance<ActivityListener>()
 
-    init {
-        pluginClassNames(context).forEach { className ->
-            val plugin = Class.forName(className).getDeclaredConstructor().newInstance() as NativuePlugin
-            plugin.register(this)
-        }
+    fun requireActivity(): ComponentActivity =
+        activity ?: throw PluginException("ERR_UNAVAILABLE", "The app has no activity open")
+
+    /**
+     * Plugins register again for each activity, as when the registry was the activity's: those that
+     * keep what register read (the activity's window) get the new one.
+     */
+    internal fun activityCreated(activity: ComponentActivity) {
+        this.activity = activity
+        functions = mutableMapOf()
+        asyncFunctions = mutableMapOf()
+        viewMakers = mutableMapOf()
+        plugins.forEach { it.register(this) }
+        activityListeners.forEach { it.onActivityCreated(activity) }
+    }
+
+    internal fun activityDestroyed(activity: ComponentActivity) {
+        if (this.activity === activity) this.activity = null
+        activityListeners.forEach { it.onActivityDestroyed(activity) }
+    }
+
+    internal fun open(url: String): Boolean = activityListeners.any { it.open(url) }
+
+    companion object {
+        @Volatile
+        private var instance: PluginRegistry? = null
+
+        fun get(context: Context): PluginRegistry =
+            instance ?: synchronized(this) { instance ?: PluginRegistry(context).also { instance = it } }
     }
 
     /** Runs on the JavaScript thread and returns synchronously: post to the main thread for views. */

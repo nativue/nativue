@@ -61,5 +61,25 @@ nativue then leaves `ios/` and `android/` alone, as before 0.14, and only writes
 other fields (`name`, `ios`, `android`...) are what nativue generates the folders from, so they're an
 error here, and their settings live in the folders themselves.
 
+Since 0.14, `ios/App/App.swift` passes the app's events to packages (push tokens, notifications,
+URLs). Add the two lines to yours:
+
+```swift
+@main
+struct MainApp: App {
+    @UIApplicationDelegateAdaptor(NativueAppDelegate.self) private var appDelegate
+
+    init() {
+        NativueAppDelegate.plugins = nativuePlugins
+    }
+
+    var body: some Scene {
+        WindowGroup {
+            NativueView(plugins: nativuePlugins)
+        }
+    }
+}
+```
+
 To start from what nativue generates: run `npx nativue prebuild` once with the full config, then
 replace every field but `plugins` with `prebuild: false`, and commit the folders.

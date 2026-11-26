@@ -25,7 +25,7 @@
     "typecheck": "vue-tsc"
   },
   "peerDependencies": {
-    "@nativue/core": ">=0.3.0"
+    "@nativue/core": ">=0.14.0"
   },
   "nativue": {
     "ios": {
