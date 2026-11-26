@@ -1,6 +1,7 @@
 // The catalog shown on the Explore tab: one entry per page in app/(tabs)/explore.
 import type { Component } from 'vue'
 import {
+  BellIcon,
   BlocksIcon,
   BugIcon,
   ClipboardCopyIcon,
@@ -116,6 +117,13 @@ export const demoSections: DemoSection[] = [
         subtitle: 'Copy text, with native code: @nativue/clipboard',
         icon: ClipboardCopyIcon,
         tint: colors.purple,
+      },
+      {
+        href: '/explore/notifications',
+        title: 'Notifications',
+        subtitle: 'Local notifications, with native code: @nativue/notifications',
+        icon: BellIcon,
+        tint: colors.orange,
       },
       {
         href: '/explore/sqlite',

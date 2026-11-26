@@ -13,6 +13,7 @@
     "@nativue/clipboard": "*",
     "@nativue/core": "*",
     "@nativue/haptics": "*",
+    "@nativue/notifications": "*",
     "@nativue/icons": "*",
     "@nativue/sqlite": "*",
     "@nativue/tailwind": "*"
