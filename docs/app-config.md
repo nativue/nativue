@@ -43,8 +43,27 @@ export default defineConfig({
 | `android.permissions`  | `<uses-permission>` entries of the manifest. `android.blockedPermissions` removes some, even when a package's manifest asks for them.                                                                                   |
 | `android.adaptiveIcon` | Android 8+'s icon: `foregroundImage`, a square PNG whose logo fits in the middle 61% (launchers crop the rest into their shape), and `backgroundColor`. Without it, `icon` is used, in the shape the launcher gives it. |
 | `android.signing`      | Signs release builds, below.                                                                                                                                                                                            |
+| `resources`            | Files copied into the app: sounds, fonts, XML files a manifest entry points at. Below.                                                                                                                                  |
+| `android.gradle`       | The app's Gradle setup: `dependencies`, `plugins` (`{ id, version }`), `repositories`, `manifestPlaceholders` and `properties` (`gradle.properties`). A package's own dependencies belong in its `build.gradle.kts`.    |
 | `plugins`              | nativue plugins, e.g. `@nativue/tailwind`.                                                                                                                                                                              |
 | `prebuild: false`      | Keeps `ios/` and `android/` by hand instead ([migrating](migrating-to-prebuild.md)).                                                                                                                                    |
+
+## Resources
+
+```ts
+resources: [
+  { source: './assets/chime.wav' },
+  { source: './assets/Inter-Bold.ttf', font: true, android: { name: 'inter_bold' } },
+  { source: './native/share/file_paths.xml', ios: false, android: { type: 'xml' } },
+],
+```
+
+- **iOS:** at the bundle's root, under the file's name (`ios: { destination }` renames it). A font is
+  listed in `UIAppFonts`.
+- **Android:** `res/raw/<name>` by default; `android.type` is `raw`, `font` (the default for a
+  font), `drawable`, `xml` or `assets`. The name defaults to the file's, without its extension, and
+  must be lowercase letters, digits and underscores, except in `assets`.
+- `ios: false` or `android: false` leaves a platform out.
 
 ## Signing Android releases
 

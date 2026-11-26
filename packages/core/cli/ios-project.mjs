@@ -3,6 +3,7 @@
 // removes the template's.
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { appResources, iosFonts } from './app-config.mjs'
 import { applyMods } from './plugins.mjs'
 import { pbxproj, plist } from './serialize.mjs'
 
@@ -234,7 +235,9 @@ function mergeDictionaries(base, overrides = {}) {
 
 /** nativue's keys, then the plugins', then the app's. */
 function infoPlist(app, plugins, context) {
-  const document = applyMods(plugins, 'ios', 'infoPlist', nativueInfoPlist(app), context)
+  const fonts = iosFonts(appResources(app, plugins))
+  const base = { ...nativueInfoPlist(app), ...(fonts.length > 0 && { UIAppFonts: fonts }) }
+  const document = applyMods(plugins, 'ios', 'infoPlist', base, context)
 
   return mergeDictionaries(document, app.ios.infoPlist)
 }
@@ -316,6 +319,18 @@ function launchLogoFiles(splash, readAppFile) {
   }
 }
 
+/** In the app's buildable folder, so Xcode copies them to the bundle's root. */
+function resourceFiles(resources, readAppFile) {
+  return Object.fromEntries(
+    resources
+      .filter(({ ios }) => ios)
+      .map(({ source, ios }) => [
+        `App/Resources/${ios.destination}`,
+        { content: readAppFile(source) },
+      ]),
+  )
+}
+
 /** Paths relative to ios/. */
 export function iosProjectFiles(app, appDirectory, plugins = []) {
   const readAppFile = (path) => readFileSync(resolve(appDirectory, path))
@@ -338,5 +353,6 @@ export function iosProjectFiles(app, appDirectory, plugins = []) {
     }),
     [`${ASSETS}/LaunchBackground.colorset/Contents.json`]: launchBackground(app.splash),
     ...launchLogoFiles(app.splash, readAppFile),
+    ...resourceFiles(appResources(app, plugins), readAppFile),
   }
 }

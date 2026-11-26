@@ -2,9 +2,10 @@
 // or the app (nativue.config.ts's `plugins`) runs on the native files prebuild generates, before the
 // app's own fields, so the app always wins.
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
-import { nativuePackages } from './link.mjs'
+import { appResources, emptyGradle, iosFonts, resourceFile } from './app-config.mjs'
+import { nativuePackages, toPosixPath } from './link.mjs'
 import { escapeXml } from './serialize.mjs'
 
 // Where an app with `prebuild: false` keeps no file of its own; skipped when walking.
@@ -54,17 +55,15 @@ export function applyMods(plugins, platform, mod, document, context) {
   return document
 }
 
-function textFiles(directory, matches) {
+function filesIn(directory) {
   if (!existsSync(directory)) return []
 
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name)
 
-    if (entry.isDirectory()) {
-      return SKIPPED_DIRECTORIES.has(entry.name) ? [] : textFiles(path, matches)
-    }
+    if (entry.isDirectory()) return SKIPPED_DIRECTORIES.has(entry.name) ? [] : filesIn(path)
 
-    return matches(entry.name) ? [readFileSync(path, 'utf8')] : []
+    return [toPosixPath(path)]
   })
 }
 
@@ -97,16 +96,66 @@ function usesPermissions(element) {
   return [...own, ...(element.children ?? []).flatMap(usesPermissions)]
 }
 
-/** What one plugin's mods add on a platform, as { file, entry, isPresent(text) } checks. */
+function isQuoted(content, text) {
+  return content.includes(`"${text}"`) || content.includes(`'${text}'`)
+}
+
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+/** Kotlin or Groovy, either quotes; a dependency at any version. */
+function gradleChecks(gradle) {
+  const inGradle = (entry, isPresent) => ({ file: 'build.gradle.kts', entry, isPresent })
+
+  return [
+    ...gradle.plugins.map(({ id }) => inGradle(`id("${id}")`, (content) => isQuoted(content, id))),
+    ...gradle.dependencies.map((dependency) => {
+      const groupAndArtifact = dependency.split(':').slice(0, 2).join(':')
+
+      return inGradle(`implementation("${dependency}")`, (content) =>
+        content.includes(groupAndArtifact),
+      )
+    }),
+    ...gradle.repositories.map((url) =>
+      inGradle(`maven("${url}")`, (content) => content.includes(url)),
+    ),
+    ...Object.entries(gradle.manifestPlaceholders).map(([key, value]) =>
+      inGradle(`manifestPlaceholders["${key}"] = "${value}"`, (content) =>
+        new RegExp(`\\b${escapeRegExp(key)}\\b`).test(content),
+      ),
+    ),
+    ...Object.entries(gradle.properties).map(([key, value]) => ({
+      file: 'gradle.properties',
+      entry: `${key}=${value}`,
+      isPresent: (content) => new RegExp(`^\\s*${escapeRegExp(key)}\\s*[=:]`, 'm').test(content),
+    })),
+  ]
+}
+
+/** A plugin's resource, by the end of its path. */
+function resourceCheck(file, path) {
+  return { file, entry: path, isPresent: (filePath) => filePath.endsWith(`/${path}`) }
+}
+
+/** What one plugin's mods and resources add on a platform, as { file, entry, isPresent } checks. */
 function pluginRequirements(plugin, platform, { context, manifest }) {
   const run = (mod, document) => applyMods([plugin], platform, mod, document, context)
+  const resources = appResources({}, [plugin])
+  const fonts = iosFonts(resources)
 
   if (platform === 'ios') {
     return [
       ...plistChecks('Info.plist', run('infoPlist', {})),
       ...plistChecks('.entitlements', run('entitlements', {})),
+      ...plistChecks('Info.plist', fonts.length > 0 ? { UIAppFonts: fonts } : {}),
+      ...resources
+        .filter(({ ios }) => ios)
+        .map(({ ios }) => resourceCheck('ios resources', ios.destination)),
     ]
   }
+
+  const gradle = run('gradle', emptyGradle())
 
   const basePermissions = usesPermissions(manifest)
   const addedPermissions = usesPermissions(run('manifest', structuredClone(manifest))).filter(
@@ -124,18 +173,29 @@ function pluginRequirements(plugin, platform, { context, manifest }) {
       entry: `<string name="${name}">${value}</string>`,
       isPresent: (text) => text.includes(`name="${name}"`),
     })),
+    ...gradleChecks(gradle),
+    ...resources
+      .filter(({ android }) => android)
+      .map((resource) => resourceCheck('android resources', resourceFile(resource))),
   ]
 }
 
+/** By check: the texts of the app's files it looks in, or their paths for resources. */
 function projectFiles(appDirectory) {
-  const ios = (matches) => textFiles(join(appDirectory, 'ios'), matches)
-  const android = (matches) => textFiles(join(appDirectory, 'android'), matches)
+  const iosPaths = filesIn(join(appDirectory, 'ios'))
+  const androidPaths = filesIn(join(appDirectory, 'android'))
+  const texts = (paths, matches) =>
+    paths.filter((path) => matches(basename(path))).map((path) => readFileSync(path, 'utf8'))
 
   return {
-    'Info.plist': ios((name) => name.endsWith('Info.plist')),
-    '.entitlements': ios((name) => name.endsWith('.entitlements')),
-    'AndroidManifest.xml': android((name) => name === 'AndroidManifest.xml'),
-    'res/values strings': android((name) => /^strings.*\.xml$/.test(name)),
+    'Info.plist': texts(iosPaths, (name) => name.endsWith('Info.plist')),
+    '.entitlements': texts(iosPaths, (name) => name.endsWith('.entitlements')),
+    'ios resources': iosPaths,
+    'AndroidManifest.xml': texts(androidPaths, (name) => name === 'AndroidManifest.xml'),
+    'res/values strings': texts(androidPaths, (name) => /^strings.*\.xml$/.test(name)),
+    'build.gradle.kts': texts(androidPaths, (name) => /\.gradle(\.kts)?$/.test(name)),
+    'gradle.properties': texts(androidPaths, (name) => name === 'gradle.properties'),
+    'android resources': androidPaths,
   }
 }
 

@@ -145,6 +145,10 @@ export default function push({ channelName = 'Updates' } = {}) {
 }
 ```
 
+- A plugin can also add `resources`, with the shape of the [app config's](app-config.md#resources)
+  and absolute paths (`fileURLToPath(new URL('./chime.wav', import.meta.url))`), and change the
+  app's Gradle files with an `android.gradle` mod: `dependencies`, `plugins`, `repositories`,
+  `manifestPlaceholders`, `properties`. Its own dependencies belong in its `build.gradle.kts`.
 - The app applies it without options, with nothing to configure. To pass options, the app lists it
   in `plugins` (`plugins: [push({ channelName: 'News' })]`), which replaces the default one.
 - Plugins run in the order of the app's dependencies, then `plugins`, and the app's own fields
