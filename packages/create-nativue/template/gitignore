@@ -1,12 +1,5 @@
 node_modules
-ios/build
-ios/App/main.bundle.js
 .DS_Store
-xcuserdata/
-*.xcuserstate
-android/.gradle
-android/.kotlin
-android/build
-android/app/build
-android/app/src/main/assets/main.bundle.js
-android/local.properties
+# Generated from nativue.config.ts by nativue prebuild
+/ios/
+/android/

@@ -1,0 +1,237 @@
+// nativue prebuild on a throwaway app: the generated files against snapshots (UPDATE_SNAPSHOTS=1
+// rewrites them), idempotency, and every way a hand edit stops it.
+import assert from 'node:assert'
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { linkNativePackages, prebuild } from '../cli/prebuild.mjs'
+
+const CORE_DIRECTORY = fileURLToPath(new URL('..', import.meta.url))
+const SNAPSHOTS_DIRECTORY = fileURLToPath(new URL('snapshots', import.meta.url))
+const SNAPSHOTS = {
+  'project.pbxproj': 'ios/App.xcodeproj/project.pbxproj',
+  'Info.plist': 'ios/Info.plist',
+  'AndroidManifest.xml': 'android/app/src/main/AndroidManifest.xml',
+  'strings.xml': 'android/app/src/main/res/values/strings.xml',
+  'build.gradle.kts': 'android/app/build.gradle.kts',
+  'settings.gradle.kts': 'android/settings.gradle.kts',
+}
+const CONFIG = {
+  name: "Tom's App",
+  scheme: 'tomsapp',
+  ios: { bundleIdentifier: 'com.example.tomsapp', appleTeamId: 'ABCDE12345' },
+  android: { package: 'com.example.tomsapp' },
+}
+
+function createApp() {
+  const appDirectory = mkdtempSync(join(tmpdir(), 'nativue-prebuild-test-'))
+  writeFileSync(join(appDirectory, 'package.json'), '{ "dependencies": {} }')
+
+  return appDirectory
+}
+
+function run(appDirectory, options = {}) {
+  return prebuild({ config: CONFIG, appDirectory, coreDirectory: CORE_DIRECTORY, ...options })
+}
+
+const read = (appDirectory, path) => readFileSync(join(appDirectory, path), 'utf8')
+const isPresent = (appDirectory, path) =>
+  lstatSync(join(appDirectory, path), { throwIfNoEntry: false }) !== undefined
+
+/** The core's path, relative to the temporary app, differs between machines. */
+function withoutCorePath(text) {
+  return text.replaceAll(/(\.\.\/)+[^"]*?packages\/core/g, '__CORE_PATH__')
+}
+
+function checkSnapshots(appDirectory) {
+  for (const [snapshot, path] of Object.entries(SNAPSHOTS)) {
+    const snapshotPath = join(SNAPSHOTS_DIRECTORY, snapshot)
+    const generated = withoutCorePath(read(appDirectory, path))
+
+    if (process.env.UPDATE_SNAPSHOTS) writeFileSync(snapshotPath, generated)
+    else assert.strictEqual(generated, readFileSync(snapshotPath, 'utf8'), `${path} vs ${snapshot}`)
+  }
+}
+
+const appDirectories = []
+function test(name, body) {
+  const appDirectory = createApp()
+  appDirectories.push(appDirectory)
+  body(appDirectory)
+  console.log(`ok - ${name}`)
+}
+
+try {
+  test('generates both projects, as in the snapshots', (appDirectory) => {
+    const written = run(appDirectory)
+
+    assert.ok(written.includes('ios/App.xcodeproj/project.pbxproj'))
+    assert.ok(written.includes('android/gradlew'))
+    assert.ok(existsSync(join(appDirectory, 'ios/.nativue/generated.json')))
+    assert.ok(
+      existsSync(
+        join(
+          appDirectory,
+          'ios/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved',
+        ),
+      ),
+    )
+    checkSnapshots(appDirectory)
+  })
+
+  test('writes nothing the second time', (appDirectory) => {
+    run(appDirectory)
+
+    assert.deepStrictEqual(run(appDirectory), [])
+  })
+
+  test('leaves build folders alone, and counts a folder holding only them as empty', (appDirectory) => {
+    mkdirSync(join(appDirectory, 'ios/build/Build'), { recursive: true })
+    writeFileSync(join(appDirectory, 'ios/build/Build/cache'), 'x')
+    mkdirSync(join(appDirectory, 'android/.gradle'), { recursive: true })
+    writeFileSync(join(appDirectory, 'android/local.properties'), 'sdk.dir=/sdk')
+
+    run(appDirectory)
+    run(appDirectory)
+
+    assert.strictEqual(read(appDirectory, 'ios/build/Build/cache'), 'x')
+    assert.strictEqual(read(appDirectory, 'android/local.properties'), 'sdk.dir=/sdk')
+  })
+
+  test('stops, without writing, on a file edited by hand', (appDirectory) => {
+    run(appDirectory)
+    writeFileSync(join(appDirectory, 'ios/Info.plist'), 'edited')
+    const record = read(appDirectory, 'android/.nativue/generated.json')
+
+    assert.throws(() => run(appDirectory), /changed: ios\/Info\.plist/)
+    assert.strictEqual(read(appDirectory, 'ios/Info.plist'), 'edited')
+    assert.strictEqual(read(appDirectory, 'android/.nativue/generated.json'), record)
+  })
+
+  test('stops on a file added by hand', (appDirectory) => {
+    run(appDirectory)
+    writeFileSync(join(appDirectory, 'android/app/src/main/java/Extra.kt'), 'class Extra')
+
+    assert.throws(() => run(appDirectory), /added: {3}android\/app\/src\/main\/java\/Extra\.kt/)
+  })
+
+  test("stops on a folder nativue didn't generate, and leaves it alone", (appDirectory) => {
+    mkdirSync(join(appDirectory, 'ios'))
+    writeFileSync(join(appDirectory, 'ios/Info.plist'), 'hand-made')
+
+    assert.throws(() => run(appDirectory), /ios\/ wasn't generated by nativue/)
+    assert.strictEqual(read(appDirectory, 'ios/Info.plist'), 'hand-made')
+    assert.ok(!existsSync(join(appDirectory, 'android')))
+  })
+
+  test('--force overwrites edited files and deletes added ones', (appDirectory) => {
+    run(appDirectory)
+    const original = read(appDirectory, 'ios/Info.plist')
+    writeFileSync(join(appDirectory, 'ios/Info.plist'), 'edited')
+    writeFileSync(join(appDirectory, 'ios/App/Extra.swift'), '')
+
+    run(appDirectory, { force: true })
+
+    assert.strictEqual(read(appDirectory, 'ios/Info.plist'), original)
+    assert.ok(!existsSync(join(appDirectory, 'ios/App/Extra.swift')))
+    assert.deepStrictEqual(run(appDirectory), [])
+  })
+
+  test("a prebuild that stopped halfway isn't taken for hand edits", (appDirectory) => {
+    run(appDirectory)
+    const recordPath = join(appDirectory, 'ios/.nativue/generated.json')
+    const finished = JSON.parse(readFileSync(recordPath, 'utf8'))
+    const renamed = { ...CONFIG, name: 'Renamed' }
+    const renamedApp = createApp()
+    appDirectories.push(renamedApp)
+    prebuild({ config: renamed, appDirectory: renamedApp, coreDirectory: CORE_DIRECTORY })
+    const pending = JSON.parse(
+      readFileSync(join(renamedApp, 'ios/.nativue/generated.json'), 'utf8'),
+    )
+
+    // As if it stopped after the pending record and one of the new files.
+    writeFileSync(recordPath, JSON.stringify({ ...finished, pending: pending.files }))
+    writeFileSync(join(appDirectory, 'ios/Info.plist'), read(renamedApp, 'ios/Info.plist'))
+
+    const written = prebuild({ config: renamed, appDirectory, coreDirectory: CORE_DIRECTORY })
+
+    assert.ok(written.includes('ios/App.xcodeproj/project.pbxproj'))
+    assert.strictEqual(
+      read(appDirectory, 'ios/App.xcodeproj/project.pbxproj'),
+      read(renamedApp, 'ios/App.xcodeproj/project.pbxproj'),
+    )
+  })
+
+  test('removes files it no longer generates', (appDirectory) => {
+    mkdirSync(join(appDirectory, 'native/battery/ios'), { recursive: true })
+    writeFileSync(join(appDirectory, 'native/battery/ios/BatteryPlugin.swift'), '')
+    run(appDirectory)
+    assert.ok(isPresent(appDirectory, 'ios/NativuePlugins/Sources/AppBattery'))
+
+    rmSync(join(appDirectory, 'native'), { recursive: true })
+    run(appDirectory)
+
+    assert.ok(!isPresent(appDirectory, 'ios/NativuePlugins/Sources/AppBattery'))
+  })
+
+  test('points a team picked in Xcode to ios.appleTeamId', (appDirectory) => {
+    run(appDirectory)
+    const projectPath = join(appDirectory, 'ios/App.xcodeproj/project.pbxproj')
+    writeFileSync(
+      projectPath,
+      readFileSync(projectPath, 'utf8').replaceAll('ABCDE12345', 'ZYXWV98765'),
+    )
+
+    assert.throws(() => run(appDirectory), /appleTeamId: 'ZYXWV98765'/)
+  })
+
+  test('--force replaces a folder where a generated file belongs', (appDirectory) => {
+    run(appDirectory)
+    rmSync(join(appDirectory, 'ios/Info.plist'))
+    mkdirSync(join(appDirectory, 'ios/Info.plist/inside'), { recursive: true })
+    writeFileSync(join(appDirectory, 'ios/Info.plist/inside/file'), '')
+
+    run(appDirectory, { force: true })
+
+    assert.match(read(appDirectory, 'ios/Info.plist'), /<plist/)
+  })
+
+  test("with prebuild: false, only links the packages into the app's own ios/", (appDirectory) => {
+    mkdirSync(join(appDirectory, 'ios'))
+    writeFileSync(join(appDirectory, 'ios/Info.plist'), 'hand-made')
+    mkdirSync(join(appDirectory, 'native/battery/ios'), { recursive: true })
+
+    linkNativePackages({ appDirectory, coreDirectory: CORE_DIRECTORY })
+    assert.ok(isPresent(appDirectory, 'ios/NativuePlugins/Sources/AppBattery'))
+    assert.strictEqual(read(appDirectory, 'ios/Info.plist'), 'hand-made')
+    assert.ok(!existsSync(join(appDirectory, 'ios/.nativue')))
+
+    rmSync(join(appDirectory, 'native'), { recursive: true })
+    linkNativePackages({ appDirectory, coreDirectory: CORE_DIRECTORY })
+    assert.ok(!isPresent(appDirectory, 'ios/NativuePlugins/Sources/AppBattery'))
+    assert.deepStrictEqual(linkNativePackages({ appDirectory, coreDirectory: CORE_DIRECTORY }), [])
+  })
+
+  test('lists every invalid config field at once', (appDirectory) => {
+    const config = { name: '', scheme: 'my app', ios: {}, android: { package: 'com.my-app' } }
+
+    assert.throws(
+      () => prebuild({ config, appDirectory, coreDirectory: CORE_DIRECTORY }),
+      (error) =>
+        ['name:', 'scheme:', 'ios.bundleIdentifier:', 'android.package:'].every((field) =>
+          error.message.includes(field),
+        ),
+    )
+  })
+} finally {
+  appDirectories.forEach((directory) => rmSync(directory, { recursive: true, force: true }))
+}

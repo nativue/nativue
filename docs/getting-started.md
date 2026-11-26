@@ -17,8 +17,7 @@ npm install
 ```
 
 The app's bundle id defaults to `com.example.myapp`. Set yours now with
-`npm create nativue@latest my-app -- --bundle-id com.company.myapp`, or later in Xcode and in
-`android/app/build.gradle.kts`.
+`npm create nativue@latest my-app -- --bundle-id com.company.myapp`, or later in `nativue.config.ts`.
 
 ## Run it
 
@@ -58,8 +57,9 @@ npm run android -- --device    # the first Android phone, with USB debugging on
 `npm run ios -- --device "iPhone 16"`; an unknown one lists what's available.
 
 On iOS, a phone only runs signed apps: sign in to your Apple account in Xcode > Settings > Accounts
-once. The app is signed with your development team, or the one picked under Signing & Capabilities
-in `ios/App.xcodeproj` (needed if you're in several). You can also press Run in Xcode, or in Android
+once. The app is signed with your development team. If you're in several, set the one to use in
+`nativue.config.ts`: `ios: { appleTeamId: 'ABCDE12345' }` (Xcode shows it under Signing &
+Capabilities). You can also press Run in Xcode, or in Android
 Studio for the `android` folder, with `npm run dev` running.
 
 A debug build finds the dev server by itself. An iPhone reaches it through the computer's local
@@ -76,10 +76,9 @@ src/
   lib/             everything else: stores, theme, helpers (optional)
   app.ts           sets the app up before it starts: Vue plugins like Pinia (optional)
   tailwind.css     the Tailwind theme, with @nativue/tailwind (optional)
-ios/               the iOS app (App.xcodeproj): App.swift shows NativueView()
-  NativuePlugins/  generated: nativue and the iOS side of your native packages
-android/           the Android app: MainActivity extends NativueActivity
-nativue.config.ts  plugins, e.g. @nativue/tailwind (optional)
+nativue.config.ts  the app: name, scheme, bundle id, Android package; plugins, e.g. @nativue/tailwind
+ios/               generated from nativue.config.ts: the iOS app (App.xcodeproj); not committed
+android/           generated from nativue.config.ts: the Android app; not committed
 native/            your own native code, a folder per feature (optional; see packages.md)
 AGENTS.md          rules for coding agents; CLAUDE.md points Claude Code at it
 ```

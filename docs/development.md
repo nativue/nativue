@@ -34,8 +34,9 @@ it can't. Changes to native code
 `npm run android` again.
 
 To run it on a phone, start `npm run dev`, then open `examples/demo/ios/App.xcodeproj` in Xcode or
-`examples/demo/android` in Android Studio and press Run. On iOS, pick your team under Signing &
-Capabilities first.
+`examples/demo/android` in Android Studio and press Run. Both folders are generated: `npm run dev`
+creates them, or `npx nativue prebuild` in `examples/demo`. On iOS, with certificates from several
+teams, set yours as `ios.appleTeamId` in `examples/demo/nativue.config.ts`, without committing it.
 
 The demo's screens live in `examples/demo/src/app`, one file per screen: they're also the best
 examples of each feature.
@@ -102,10 +103,12 @@ Native code has no automated tests: check changes in the demo, on both platforms
 
 ## The app template
 
-`packages/create-nativue/template` is what every new app starts from. It must stay in step with the
-demo's host apps (`examples/demo/ios`, `examples/demo/android`): they differ only in names and in the
-path to `@nativue/core`. When a change affects how an app is set up (Xcode settings, `Info.plist`,
-Gradle files, `package.json` scripts, `tsconfig.json`), update the template in the same change.
+Every app, the demo included, gets its `ios/` and `android/` from `nativue prebuild`
+(`packages/core/cli/prebuild.mjs`): the files in `packages/core/template`, plus the ones it builds
+from `nativue.config.ts` (the Xcode project, `Info.plist`, the Android manifest and strings). Neither
+folder is committed. `packages/create-nativue/template` holds the rest of a new app: `src`,
+`package.json`, `tsconfig.json`, `nativue.config.ts`. When a change affects how an app is set up,
+update those in the same change.
 
 To check that a new app still works end to end:
 

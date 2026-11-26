@@ -96,6 +96,8 @@ Import the runtime from `vue`: `ref`, `computed`, `StyleSheet`, `Animated`, `Lay
   `native/<name>/android`, as `<Name>Plugin` classes registering functions JavaScript calls with
   `requireNativeFunction`; libraries it uses (Swift packages, Maven) go in `native/<name>/nativue.json`.
   See the docs' "Native code in your app". Rebuild after changing it.
-- Check changes with `npm run typecheck`. `ios/` and `android/` are the native host apps: change them
-  only for native settings (permissions in `Info.plist` or `AndroidManifest.xml`, the app's name and
-  icon).
+- Check changes with `npm run typecheck`.
+- `ios/` and `android/` are generated from `nativue.config.ts` (the app's name, scheme, bundle id and
+  Android package) by `npx nativue prebuild`, which `dev`, `build` and `run` also run: never edit
+  them, nor commit them. Prebuild stops with an error when they were changed by hand. An app with
+  `prebuild: false` in `nativue.config.ts` keeps them by hand instead.

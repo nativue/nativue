@@ -10,8 +10,8 @@ npm run ios                         # or: npm run android
 ```
 
 The app's bundle id defaults to `com.example.myapp`. Set yours with
-`npm create nativue@latest my-app -- --bundle-id com.company.myapp`, or later in Xcode and in
-`android/app/build.gradle.kts`.
+`npm create nativue@latest my-app -- --bundle-id com.company.myapp`, or later in `nativue.config.ts`.
+`ios/` and `android/` are generated from that file, the first time you run the app.
 
 The new app has a starter screen, TypeScript, and these scripts:
 

@@ -150,7 +150,7 @@ function signingSettings() {
       ? 'No Apple Development certificate on this Mac: sign in to your Apple account in Xcode > Settings > Accounts,'
       : 'Your certificates belong to several teams:'
   throw new Error(
-    `${reason} then pick your team in ios/App.xcodeproj, under Signing & Capabilities.`,
+    `${reason} then set your team id in nativue.config.ts: ios: { appleTeamId: 'ABCDE12345' } (it's under Signing & Capabilities in Xcode). With prebuild: false, pick the team in ios/App.xcodeproj instead.`,
   )
 }
 
@@ -184,7 +184,7 @@ function buildIOSApp(destination, isSimulator) {
     if (isSimulator) throw error
 
     throw new Error(
-      'The build for the phone failed. If it is about signing, open ios/App.xcodeproj in Xcode and check Signing & Capabilities.',
+      'The build for the phone failed. If it is about signing, check ios.appleTeamId in nativue.config.ts, and your account in Xcode > Settings > Accounts.',
     )
   }
 }
