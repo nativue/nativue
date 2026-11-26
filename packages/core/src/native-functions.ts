@@ -9,13 +9,27 @@ type PendingCall = { resolve: (value: unknown) => void; reject: (error: Error) =
 const pendingCalls = new Map<number, PendingCall>()
 let nextCallId = 1
 
-globalThis.__asyncFunctionFinished = (callId, value, errorMessage) => {
+/**
+ * An async native function's rejection. `code` is the plugin's, when it gave one:
+ * 'ERR_PERMISSION_DENIED', 'ERR_UNAVAILABLE', 'ERR_CANCELED', 'ERR_INVALID_ARGUMENT', or its own.
+ */
+export class NativeError extends Error {
+  readonly code: string | undefined
+
+  constructor(message: string, code: string | undefined) {
+    super(message)
+    this.name = 'NativeError'
+    this.code = code
+  }
+}
+
+globalThis.__asyncFunctionFinished = (callId, value, errorMessage, errorCode) => {
   const call = pendingCalls.get(callId)
   if (!call) return
 
   pendingCalls.delete(callId)
   if (errorMessage === null) call.resolve(value)
-  else call.reject(new Error(errorMessage))
+  else call.reject(new NativeError(errorMessage, errorCode ?? undefined))
 }
 
 function asyncCaller(nativeFunction: (...args: unknown[]) => unknown) {

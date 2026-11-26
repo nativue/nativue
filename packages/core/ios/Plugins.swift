@@ -15,6 +15,8 @@ public final class PluginRegistry {
     public typealias SendEvent = (_ eventName: String, _ payload: Any?) -> Void
     public typealias MakeView = (_ sendEvent: @escaping SendEvent) -> UIView
 
+    /// Set by the Bridge: calls JavaScript's listeners.
+    var sendToJavaScript: (_ eventName: String, _ payload: Any?) -> Void = { _, _ in }
     private(set) var functions: [String: Function] = [:]
     private(set) var asyncFunctions: [String: AsyncFunction] = [:]
     private(set) var viewMakers: [String: MakeView] = [:]
@@ -34,10 +36,32 @@ public final class PluginRegistry {
         asyncFunctions[name] = function
     }
 
+    /// Reaches JavaScript's addNativeListener(eventName) listeners, from any thread, e.g.
+    /// sendEvent("notifications.received", payload). Dropped while no JavaScript runs: keep what must
+    /// outlive it (a push token) and let JavaScript read it with a function.
+    public func sendEvent(_ eventName: String, _ payload: Any? = nil) {
+        sendToJavaScript(eventName, payload)
+    }
+
     /// `type` is the element's tag, e.g. "MapView" for h('MapView'). Created on the main thread.
     public func addView(_ type: String, _ makeView: @escaping MakeView) {
         viewMakers[type] = makeView
     }
+}
+
+/// Thrown by an async function: JavaScript's Promise rejects with an Error whose `code` is this one.
+/// Codes nativue's packages share: ERR_PERMISSION_DENIED, ERR_UNAVAILABLE, ERR_CANCELED,
+/// ERR_INVALID_ARGUMENT.
+public struct PluginError: LocalizedError {
+    public let code: String
+    public let message: String
+
+    public init(code: String, message: String) {
+        self.code = code
+        self.message = message
+    }
+
+    public var errorDescription: String? { message }
 }
 
 /// A plugin view gets its props here, all but `style`, which nativue applies (layout included).

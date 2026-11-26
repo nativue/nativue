@@ -29,6 +29,7 @@ import {
 import { processColor } from './colors'
 import { Pressable } from './components'
 import type { SvgIcon } from './native-components'
+import { setURLNavigation } from './native-events'
 import { createApp } from './renderer'
 
 export type Params = Record<string, string | string[]>
@@ -549,7 +550,7 @@ function hrefFromURL(url: string): string {
   return url.replace(/^[a-z][a-z0-9+.-]*:\/\//i, '/')
 }
 
-globalThis.__openURL = (url) => router.navigate(hrefFromURL(url))
+setURLNavigation((url) => router.navigate(hrefFromURL(url)))
 
 // ---------- Components ----------
 

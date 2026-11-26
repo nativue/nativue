@@ -18,6 +18,9 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import androidx.core.graphics.Insets
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsAnimationCompat
 import androidx.core.view.WindowInsetsCompat
@@ -61,6 +64,15 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     private val storage = KeyValueStorage(activity)
     private val pluginRegistry = PluginRegistry(activity)
 
+    /** AppState.current: "active" or "background". Only touched on the JS thread. */
+    private var appState = "active"
+    /** The whole app's, not the activity's: another activity of the app in front keeps it active. */
+    private val appStateObserver = object : DefaultLifecycleObserver {
+        override fun onResume(owner: LifecycleOwner) = appStateDidChange("active")
+
+        override fun onStop(owner: LifecycleOwner) = appStateDidChange("background")
+    }
+
     // Only touched on the JS thread.
     private var runtime: JavaScriptRuntime? = null
     private var pendingOperations = mutableListOf<() -> Unit>()
@@ -92,6 +104,10 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
 
     fun start() {
         NativeNode.setPixelDensity(density)
+        pluginRegistry.sendToJavaScript = { eventName, payload ->
+            evaluate { runtime?.call("__nativeEvent", eventName, payload) }
+        }
+        ProcessLifecycleOwner.get().lifecycle.addObserver(appStateObserver)
         rootView.onLayoutPass = ::layout
         NativeNode.onLayoutCalculated = ::reportLayoutChanges
         ViewCompat.setOnApplyWindowInsetsListener(rootView) { view, insets ->
@@ -122,6 +138,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     /** On the main thread, when the activity is destroyed. */
     fun destroy() {
         isDestroyed = true
+        ProcessLifecycleOwner.get().lifecycle.removeObserver(appStateObserver)
         reloadConnection?.disconnect()
         animatedGraph.reset() // a looping animation would keep running on the dead views
         javaScriptHandler.post {
@@ -135,12 +152,25 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
     private fun asyncCall(function: AsyncFunction): NativeFunction = { arguments ->
         val callId = int(arguments[0])
         val owner = runtime
-        val promise = Promise { value, errorMessage ->
-            callIfStillRunning(owner, "__asyncFunctionFinished", callId, value, errorMessage)
+        val promise = Promise { value, errorMessage, errorCode ->
+            callIfStillRunning(owner, "__asyncFunctionFinished", callId, value, errorMessage, errorCode)
         }
 
-        runCatching { function(arguments.drop(1), promise) }.onFailure { promise.reject(it.message ?: it.toString()) }
+        runCatching { function(arguments.drop(1), promise) }.onFailure { error ->
+            val message = error.message ?: error.toString()
+
+            if (error is PluginException) promise.reject(error.code, message) else promise.reject(message)
+        }
         null
+    }
+
+    private fun appStateDidChange(nextAppState: String) {
+        evaluate {
+            if (nextAppState == appState) return@evaluate
+
+            appState = nextAppState
+            runtime?.call("__nativeEvent", "app.state", nextAppState)
+        }
     }
 
     fun onConfigurationChanged() {
@@ -334,6 +364,7 @@ class Bridge(private val activity: Activity, private val rootView: RootView) {
         put("windowSize") { _ -> windowSize }
         put("platform") { _ -> "android" }
         put("colorScheme") { _ -> colorScheme() }
+        put("appState") { _ -> appState }
         put("savedNavigation") { _ -> savedNavigation }
         put("saveNavigation") { arguments -> savedNavigation = arguments[0] as String }
         put("accessibilityInfo") { _ -> accessibilityStatus(activity) }

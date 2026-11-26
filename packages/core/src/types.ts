@@ -115,6 +115,7 @@ export interface NativeModule {
   windowSize(): { width: number; height: number }
   platform(): 'ios' | 'android'
   colorScheme(): 'light' | 'dark'
+  appState(): 'active' | 'background'
   /** Development: the navigation saveNavigation kept, which outlives the JavaScript runtime. */
   savedNavigation(): string | null
   saveNavigation(routes: string): void
