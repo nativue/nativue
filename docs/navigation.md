@@ -189,8 +189,7 @@ useFocusEffect(() => {
 ## Deep links
 
 Every app has a URL scheme, from its name: `my-app` opens links like `myapp://items/42`, which
-navigate to `/items/42`. Change the scheme in `ios/Info.plist` (`CFBundleURLSchemes`) and in
-`android/app/src/main/AndroidManifest.xml`.
+navigate to `/items/42`. Change it with `scheme` in `nativue.config.ts`, then rebuild the app.
 
 Try it on a simulator with `xcrun simctl openurl booted myapp://items/42`, or on an emulator with
 `adb shell am start -a android.intent.action.VIEW -d myapp://items/42`.

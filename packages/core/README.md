@@ -19,6 +19,7 @@ This package holds:
 nativue run ios          # or android: builds, opens the app on a simulator or emulator, then dev
 nativue dev              # updates the running app on save
 nativue build            # bundles the app into ios/ and android/ (--production for releases)
+nativue prebuild         # generates ios/ and android/ from nativue.config.ts (the others run it too)
 ```
 
 ## Documentation

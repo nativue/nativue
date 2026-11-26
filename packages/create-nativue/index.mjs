@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 
 const TEMPLATE_DIRECTORY = fileURLToPath(new URL('./template', import.meta.url))
-const TEXT_FILE = /(\.(json|vue|ts|plist|pbxproj|resolved|swift|kt|kts|xml|md)|gitignore)$/
+const TEXT_FILE = /(\.(json|vue|ts|md)|gitignore)$/
 // Also the Android package and applicationId, which can't have hyphens.
 const BUNDLE_ID = /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/
 const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
@@ -72,8 +72,8 @@ if (/\s/.test(projectName)) {
 const projectDirectory = resolve(projectName)
 const projectPath = relative(process.cwd(), projectDirectory) || '.'
 const slug = slugify(basename(projectDirectory))
-// Bundle ids and URL schemes allow neither dashes nor underscores here.
-const urlScheme = slug.replace(/[-_]/g, '')
+// Bundle ids and URL schemes allow neither dashes nor underscores here, and start with a letter.
+const urlScheme = slug.replace(/[-_]/g, '').replace(/^(?=\d)/, 'app')
 const bundleId = options['bundle-id'] ?? `com.example.${urlScheme}`
 
 if (!slug) fail('The project name needs at least one letter or digit.')
@@ -101,8 +101,8 @@ Created ${displayNameOf(slug)} in ${projectPath}
   npm run ios                 or npm run android: opens the app on a simulator or emulator, then
                               keeps running, rebuilding and reloading the app on save
 
-  On your phone: open ios/App.xcodeproj in Xcode, or the android folder in Android Studio, and
-  press Run, with npm run dev running
+  On your phone: run npx nativue prebuild, open ios/App.xcodeproj in Xcode, or the android folder
+  in Android Studio, and press Run, with npm run dev running
 
-Bundle id: ${bundleId} (set it with --bundle-id, or later in Xcode and android/app/build.gradle.kts)
+Bundle id: ${bundleId} (set it with --bundle-id, or later in nativue.config.ts)
 `)

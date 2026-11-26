@@ -1,22 +1,32 @@
 # App template
 
-`packages/create-nativue/template/` is what every new app starts from. When a change to the
-framework (`packages/core`, `packages/icons`, the CLI) or to the demo's host app
-(`examples/demo/ios`, `package.json`, `tsconfig.json`) affects how an app is set up, update the
-template in the same change, for example:
+A new app is two parts, both generated:
 
-- the iOS host app: `App.xcodeproj` settings or build phases, `Info.plist` keys, `App.swift`, assets
-- the app's `package.json` scripts or dependencies, `tsconfig.json`, `.gitignore` (shipped as
-  `template/gitignore`), `src/env.d.ts`
+- `packages/create-nativue/template/`: the JS app, copied once by `npm create nativue` (`src`,
+  `package.json`, `tsconfig.json`, `nativue.config.ts`, `.gitignore` shipped as `template/gitignore`).
+- `ios/` and `android/`: written by `nativue prebuild` (`packages/core/cli/prebuild.mjs`) on every
+  `dev`, `build` and `run`, from `packages/core/template/{ios,android}` plus the files it builds from
+  `nativue.config.ts` (the Xcode project in `cli/ios-project.mjs`, the Android manifest and strings in
+  `cli/android-project.mjs`). Apps, the demo included, don't commit them.
+
+When a change to the framework (`packages/core`, `packages/icons`, the CLI) affects how an app is set
+up, update the right part in the same change, for example:
+
+- Xcode settings, build phases or `Info.plist` keys: `cli/ios-project.mjs`; `App.swift` and assets:
+  `packages/core/template/ios`
+- the Android manifest: `cli/android-project.mjs`; Gradle files and resources:
+  `packages/core/template/android`
+- a new `nativue.config.ts` field: `cli/config.d.mts`, its validation in `cli/prebuild.mjs`, and the
+  template's `nativue.config.ts` when every app needs it
+- the app's `package.json` scripts or dependencies, `tsconfig.json`, `.gitignore`, `src/env.d.ts`
 - a renamed or removed API that `template/src` uses
-- a new platform folder (e.g. `android/`) or file every app needs
+
+Then update the prebuild snapshots (`UPDATE_SNAPSHOTS=1 node packages/core/test/prebuild.test.mjs`)
+and review their diff.
 
 When a change adds, renames or removes something apps use (a component, prop, API, route feature or
 package), update `packages/core/AGENTS.md` too: it's the guide coding agents read in every app.
 
-Keep the demo's host app and the template's in step: they differ only in names and the path to the
-Swift package (`../../../packages/core` in the demo, `../node_modules/@nativue/core` in the template).
-
 After such a change, check a generated app still works end to end: `npm pack` @nativue/core, create an
 app with `node packages/create-nativue/index.mjs` in the scratchpad, install the tarball, then
-`npm run build`, `npm run typecheck` and an iOS build.
+`npm run build`, `npm run typecheck`, and the iOS and Android builds.

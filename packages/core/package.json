@@ -32,7 +32,7 @@
     }
   },
   "scripts": {
-    "test": "(cd ../../examples/demo && nativue build) && node test/test.mjs",
+    "test": "(cd ../../examples/demo && nativue build) && node test/test.mjs && node test/prebuild.test.mjs",
     "typecheck": "vue-tsc"
   },
   "dependencies": {
@@ -50,6 +50,7 @@
   "files": [
     "src",
     "cli",
+    "template",
     "ios",
     "Package.swift",
     "tsconfig.base.json",

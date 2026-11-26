@@ -41,7 +41,7 @@ imports before it starts (`runtime`).
 
 Apps find it among their dependencies, with nothing to configure:
 
-- **iOS:** the nativue CLI (`dev`, `build`, `run`) writes `ios/NativuePlugins`, a Swift package with
+- **iOS:** `nativue prebuild` (also run by `dev`, `build` and `run`) writes `ios/NativuePlugins`, a Swift package with
   a target per package, made of its `sources` folder, and the list of plugins `App.swift` passes to
   `NativueView`. The target's module is named after the package (`@nativue/haptics` →
   `NativueHaptics`).

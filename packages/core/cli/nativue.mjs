@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 // The nativue CLI, run from the app's folder:
+//   nativue prebuild [ios | android] [--force]
+//                                  generates ios/ and android/ from nativue.config.ts (dev, build and
+//                                    run do it first); --force discards changes made to them by hand
 //   nativue build                  bundles src/app/ into ios/App/main.bundle.js (and, with an android/
 //                                    folder, android/app/src/main/assets/main.bundle.js); Hermes bytecode
 //                                    with --production
@@ -26,7 +29,7 @@ import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { linkIosPlugins } from './link.mjs'
+import { linkNativePackages, PLATFORMS, prebuild } from './prebuild.mjs'
 import { runOnAndroid, runOnIOS } from './run.mjs'
 import { createSymbolicator, framedFiles } from './symbolicate.mjs'
 
@@ -182,7 +185,8 @@ function pluginRuntimes(plugins) {
   }
 }
 
-const { plugins: appPlugins = [] } = await loadAppConfig()
+const appConfig = await loadAppConfig()
+const appPlugins = appConfig.plugins ?? []
 const APP_VITE_PLUGINS = [
   pluginRuntimes(appPlugins),
   ...appPlugins.flatMap((plugin) => plugin.vite ?? []),
@@ -508,12 +512,38 @@ async function runApp(platform, args) {
   console.log('\nA dev server is already running: the app reloads from it.')
 }
 
+// The platforms dev and build generate: iOS needs a Mac, where its projects build.
+const LOCAL_PLATFORMS = process.platform === 'darwin' ? PLATFORMS : ['android']
+
+/** ios/ and android/ from nativue.config.ts, or, with `prebuild: false`, only the packages' links. */
+function generateNativeProjects(platforms, { force = false } = {}) {
+  const directories = { appDirectory: process.cwd(), coreDirectory: frameworkPath('') }
+  const changedPaths =
+    appConfig.prebuild === false
+      ? linkNativePackages(directories)
+      : prebuild({ ...directories, config: appConfig, platforms, force })
+
+  if (changedPaths.length > 0) console.log(`prebuild: ${changedPaths.length} file(s) updated`)
+}
+
 const [command, ...args] = process.argv.slice(2)
 
 try {
-  if (['dev', 'build', 'run'].includes(command)) linkIosPlugins(frameworkPath(''))
+  if (command === 'dev' || command === 'build') generateNativeProjects(LOCAL_PLATFORMS)
+  if (command === 'run' && RUNNERS[args[0]]) generateNativeProjects([args[0]])
 
-  if (command === 'dev') {
+  if (command === 'prebuild') {
+    if (appConfig.prebuild === false) {
+      throw new Error(
+        'nativue.config.ts has prebuild: false, so the app keeps ios/ and android/ by hand.',
+      )
+    }
+
+    const platforms = PLATFORMS.filter((platform) => args.includes(platform))
+    generateNativeProjects(platforms.length > 0 ? platforms : PLATFORMS, {
+      force: args.includes('--force'),
+    })
+  } else if (command === 'dev') {
     await dev()
   } else if (command === 'build') {
     await build(
@@ -525,7 +555,7 @@ try {
     await runApp(args[0], args.slice(1))
   } else {
     console.log(
-      'usage: nativue <dev | build [--production] | run <ios | android> [--device [name or id]] [--no-dev]>',
+      'usage: nativue <prebuild [ios | android] [--force] | dev | build [--production] | run <ios | android> [--device [name or id]] [--no-dev]>',
     )
     process.exitCode = 1
   }

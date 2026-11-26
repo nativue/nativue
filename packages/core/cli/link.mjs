@@ -1,36 +1,31 @@
-// Links the iOS side of the app's packages: those whose package.json has
+// The iOS side of the app's packages, those whose package.json has
 //   "nativue": { "ios": { "sources": "ios", "plugin": "HapticsPlugin" } }
-// ios/NativuePlugins becomes a Swift package with a target per package (a link to its sources) and
-// `nativuePlugins`, the list App.swift passes to NativueView. The app's Xcode project depends on it
-// alone; it re-exports Nativue. (Android finds them itself: android/nativue.settings.gradle.kts.)
+// for prebuild to write: ios/NativuePlugins, a Swift package with a target per package (a link to its
+// sources) and `nativuePlugins`, the list App.swift passes to NativueView. The app's Xcode project
+// depends on it alone; it re-exports Nativue. (Android finds them itself:
+// android/nativue.settings.gradle.kts.)
 // The app's own native code links the same way: native/<name>/ios, whose plugin is <Name>Plugin.
 // Swift packages the native code uses are listed in "ios": { "dependencies": [...] }, in the
 // package.json's "nativue" field or native/<name>/nativue.json:
 //   { "url": "https://github.com/stripe/stripe-ios-spm", "from": "24.0.0", "products": ["StripePaymentSheet"] }
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  readlinkSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs'
-import { dirname, join, relative, resolve } from 'node:path'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { dirname, join, relative, sep } from 'node:path'
 
-const PLUGINS_DIRECTORY = 'ios/NativuePlugins'
-const SOURCES_DIRECTORY = `${PLUGINS_DIRECTORY}/Sources`
+const PLUGINS_DIRECTORY = 'NativuePlugins'
 const LIST_TARGET = 'NativuePlugins'
-const APP_NATIVE_DIRECTORY = 'native'
+
+/** Paths in generated files, links and prebuild's records use '/', on Windows too. */
+export function toPosixPath(path) {
+  return path.split(sep).join('/')
+}
 
 function readJson(path) {
   return JSON.parse(readFileSync(path, 'utf8'))
 }
 
 /** node_modules/<name>, looked up the way Node does: in the app's folder, then in its parents. */
-function packageDirectory(name) {
-  for (let directory = process.cwd(); ; directory = dirname(directory)) {
+function packageDirectory(name, appDirectory) {
+  for (let directory = appDirectory; ; directory = dirname(directory)) {
     const candidate = join(directory, 'node_modules', name)
     if (existsSync(join(candidate, 'package.json'))) return candidate
     if (directory === dirname(directory)) return null
@@ -46,12 +41,12 @@ function moduleName(packageName) {
     .join('')
 }
 
-function iosPlugins() {
-  const { dependencies = {}, devDependencies = {} } = readJson('package.json')
+function iosPlugins(appDirectory) {
+  const { dependencies = {}, devDependencies = {} } = readJson(join(appDirectory, 'package.json'))
   const names = [...Object.keys(dependencies), ...Object.keys(devDependencies)]
 
   return names.flatMap((name) => {
-    const directory = packageDirectory(name)
+    const directory = packageDirectory(name, appDirectory)
     const ios = directory && readJson(join(directory, 'package.json')).nativue?.ios
     if (!ios) return []
 
@@ -67,14 +62,15 @@ function iosPlugins() {
 }
 
 /** native/<name>/ios: module App<Name> (not <Name>, which could hide a system module like Photos). */
-function appPlugins() {
-  if (!existsSync(APP_NATIVE_DIRECTORY)) return []
+function appPlugins(appDirectory) {
+  const nativeDirectory = join(appDirectory, 'native')
+  if (!existsSync(nativeDirectory)) return []
 
-  return readdirSync(APP_NATIVE_DIRECTORY).flatMap((name) => {
-    const sources = resolve(APP_NATIVE_DIRECTORY, name, 'ios')
+  return readdirSync(nativeDirectory).flatMap((name) => {
+    const sources = join(nativeDirectory, name, 'ios')
     if (!existsSync(sources)) return []
 
-    const settingsPath = join(APP_NATIVE_DIRECTORY, name, 'nativue.json')
+    const settingsPath = join(nativeDirectory, name, 'nativue.json')
     const settings = existsSync(settingsPath) ? readJson(settingsPath) : {}
 
     return [
@@ -86,33 +82,6 @@ function appPlugins() {
       },
     ]
   })
-}
-
-function writeIfChanged(path, content) {
-  if (existsSync(path) && readFileSync(path, 'utf8') === content) return
-
-  mkdirSync(dirname(path), { recursive: true })
-  writeFileSync(path, content)
-}
-
-/** Sources/<module> -> the package's sources; links of packages the app no longer has are removed. */
-function linkSources(plugins) {
-  const linkTargets = new Map(
-    plugins.map((plugin) => [plugin.module, relative(SOURCES_DIRECTORY, plugin.sources)]),
-  )
-  mkdirSync(SOURCES_DIRECTORY, { recursive: true })
-
-  for (const entry of readdirSync(SOURCES_DIRECTORY)) {
-    if (entry !== LIST_TARGET && !linkTargets.has(entry)) rmSync(join(SOURCES_DIRECTORY, entry))
-  }
-
-  for (const [module, target] of linkTargets) {
-    const link = join(SOURCES_DIRECTORY, module)
-    if (existsSync(link) && readlinkSync(link) === target) continue
-
-    rmSync(link, { force: true })
-    symlinkSync(target, link)
-  }
 }
 
 /** SwiftPM's identity of a package: the last part of its URL, without .git, lowercased. */
@@ -149,7 +118,7 @@ function packageManifest(plugins, corePath) {
   const listDependencies = [nativue, ...plugins.map(({ module }) => `"${module}"`)].join(', ')
 
   return `// swift-tools-version: 5.9
-// Generated by nativue from the app's packages (packages/core/cli/link.mjs): rewritten on every build.
+// Generated by nativue prebuild from the app's packages: rewritten on every build.
 import PackageDescription
 
 let package = Package(
@@ -170,21 +139,33 @@ function pluginList(plugins) {
   const imports = plugins.map(({ module }) => `import ${module}\n`).join('')
   const instances = plugins.map(({ plugin }) => `${plugin}()`).join(', ')
 
-  return `// Generated by nativue from the app's packages (packages/core/cli/link.mjs): rewritten on every build.
+  return `// Generated by nativue prebuild from the app's packages: rewritten on every build.
 @_exported import Nativue
 ${imports}
 public let nativuePlugins: [NativuePlugin] = [${instances}]
 `
 }
 
-/** coreDirectory: @nativue/core's folder, which holds its Package.swift. */
-export function linkIosPlugins(coreDirectory) {
-  if (!existsSync('ios') || !existsSync('package.json')) return
+/**
+ * ios/NativuePlugins, as prebuild entries by path relative to ios/: its Package.swift, the plugin
+ * list and, per package, a link to its sources. coreDirectory: @nativue/core's folder, which holds
+ * its Package.swift.
+ */
+export function iosPluginFiles(appDirectory, coreDirectory) {
+  const plugins = [...iosPlugins(appDirectory), ...appPlugins(appDirectory)]
+  const pluginsDirectory = join(appDirectory, 'ios', PLUGINS_DIRECTORY)
+  const sourcesDirectory = join(pluginsDirectory, 'Sources')
+  const links = plugins.map(({ module, sources }) => [
+    `${PLUGINS_DIRECTORY}/Sources/${module}`,
+    { symlink: toPosixPath(relative(sourcesDirectory, sources)) },
+  ])
 
-  const plugins = [...iosPlugins(), ...appPlugins()]
-  const corePath = relative(resolve(PLUGINS_DIRECTORY), coreDirectory)
-
-  linkSources(plugins)
-  writeIfChanged(`${PLUGINS_DIRECTORY}/Package.swift`, packageManifest(plugins, corePath))
-  writeIfChanged(`${SOURCES_DIRECTORY}/${LIST_TARGET}/Plugins.swift`, pluginList(plugins))
+  return {
+    [`${PLUGINS_DIRECTORY}/Package.swift`]: packageManifest(
+      plugins,
+      toPosixPath(relative(pluginsDirectory, coreDirectory)),
+    ),
+    [`${PLUGINS_DIRECTORY}/Sources/${LIST_TARGET}/Plugins.swift`]: pluginList(plugins),
+    ...Object.fromEntries(links),
+  }
 }
