@@ -116,6 +116,8 @@ export interface NativeModule {
   platform(): 'ios' | 'android'
   colorScheme(): 'light' | 'dark'
   appState(): 'active' | 'background'
+  /** false: the device has no settings page for the app (Android; iOS always has one). */
+  openSettings(): boolean
   /** Development: the navigation saveNavigation kept, which outlives the JavaScript runtime. */
   savedNavigation(): string | null
   saveNavigation(routes: string): void

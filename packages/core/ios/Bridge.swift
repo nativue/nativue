@@ -358,6 +358,14 @@ final class Bridge {
             DispatchQueue.main.async { UIAccessibility.post(notification: .announcement, argument: message) }
         }
 
+        defineGetter("openSettings") { _ in
+            DispatchQueue.main.async {
+                UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!)
+            }
+
+            return true
+        }
+
         // Prefixed, so a plugin can't replace nativue's own functions.
         for (name, function) in pluginRegistry.functions {
             defineGetter("plugin:\(name)", function)

@@ -39,6 +39,8 @@ export {
 export { NativeError, requireNativeFunction } from './native-functions'
 export { addNativeListener, AppState, onOpenURL } from './native-events'
 export type { AppStateStatus, NativeSubscription } from './native-events'
+export { openSettings, usePermission } from './permissions'
+export type { PermissionResponse, PermissionResponseWith } from './permissions'
 export { AsyncStorage } from './storage'
 export type * from './types'
 export type { SvgElement, SvgIcon } from './native-components'
