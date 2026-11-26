@@ -99,6 +99,7 @@ Import the runtime from `vue`: `ref`, `computed`, `StyleSheet`, `Animated`, `Lay
 - Check changes with `npm run typecheck`.
 - `ios/` and `android/` are generated from `nativue.config.ts` (name, scheme, ids, version,
   buildNumber, icon, splash, `ios.infoPlist`, `ios.entitlements`, `android.permissions`,
-  `android.blockedPermissions`, `android.adaptiveIcon`, `android.signing`) by
-  `npx nativue prebuild`, which `dev`, `build` and `run` also run: never edit them, nor commit them. Prebuild stops with an error when they were changed by hand. An app with
+  `android.blockedPermissions`, `android.adaptiveIcon`, `android.signing`, `android.gradle`,
+  `resources`) by `npx nativue prebuild`, which `dev`, `build` and `run` also run: never edit them,
+  nor commit them. Prebuild stops with an error when they were changed by hand. An app with
   `prebuild: false` in `nativue.config.ts` keeps them by hand instead.

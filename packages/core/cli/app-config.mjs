@@ -1,6 +1,6 @@
 // nativue.config.ts as prebuild reads it: every problem at once, then the config with its defaults.
 import { existsSync, readFileSync, statSync } from 'node:fs'
-import { relative, resolve, sep } from 'node:path'
+import { basename, extname, relative, resolve, sep } from 'node:path'
 
 const IOS_BUNDLE_IDENTIFIER = /^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+$/
 const APPLE_TEAM_ID = /^[A-Z0-9]{10}$/
@@ -13,6 +13,10 @@ const VERSION = /^\d+\.\d+\.\d+$/
 const MAXIMUM_BUILD_NUMBER = 2100000000
 const COLOR = /^#[0-9a-fA-F]{6}$/
 const SECRET_NAME = /^[A-Za-z_][A-Za-z0-9_.]*$/
+const GRADLE_PROPERTY = /^[A-Za-z_][A-Za-z0-9_.-]*$/
+// aapt2's rule for the files of res/: lowercase letters, digits and underscores.
+const ANDROID_RESOURCE_NAME = /^[a-z][a-z0-9_]*$/
+const ANDROID_RESOURCE_TYPES = ['raw', 'font', 'drawable', 'xml', 'assets']
 const PNG_SIGNATURE = '89504e470d0a1a0a'
 // IHDR color types with an alpha channel: grayscale and RGB with alpha.
 const PNG_ALPHA_COLOR_TYPES = new Set([4, 6])
@@ -30,6 +34,7 @@ const GENERATED_PROJECT_FIELDS = [
   'splash',
   'ios',
   'android',
+  'resources',
 ]
 
 const DEFAULTS = {
@@ -141,7 +146,166 @@ function signingProblems(signing, appDirectory) {
   ]
 }
 
-function generatedProjectProblems(config, appDirectory) {
+function isStringList(value) {
+  return Array.isArray(value) && value.every((item) => typeof item === 'string' && item !== '')
+}
+
+function isStringRecord(value, keyPattern = /./) {
+  return (
+    isObject(value) &&
+    Object.entries(value).every(
+      ([key, item]) => keyPattern.test(key) && typeof item === 'string' && !item.includes('\n'),
+    )
+  )
+}
+
+export function emptyGradle() {
+  return {
+    plugins: [],
+    dependencies: [],
+    manifestPlaceholders: {},
+    repositories: [],
+    properties: {},
+  }
+}
+
+function isText(value) {
+  return typeof value === 'string' && value !== '' && !value.includes('\n')
+}
+
+/** android.gradle, or what the plugins' gradle mods made (field: where it comes from). */
+export function gradleProblems(gradle, field = 'android.gradle') {
+  if (gradle === undefined) return []
+
+  const { plugins, dependencies, repositories, manifestPlaceholders, properties } = gradle
+
+  return [
+    check(
+      plugins === undefined ||
+        (Array.isArray(plugins) &&
+          plugins.every(
+            (plugin) =>
+              isText(plugin?.id) && (plugin.version === undefined || isText(plugin.version)),
+          )),
+      `${field}.plugins: e.g. [{ id: 'com.google.gms.google-services', version: '4.4.2' }]`,
+    ),
+    check(
+      dependencies === undefined || (Array.isArray(dependencies) && dependencies.every(isText)),
+      `${field}.dependencies: e.g. ['com.squareup.okhttp3:okhttp:4.12.0']`,
+    ),
+    check(
+      repositories === undefined ||
+        (Array.isArray(repositories) &&
+          repositories.every((url) => isText(url) && url.startsWith('https://'))),
+      `${field}.repositories: Maven URLs, e.g. ['https://jitpack.io']`,
+    ),
+    check(
+      manifestPlaceholders === undefined || isStringRecord(manifestPlaceholders),
+      `${field}.manifestPlaceholders: e.g. { appAuthRedirectScheme: 'myapp' }`,
+    ),
+    check(
+      properties === undefined || isStringRecord(properties, GRADLE_PROPERTY),
+      `${field}.properties: e.g. { 'android.enableJetifier': 'true' }`,
+    ),
+  ]
+}
+
+/** A resource with its defaults: where it lands on each platform, or false for none. */
+function resourceWithDefaults(resource) {
+  const fileName = basename(String(resource.source))
+  const android = resource.android !== false && {
+    type: resource.font ? 'font' : 'raw',
+    ...resource.android,
+  }
+  const defaultAndroidName =
+    android.type === 'assets' ? fileName : basename(fileName, extname(fileName))
+
+  return {
+    source: resource.source,
+    font: resource.font === true,
+    ios: resource.ios !== false && { destination: fileName, ...resource.ios },
+    android: android && { ...android, name: android.name ?? defaultAndroidName },
+  }
+}
+
+/** The plugins' resources, then the app's: a later one at the same place replaces an earlier one. */
+export function appResources(config, plugins = []) {
+  return [...plugins.flatMap((plugin) => plugin.resources ?? []), ...(config.resources ?? [])].map(
+    resourceWithDefaults,
+  )
+}
+
+/** The fonts' file names, once: a later resource at the same place replaces an earlier one. */
+export function iosFonts(resources) {
+  const byDestination = new Map(
+    resources.filter(({ ios }) => ios).map((resource) => [resource.ios.destination, resource]),
+  )
+
+  return [...byDestination.values()].filter(({ font }) => font).map(({ ios }) => ios.destination)
+}
+
+/** Where a resource lands in android/app/src/main. */
+export function resourceFile({ source, android }) {
+  return android.type === 'assets'
+    ? `assets/${android.name}`
+    : `res/${android.type}/${android.name}${extname(source)}`
+}
+
+function resourceProblems(resource, field, appDirectory) {
+  if (!isObject(resource) || typeof resource.source !== 'string') {
+    return [`${field}: e.g. { source: './assets/chime.wav' }`]
+  }
+
+  const { source, ios, android } = resourceWithDefaults(resource)
+  const fullPath = resolve(appDirectory, source)
+
+  return [
+    check(
+      existsSync(fullPath) && statSync(fullPath).isFile(),
+      `${field}.source: ${source} isn't a file`,
+    ),
+    check(
+      !ios || /^(?!\.\.?$)[^/\\]+$/.test(ios.destination),
+      `${field}.ios.destination: a file name, e.g. 'chime.wav'`,
+    ),
+    check(
+      !android || ANDROID_RESOURCE_TYPES.includes(android.type),
+      `${field}.android.type: one of ${ANDROID_RESOURCE_TYPES.join(', ')}`,
+    ),
+    check(
+      !android ||
+        (android.type === 'assets'
+          ? android.name.split('/').every((part) => part !== '' && part !== '.' && part !== '..')
+          : ANDROID_RESOURCE_NAME.test(android.name)),
+      `${field}.android.name: lowercase letters, digits and underscores, e.g. '${basename(
+        source,
+        extname(source),
+      )
+        .toLowerCase()
+        .replace(/[^a-z0-9_]/g, '_')}'`,
+    ),
+  ]
+}
+
+/** The app's resources and each plugin's, named after where they come from. */
+function allResourceProblems(config, plugins, appDirectory) {
+  const sources = [
+    ...plugins.map((plugin) => [`${plugin.name}'s resources`, plugin.resources]),
+    ['resources', config.resources],
+  ]
+
+  return sources.flatMap(([field, resources]) => {
+    if (resources === undefined) return []
+    if (!Array.isArray(resources))
+      return [`${field}: a list, e.g. [{ source: './assets/chime.wav' }]`]
+
+    return resources.flatMap((resource, index) =>
+      resourceProblems(resource, `${field}[${index}]`, appDirectory),
+    )
+  })
+}
+
+function generatedProjectProblems(config, appDirectory, plugins) {
   const { splash, buildNumber } = config
   const ios = config.ios ?? {}
   const android = config.android ?? {}
@@ -207,6 +371,8 @@ function generatedProjectProblems(config, appDirectory) {
     ),
     colorProblem('android.adaptiveIcon.backgroundColor', android.adaptiveIcon?.backgroundColor),
     ...signingProblems(android.signing, appDirectory),
+    ...gradleProblems(android.gradle),
+    ...allResourceProblems(config, plugins, appDirectory),
   ]
 }
 
@@ -218,11 +384,11 @@ function manualProjectProblems(config) {
 }
 
 /** Throws with every problem of the config at once, before anything is generated. */
-export function validateConfig(config, appDirectory) {
+export function validateConfig(config, appDirectory, plugins = []) {
   const problems = (
     config.prebuild === false
       ? manualProjectProblems(config)
-      : generatedProjectProblems(config, appDirectory)
+      : generatedProjectProblems(config, appDirectory, plugins)
   ).filter(Boolean)
 
   if (problems.length === 0) return

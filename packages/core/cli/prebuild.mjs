@@ -163,7 +163,7 @@ function generatedFiles(platform, { app, plugins, appDirectory, coreDirectory })
           ...iosProjectFiles(app, appDirectory, plugins),
           ...iosPluginFiles(appDirectory, coreDirectory),
         }
-      : androidProjectFiles(app, appDirectory, plugins)
+      : androidProjectFiles(app, { appDirectory, corePath: placeholders.__CORE_PATH__, plugins })
   const files = { ...template, ...generated }
 
   // A null replaces a template file with nothing.
@@ -224,8 +224,18 @@ const DESTINATIONS = [
     'nativue.config.ts: version, buildNumber, ios.appleTeamId, ios.entitlements',
   ],
   [/^App\/Assets\.xcassets\//, 'icon or splash in nativue.config.ts'],
-  [/^app\/src\/main\/AndroidManifest\.xml$/, 'android.permissions in nativue.config.ts'],
-  [/^app\/build\.gradle\.kts$/, 'nativue.config.ts: version, buildNumber, android.signing'],
+  [
+    /^app\/src\/main\/AndroidManifest\.xml$/,
+    'android.permissions, or a plugin with an android.manifest mod (docs/packages.md)',
+  ],
+  [
+    /^app\/build\.gradle\.kts$/,
+    'nativue.config.ts: version, buildNumber, android.signing, android.gradle',
+  ],
+  [
+    /^(build\.gradle\.kts|settings\.gradle\.kts|gradle\.properties)$/,
+    'android.gradle in nativue.config.ts',
+  ],
   [/^app\/src\/main\/res\/values\/strings\.xml$/, 'name in nativue.config.ts'],
   [
     /^app\/src\/main\/res\/values(-night)?\/(styles|colors)\.xml$/,
@@ -236,6 +246,10 @@ const DESTINATIONS = [
     'icon, android.adaptiveIcon or splash in nativue.config.ts',
   ],
   [/\.(swift|kt|java)$/, 'a module in native/<name>/'],
+  [
+    /^(App\/Resources\/|app\/src\/main\/(assets\/|res\/(raw|font|xml|drawable)\/))/,
+    'resources in nativue.config.ts',
+  ],
 ]
 
 function destination(path) {
@@ -353,7 +367,7 @@ export function prebuild({
   platforms = PLATFORMS,
   force = false,
 }) {
-  validateConfig(config, appDirectory)
+  validateConfig(config, appDirectory, plugins)
 
   const app = appConfig(config)
   const { version } = JSON.parse(readFileSync(join(coreDirectory, 'package.json'), 'utf8'))

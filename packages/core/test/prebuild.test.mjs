@@ -28,6 +28,8 @@ const SNAPSHOTS = {
   'App.entitlements': 'ios/App.entitlements',
   'LaunchBackground.json': 'ios/App/Assets.xcassets/LaunchBackground.colorset/Contents.json',
   'styles.xml': 'android/app/src/main/res/values/styles.xml',
+  'root.build.gradle.kts': 'android/build.gradle.kts',
+  'gradle.properties': 'android/gradle.properties',
 }
 const CONFIG = {
   name: "Tom's App",
@@ -50,12 +52,19 @@ const CONFIG = {
       storePasswordEnv: 'ANDROID_STORE_PASSWORD',
       keyPasswordEnv: 'ANDROID_KEY_PASSWORD',
     },
+    gradle: {
+      dependencies: ['com.squareup.okhttp3:okhttp:4.12.0'],
+      manifestPlaceholders: { appAuthRedirectScheme: 'tomsapp' },
+      properties: { 'android.enableJetifier': 'true' },
+    },
   },
+  resources: [{ source: './assets/Inter-Bold.ttf', font: true, android: { name: 'inter_bold' } }],
 }
 const MANUAL_CONFIG = { prebuild: false }
 // Every mod, as a package's plugin would use them.
 const PUSH_PLUGIN = {
   name: 'push',
+  resources: [{ source: './sounds/chime.wav' }],
   ios: {
     infoPlist(infoPlist) {
       infoPlist.UIBackgroundModes = ['remote-notification']
@@ -88,6 +97,11 @@ const PUSH_PLUGIN = {
     strings(strings) {
       strings.push_channel_name = "Tom's updates"
     },
+    gradle(gradle) {
+      gradle.plugins.push({ id: 'com.google.gms.google-services', version: '4.4.2' })
+      gradle.dependencies.push('com.google.firebase:firebase-messaging:24.1.0')
+      gradle.repositories.push('https://jitpack.io')
+    },
   },
 }
 
@@ -106,6 +120,10 @@ function png(width, height, colorType = 2) {
 function createApp() {
   const appDirectory = mkdtempSync(join(tmpdir(), 'nativue-prebuild-test-'))
   writeFileSync(join(appDirectory, 'package.json'), '{ "dependencies": {} }')
+  mkdirSync(join(appDirectory, 'assets'))
+  mkdirSync(join(appDirectory, 'sounds'))
+  writeFileSync(join(appDirectory, 'assets/Inter-Bold.ttf'), 'font')
+  writeFileSync(join(appDirectory, 'sounds/chime.wav'), 'sound')
 
   return appDirectory
 }
@@ -321,7 +339,7 @@ try {
   })
 
   test("uses the app's icon and splash images", (appDirectory) => {
-    mkdirSync(join(appDirectory, 'assets'))
+    mkdirSync(join(appDirectory, 'assets'), { recursive: true })
     writeFileSync(join(appDirectory, 'assets/icon.png'), png(1024, 1024))
     writeFileSync(join(appDirectory, 'assets/splash.png'), png(360, 360))
     const config = {
@@ -354,7 +372,7 @@ try {
   test('checks the size of every image', (appDirectory) => {
     writeFileSync(join(appDirectory, 'icon.png'), png(512, 512))
     writeFileSync(join(appDirectory, 'splash.jpg'), 'not a png')
-    mkdirSync(join(appDirectory, 'assets'))
+    mkdirSync(join(appDirectory, 'assets'), { recursive: true })
     const config = {
       ...CONFIG,
       icon: './icon.png',
@@ -475,6 +493,17 @@ try {
       join(appDirectory, 'android/app/src/main/res/values/strings.xml'),
       '<string name="push_channel_name">Updates</string>',
     )
+    assert.throws(
+      () => link({ platforms: ['android'] }),
+      /build\.gradle\.kts: id\("com\.google\.gms\.google-services"\)/,
+    )
+    writeFileSync(
+      join(appDirectory, 'android/app/build.gradle.kts'),
+      // Groovy, another version: still there.
+      "id 'com.google.gms.google-services'\nimplementation 'com.google.firebase:firebase-messaging:25.0.0'\nmaven { url 'https://jitpack.io' }",
+    )
+    mkdirSync(join(appDirectory, 'android/app/src/main/res/raw'))
+    writeFileSync(join(appDirectory, 'android/app/src/main/res/raw/chime.wav'), 'sound')
     // The key without the plugin's value isn't enough.
     writeFileSync(
       join(appDirectory, 'ios/Info.plist'),
@@ -493,8 +522,82 @@ try {
       join(appDirectory, 'ios/App.entitlements'),
       '<key>aps-environment</key><string>production</string>',
     )
+    writeFileSync(join(appDirectory, 'ios/chime.wav'), 'sound')
 
     link()
+
+    const fontPlugin = {
+      name: 'fonts',
+      resources: [{ source: './assets/Inter-Bold.ttf', font: true, android: false }],
+    }
+    writeFileSync(join(appDirectory, 'ios/Inter-Bold.ttf'), 'font')
+
+    assert.throws(
+      () => link({ plugins: [fontPlugin] }),
+      /Info\.plist: <key>UIAppFonts<\/key> = \["Inter-Bold\.ttf"\]/,
+    )
+  })
+
+  test("copies the app's and the plugins' resources", (appDirectory) => {
+    run(appDirectory)
+
+    const resources = 'android/app/src/main/res'
+
+    assert.strictEqual(read(appDirectory, 'ios/App/Resources/chime.wav'), 'sound')
+    assert.strictEqual(read(appDirectory, 'ios/App/Resources/Inter-Bold.ttf'), 'font')
+    assert.strictEqual(read(appDirectory, `${resources}/raw/chime.wav`), 'sound')
+    assert.strictEqual(read(appDirectory, `${resources}/font/inter_bold.ttf`), 'font')
+    assert.match(read(appDirectory, 'ios/Info.plist'), /<key>UIAppFonts<\/key>/)
+
+    const fontPlugin = {
+      name: 'fonts',
+      resources: [{ source: './assets/Inter-Bold.ttf', font: true, android: false }],
+    }
+    run(appDirectory, { plugins: [fontPlugin] })
+
+    assert.strictEqual(read(appDirectory, 'ios/Info.plist').match(/Inter-Bold\.ttf/g).length, 1)
+  })
+
+  test('refuses resources Android or Gradle would', (appDirectory) => {
+    const plugin = { name: 'sounds', resources: [{ source: './sounds/missing.wav' }] }
+    const config = {
+      ...CONFIG,
+      resources: [
+        { source: './assets/Inter-Bold.ttf', android: { type: 'raw' } },
+        { source: './sounds/chime.wav', ios: { destination: '..' }, android: false },
+        { source: './sounds/chime.wav', ios: false, android: { type: 'assets', name: '' } },
+      ],
+      android: {
+        ...CONFIG.android,
+        gradle: {
+          repositories: ['http://example.com'],
+          plugins: [{ id: 'com.google.gms.google-services', version: 4.4 }],
+        },
+      },
+    }
+    const problems = [
+      "resources[0].android.name: lowercase letters, digits and underscores, e.g. 'inter_bold'",
+      'resources[1].ios.destination:',
+      'resources[2].android.name:',
+      "sounds's resources[0].source: ./sounds/missing.wav isn't a file",
+      'android.gradle.repositories:',
+      'android.gradle.plugins:',
+    ]
+    const stringPlugin = {
+      name: 'string',
+      android: { gradle: (gradle) => gradle.plugins.push('com.google.gms.google-services') },
+    }
+    const unset = { ...CONFIG.android, gradle: { dependencies: undefined } }
+
+    assert.throws(
+      () => run(appDirectory, { config, plugins: [plugin] }),
+      (error) => problems.every((problem) => error.message.includes(problem)),
+    )
+    assert.throws(
+      () => run(appDirectory, { plugins: [stringPlugin] }),
+      /the plugins' gradle mods' result\.plugins:/,
+    )
+    run(appDirectory, { config: { ...CONFIG, android: unset } })
   })
 
   test('says where a hand edit belongs', (appDirectory) => {

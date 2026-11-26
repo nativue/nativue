@@ -13,6 +13,34 @@ export interface XmlElement {
   text?: string
 }
 
+/** A file copied into the app: a sound, a font, an XML file a manifest entry points at. */
+export interface Resource {
+  /** Relative to the app, or absolute: a package passes `fileURLToPath(new URL('./chime.wav', import.meta.url))`. */
+  source: string
+  /** iOS: at the bundle's root, named destination (defaults to the file's name). false: not on iOS. */
+  ios?: false | { destination?: string }
+  /**
+   * Android: res/<type>/<name>.<extension>, or assets/<name>. type defaults to 'raw' ('font' for a
+   * font); name to the file's, without its extension: lowercase letters, digits and underscores.
+   */
+  android?: false | { type?: 'raw' | 'font' | 'drawable' | 'xml' | 'assets'; name?: string }
+  /** A font: listed in UIAppFonts on iOS, in res/font on Android. */
+  font?: boolean
+}
+
+/** The app's Gradle setup: the plugins' gradle mods, then android.gradle. */
+export interface AndroidGradle {
+  /** Applied to the app; a version is set in the root build file. */
+  plugins: { id: string; version?: string }[]
+  /** The app's implementation dependencies, e.g. 'com.squareup.okhttp3:okhttp:4.12.0'. */
+  dependencies: string[]
+  manifestPlaceholders: Record<string, string>
+  /** Maven repositories, e.g. 'https://jitpack.io'. */
+  repositories: string[]
+  /** gradle.properties */
+  properties: Record<string, string>
+}
+
 export interface PrebuildContext {
   /** nativue.config.ts, with its defaults. */
   config: NativueConfig
@@ -34,6 +62,8 @@ export interface NativuePlugin {
   vite?: VitePlugin | VitePlugin[]
   /** Imported before the app runs, resolved from the app: a package path or a virtual module. */
   runtime?: string
+  /** Copied into the app, like the config's resources, before them. */
+  resources?: Resource[]
   /** Change the documents in place; the app's own config fields are applied after them. */
   ios?: {
     infoPlist?: (infoPlist: PlistDictionary, context: PrebuildContext) => void
@@ -44,6 +74,8 @@ export interface NativuePlugin {
     manifest?: (manifest: XmlElement, context: PrebuildContext) => void
     /** res/values/strings.xml, by name. */
     strings?: (strings: Record<string, string>, context: PrebuildContext) => void
+    /** The app's Gradle files. A package's own dependencies belong in its build.gradle.kts. */
+    gradle?: (gradle: AndroidGradle, context: PrebuildContext) => void
   }
 }
 
@@ -71,6 +103,8 @@ export interface GeneratedProjectsConfig {
     /** Defaults to backgroundColor. */
     darkBackgroundColor?: string
   }
+  /** Files copied into the app, e.g. [{ source: './assets/chime.wav' }]. */
+  resources?: Resource[]
   ios: {
     /** e.g. com.company.myapp */
     bundleIdentifier: string
@@ -88,6 +122,8 @@ export interface GeneratedProjectsConfig {
     permissions?: string[]
     /** Removed even when a package's manifest asks for them, e.g. ['android.permission.READ_MEDIA_IMAGES'] */
     blockedPermissions?: string[]
+    /** e.g. { dependencies: ['com.squareup.okhttp3:okhttp:4.12.0'] } */
+    gradle?: Partial<AndroidGradle>
     /** Android 8+'s icon: a square PNG whose logo fits in the middle 61%, on a color. */
     adaptiveIcon?: { foregroundImage: string; backgroundColor?: string }
     /**

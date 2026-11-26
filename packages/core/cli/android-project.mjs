@@ -1,9 +1,10 @@
 // The Android project files prebuild builds from the config, instead of copying them from the
-// template: the app's manifest, Gradle file and strings, and the icon and splash images. A null file
-// removes the template's.
+// template: the app's manifest, Gradle files and strings, its resources, and the icon and splash
+// images. A null file removes the template's.
 import { readFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { toPosixPath } from './link.mjs'
+import { appResources, emptyGradle, gradleProblems, resourceFile } from './app-config.mjs'
 import { applyMods } from './plugins.mjs'
 import { androidString, xml } from './serialize.mjs'
 
@@ -20,6 +21,7 @@ const CONFIG_CHANGES = [
   'locale',
   'layoutDirection',
 ]
+const ANDROID_PLUGIN_VERSION = '9.5.1'
 const ANDROID_NAMESPACE = 'http://schemas.android.com/apk/res/android'
 const TOOLS_NAMESPACE = 'http://schemas.android.com/tools'
 // The splash icon without a background is 288dp; the logo, 120dp as on iOS, is inset in it. A
@@ -170,12 +172,49 @@ if (missingSigningSecrets.isNotEmpty() && gradle.startParameter.taskNames.any { 
   }
 }
 
-function appGradle(app, appDirectory) {
+function unique(values) {
+  return [...new Set(values)]
+}
+
+/** The plugins' gradle mods, then the app's android.gradle: its values win, lists are joined. */
+function gradleModel(app, plugins, context) {
+  const fromPlugins = applyMods(plugins, 'android', 'gradle', emptyGradle(), context)
+  const problems = gradleProblems(fromPlugins, "the plugins' gradle mods' result").filter(Boolean)
+
+  if (problems.length > 0) throw new Error(problems.join('\n'))
+
+  const ownGradle = app.android.gradle ?? {}
+  const own = Object.fromEntries(
+    Object.entries(emptyGradle()).map(([key, empty]) => [key, ownGradle[key] ?? empty]),
+  )
+  const gradlePlugins = [...fromPlugins.plugins, ...own.plugins]
+
+  return {
+    plugins: [...new Map(gradlePlugins.map((plugin) => [plugin.id, plugin])).values()],
+    dependencies: unique([...fromPlugins.dependencies, ...own.dependencies]),
+    manifestPlaceholders: { ...fromPlugins.manifestPlaceholders, ...own.manifestPlaceholders },
+    repositories: unique([...fromPlugins.repositories, ...own.repositories]),
+    properties: { ...fromPlugins.properties, ...own.properties },
+  }
+}
+
+function lines(values, indent) {
+  return values.map((value) => `${indent}${value}\n`).join('')
+}
+
+function appGradle(app, appDirectory, gradle) {
   const signing = signingGradle(app.android.signing, appDirectory)
+  const pluginIds = gradle.plugins.map(({ id }) => `id(${kotlinString(id)})`)
+  const placeholders = Object.entries(gradle.manifestPlaceholders).map(
+    ([key, value]) => `manifestPlaceholders[${kotlinString(key)}] = ${kotlinString(value)}`,
+  )
+  const dependencies = gradle.dependencies.map(
+    (dependency) => `implementation(${kotlinString(dependency)})`,
+  )
 
   return `plugins {
     id("com.android.application")
-}
+${lines(pluginIds, '    ')}}
 ${signing.top}
 android {
     namespace = "${app.android.package}"
@@ -187,7 +226,7 @@ android {
         targetSdk = 36
         versionCode = ${app.buildNumber}
         versionName = "${app.version}"
-    }
+${lines(placeholders, '        ')}    }
 ${signing.android}
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -197,8 +236,71 @@ ${signing.android}
 
 dependencies {
     implementation(project(":nativue"))
-}
+${lines(dependencies, '    ')}}
 `
+}
+
+/** The root build file: the version of every Gradle plugin the app applies. */
+function rootGradle(gradle) {
+  const versioned = gradle.plugins
+    .filter(({ version }) => version)
+    .map(
+      ({ id, version }) => `id(${kotlinString(id)}) version ${kotlinString(version)} apply false`,
+    )
+
+  return `plugins {
+    id("com.android.application") version "${ANDROID_PLUGIN_VERSION}" apply false
+    id("com.android.library") version "${ANDROID_PLUGIN_VERSION}" apply false
+${lines(versioned, '    ')}}
+`
+}
+
+function settingsGradle(gradle, corePath) {
+  const repositories = lines(
+    gradle.repositories.map((url) => `maven(${kotlinString(url)})`),
+    '        ',
+  )
+
+  return `pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+${repositories}    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+${repositories}    }
+}
+
+rootProject.name = "App"
+include(":app")
+include(":nativue")
+project(":nativue").projectDir = file("${corePath}/android")
+// The Android side of the app's packages (see the file)
+apply(from = "${corePath}/android/nativue.settings.gradle.kts")
+`
+}
+
+function gradleProperties(gradle) {
+  const properties = Object.entries(gradle.properties).map(([key, value]) => `${key}=${value}`)
+
+  return `org.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8\n${lines(properties, '')}`
+}
+
+/** res/<type>/<name>.<extension>, or assets/<name>. */
+function resourceFiles(resources, readAppFile) {
+  return Object.fromEntries(
+    resources
+      .filter((resource) => resource.android)
+      .map((resource) => [
+        `app/src/main/${resourceFile(resource)}`,
+        { content: readAppFile(resource.source) },
+      ]),
+  )
 }
 
 /** The template's logo, or the app's centered at 120dp in the splash icon. */
@@ -256,15 +358,20 @@ function iconFiles(app, readAppFile) {
 }
 
 /** Paths relative to android/. */
-export function androidProjectFiles(app, appDirectory, plugins = []) {
+export function androidProjectFiles(app, { appDirectory, corePath, plugins = [] }) {
   const readAppFile = (path) => readFileSync(resolve(appDirectory, path))
   const context = { config: app, projectRoot: appDirectory }
+  const gradle = gradleModel(app, plugins, context)
 
   return {
-    'app/build.gradle.kts': appGradle(app, appDirectory),
+    'build.gradle.kts': rootGradle(gradle),
+    'settings.gradle.kts': settingsGradle(gradle, corePath),
+    'gradle.properties': gradleProperties(gradle),
+    'app/build.gradle.kts': appGradle(app, appDirectory, gradle),
     'app/src/main/AndroidManifest.xml': xml(manifest(app, plugins, context)),
     'app/src/main/res/values/strings.xml': xml(strings(app, plugins, context)),
     ...iconFiles(app, readAppFile),
     ...splashFiles(app.splash, readAppFile),
+    ...resourceFiles(appResources(app, plugins), readAppFile),
   }
 }

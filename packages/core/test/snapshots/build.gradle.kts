@@ -1,5 +1,6 @@
 plugins {
     id("com.android.application")
+    id("com.google.gms.google-services")
 }
 
 // Release signing's passwords: a Gradle property (~/.gradle/gradle.properties, which Android Studio
@@ -28,6 +29,7 @@ android {
         targetSdk = 36
         versionCode = 12
         versionName = "1.2.0"
+        manifestPlaceholders["appAuthRedirectScheme"] = "tomsapp"
     }
 
     signingConfigs {
@@ -53,4 +55,6 @@ android {
 
 dependencies {
     implementation(project(":nativue"))
+    implementation("com.google.firebase:firebase-messaging:24.1.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
