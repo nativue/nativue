@@ -1,0 +1,11 @@
+{
+  "ios": {
+    "target": {
+      "type": "notification-service",
+      "bundleIdSuffix": ".NotificationService",
+      "infoPlist": {
+        "NSExtension": { "NSExtensionPrincipalClass": "$(PRODUCT_MODULE_NAME).NotificationService" }
+      }
+    }
+  }
+}
