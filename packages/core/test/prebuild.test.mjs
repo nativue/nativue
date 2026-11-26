@@ -7,6 +7,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readlinkSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
@@ -147,8 +148,8 @@ function withoutCorePath(text) {
   return text.replaceAll(/(\.\.\/)+[^"]*?packages\/core/g, '__CORE_PATH__')
 }
 
-function checkSnapshots(appDirectory) {
-  for (const [snapshot, path] of Object.entries(SNAPSHOTS)) {
+function checkSnapshots(appDirectory, snapshots = SNAPSHOTS) {
+  for (const [snapshot, path] of Object.entries(snapshots)) {
     const snapshotPath = join(SNAPSHOTS_DIRECTORY, snapshot)
     const generated = withoutCorePath(read(appDirectory, path))
 
@@ -532,6 +533,15 @@ try {
     }
     writeFileSync(join(appDirectory, 'ios/Inter-Bold.ttf'), 'font')
 
+    const targetPlugin = {
+      name: 'targets',
+      ios: { targets: (targets) => targets.push({ name: 'NotificationService' }) },
+    }
+
+    assert.throws(
+      () => link({ plugins: [targetPlugin] }),
+      /project\.pbxproj: an extension target named NotificationService/,
+    )
     assert.throws(
       () => link({ plugins: [fontPlugin] }),
       /Info\.plist: <key>UIAppFonts<\/key> = \["Inter-Bold\.ttf"\]/,
@@ -598,6 +608,110 @@ try {
       /the plugins' gradle mods' result\.plugins:/,
     )
     run(appDirectory, { config: { ...CONFIG, android: unset } })
+  })
+
+  test("embeds the plugins' and native/extensions' extension targets", (appDirectory) => {
+    const serviceSources = join(appDirectory, 'push-extension')
+    const widgetSources = join(appDirectory, 'native/extensions/Widget')
+    const extensionPlugin = {
+      name: 'push-extension',
+      ios: {
+        targets(targets) {
+          targets.push({
+            name: 'NotificationService',
+            type: 'notification-service',
+            sources: serviceSources,
+            bundleIdSuffix: '.NotificationService',
+            infoPlist: {
+              NSExtension: {
+                NSExtensionPrincipalClass: '$(PRODUCT_MODULE_NAME).NotificationService',
+              },
+            },
+            appGroups: true,
+          })
+        },
+      },
+    }
+    const ios = { ...CONFIG.ios, appGroups: ['group.com.example.tomsapp'] }
+
+    mkdirSync(serviceSources)
+    mkdirSync(widgetSources, { recursive: true })
+    writeFileSync(join(serviceSources, 'NotificationService.swift'), '')
+    writeFileSync(
+      join(widgetSources, 'nativue.json'),
+      '{ "ios": { "target": { "type": "widget", "bundleIdSuffix": ".Widget" } } }',
+    )
+    run(appDirectory, { config: { ...CONFIG, ios }, plugins: [PUSH_PLUGIN, extensionPlugin] })
+
+    checkSnapshots(appDirectory, {
+      'extension.project.pbxproj': 'ios/App.xcodeproj/project.pbxproj',
+      'extension.Info.plist': 'ios/ExtensionSupport/NotificationService/Info.plist',
+    })
+    assert.strictEqual(
+      readlinkSync(join(appDirectory, 'ios/Extensions/NotificationService')),
+      '../../push-extension',
+    )
+    assert.ok(isPresent(appDirectory, 'ios/Extensions/Widget/nativue.json'))
+    assert.match(
+      read(
+        appDirectory,
+        'ios/ExtensionSupport/NotificationService/NotificationService.entitlements',
+      ),
+      /group\.com\.example\.tomsapp/,
+    )
+    assert.match(read(appDirectory, 'ios/App.entitlements'), /group\.com\.example\.tomsapp/)
+    assert.ok(!isPresent(appDirectory, 'ios/ExtensionSupport/Widget/Widget.entitlements'))
+    assert.deepStrictEqual(
+      run(appDirectory, { config: { ...CONFIG, ios }, plugins: [PUSH_PLUGIN, extensionPlugin] }),
+      [],
+    )
+  })
+
+  test('refuses an extension target iOS would', (appDirectory) => {
+    const target = (fields) => ({
+      type: 'widget',
+      sources: '.',
+      bundleIdSuffix: '.Widget',
+      ...fields,
+    })
+    const badPlugin = {
+      name: 'bad',
+      ios: {
+        targets(targets) {
+          targets.push(
+            { name: 'App', type: 'clip', sources: './nowhere', bundleIdSuffix: 'x' },
+            target({ name: 'Widget' }),
+            target({ name: 'widget' }),
+            target({ name: 'NativuePlugins' }),
+            target({ name: 'Shared', appGroups: true }),
+          )
+        },
+      },
+    }
+    const problems = [
+      'ios target App.name:',
+      'ios target App.sources:',
+      'ios target App.type:',
+      'ios target App.bundleIdSuffix:',
+      'ios target widget.name:',
+      'ios target NativuePlugins.name:',
+      "ios target Shared.appGroups: shares ios.appGroups, which nativue.config.ts doesn't set",
+    ]
+
+    assert.throws(
+      () => run(appDirectory, { plugins: [badPlugin] }),
+      (error) =>
+        problems.every((problem) => error.message.includes(problem)) &&
+        !error.message.includes('ios target Widget.name:'),
+    )
+
+    mkdirSync(join(appDirectory, 'native/extensions/Widget'), { recursive: true })
+
+    assert.throws(() => run(appDirectory), /native\/extensions\/Widget needs a nativue\.json/)
+
+    writeFileSync(join(appDirectory, 'native/extensions/Widget/nativue.json'), '{ "ios": ')
+
+    assert.throws(() => run(appDirectory), /native\/extensions\/Widget\/nativue\.json: /)
   })
 
   test('says where a hand edit belongs', (appDirectory) => {

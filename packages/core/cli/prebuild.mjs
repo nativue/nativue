@@ -245,6 +245,10 @@ const DESTINATIONS = [
     /^app\/src\/main\/res\/(mipmap|drawable)/,
     'icon, android.adaptiveIcon or splash in nativue.config.ts',
   ],
+  [
+    /^(Extensions|ExtensionSupport)\//,
+    "an extension target: native/extensions/<name>/, or a plugin's ios.targets mod",
+  ],
   [/\.(swift|kt|java)$/, 'a module in native/<name>/'],
   [
     /^(App\/Resources\/|app\/src\/main\/(assets\/|res\/(raw|font|xml|drawable)\/))/,

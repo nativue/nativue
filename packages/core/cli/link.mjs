@@ -77,7 +77,10 @@ function appPlugins(appDirectory) {
   const nativeDirectory = join(appDirectory, 'native')
   if (!existsSync(nativeDirectory)) return []
 
+  // native/extensions holds extension targets, not modules.
   return readdirSync(nativeDirectory).flatMap((name) => {
+    if (name === 'extensions') return []
+
     const sources = join(nativeDirectory, name, 'ios')
     if (!existsSync(sources)) return []
 

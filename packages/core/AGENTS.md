@@ -96,6 +96,10 @@ Import the runtime from `vue`: `ref`, `computed`, `StyleSheet`, `Animated`, `Lay
   `native/<name>/android`, as `<Name>Plugin` classes registering functions JavaScript calls with
   `requireNativeFunction`; libraries it uses (Swift packages, Maven) go in `native/<name>/nativue.json`.
   See the docs' "Native code in your app". Rebuild after changing it.
+- An iOS app extension (a widget, a Notification Service, a share extension) goes in
+  `native/extensions/<name>/`: plain Swift files, plus a `nativue.json` with its `ios.target` (`type`,
+  `bundleIdSuffix`). See the docs' "iOS app extensions". `ios.appGroups` in `nativue.config.ts`
+  shares data with it.
 - Check changes with `npm run typecheck`.
 - `ios/` and `android/` are generated from `nativue.config.ts` (name, scheme, ids, version,
   buildNumber, icon, splash, `ios.infoPlist`, `ios.entitlements`, `android.permissions`,

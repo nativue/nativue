@@ -17,6 +17,17 @@ const GRADLE_PROPERTY = /^[A-Za-z_][A-Za-z0-9_.-]*$/
 // aapt2's rule for the files of res/: lowercase letters, digits and underscores.
 const ANDROID_RESOURCE_NAME = /^[a-z][a-z0-9_]*$/
 const ANDROID_RESOURCE_TYPES = ['raw', 'font', 'drawable', 'xml', 'assets']
+const APP_GROUP = /^group\.[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*$/
+const EXTENSION_NAME = /^[A-Za-z][A-Za-z0-9_]*$/
+const BUNDLE_IDENTIFIER_SUFFIX = /^(\.[a-zA-Z0-9-]+)+$/
+const DEPLOYMENT_TARGET = /^\d+\.\d+(\.\d+)?$/
+/** An extension target's type, and the NSExtensionPointIdentifier iOS knows it by. */
+export const EXTENSION_POINTS = {
+  'notification-service': 'com.apple.usernotifications.service',
+  'notification-content': 'com.apple.usernotifications.content-extension',
+  widget: 'com.apple.widgetkit-extension',
+  share: 'com.apple.share-services',
+}
 const PNG_SIGNATURE = '89504e470d0a1a0a'
 // IHDR color types with an alpha channel: grayscale and RGB with alpha.
 const PNG_ALPHA_COLOR_TYPES = new Set([4, 6])
@@ -210,6 +221,82 @@ export function gradleProblems(gradle, field = 'android.gradle') {
   ]
 }
 
+function isDirectory(path) {
+  return existsSync(path) && statSync(path).isDirectory()
+}
+
+function extensionTargetProblems(target, field, { appDirectory, appGroups }) {
+  const { sources } = target
+
+  return [
+    check(
+      typeof sources === 'string' && isDirectory(resolve(appDirectory, sources)),
+      `${field}.sources: the folder of the extension's Swift files`,
+    ),
+    check(
+      Object.keys(EXTENSION_POINTS).includes(target.type),
+      `${field}.type: one of ${Object.keys(EXTENSION_POINTS).join(', ')}`,
+    ),
+    check(
+      BUNDLE_IDENTIFIER_SUFFIX.test(target.bundleIdSuffix ?? ''),
+      `${field}.bundleIdSuffix: added to the app's bundle identifier, e.g. '.${target.name}'`,
+    ),
+    check(
+      target.deploymentTarget === undefined || DEPLOYMENT_TARGET.test(target.deploymentTarget),
+      `${field}.deploymentTarget: e.g. '16.0'`,
+    ),
+    plistProblem(`${field}.infoPlist`, target.infoPlist, '{ NSExtension: { ... } }'),
+    plistProblem(
+      `${field}.entitlements`,
+      target.entitlements,
+      "{ 'aps-environment': 'production' }",
+    ),
+    check(
+      target.appGroups === undefined || typeof target.appGroups === 'boolean',
+      `${field}.appGroups: true to share ios.appGroups with the app`,
+    ),
+    check(
+      target.appGroups !== true || appGroups.length > 0,
+      `${field}.appGroups: shares ios.appGroups, which nativue.config.ts doesn't set, e.g. ios: { appGroups: ['group.com.company.myapp'] }`,
+    ),
+    check(
+      target.buildSettings === undefined || isStringRecord(target.buildSettings),
+      `${field}.buildSettings: e.g. { SWIFT_VERSION: '6.0' }`,
+    ),
+  ]
+}
+
+/** Throws with every problem of the extension targets the plugins and native/extensions add. */
+/** appGroups: the app's ios.appGroups, which targets with appGroups: true share. */
+export function validateExtensionTargets(targets, { appDirectory, appGroups = [] }) {
+  const names = targets.map((target) => target?.name)
+  // macOS doesn't tell Extensions/Widget from Extensions/widget.
+  const folderNames = names.map((name) => String(name).toLowerCase())
+  const problems = targets.flatMap((target, index) => {
+    const name = names[index]
+    const field = `ios target ${typeof name === 'string' ? name : index}`
+
+    if (!isObject(target)) return [`${field}: e.g. { name: 'NotificationService', ... }`]
+
+    return [
+      check(
+        EXTENSION_NAME.test(name ?? '') &&
+          !['app', 'nativueplugins'].includes(folderNames[index]) &&
+          folderNames.indexOf(folderNames[index]) === index,
+        `${field}.name: letters, digits and underscores, other than App, NativuePlugins and the other targets' (whatever their case)`,
+      ),
+      ...extensionTargetProblems(target, field, { appDirectory, appGroups }),
+    ]
+  })
+  const found = problems.filter(Boolean)
+
+  if (found.length === 0) return
+
+  throw new Error(
+    `The app's extension targets have invalid fields:\n${found.map((problem) => `  ${problem}`).join('\n')}`,
+  )
+}
+
 /** A resource with its defaults: where it lands on each platform, or false for none. */
 function resourceWithDefaults(resource) {
   const fileName = basename(String(resource.source))
@@ -344,6 +431,11 @@ function generatedProjectProblems(config, appDirectory, plugins) {
     ),
     plistProblem('ios.infoPlist', ios.infoPlist, "{ NSCameraUsageDescription: 'Scans receipts' }"),
     plistProblem('ios.entitlements', ios.entitlements, "{ 'aps-environment': 'development' }"),
+    check(
+      ios.appGroups === undefined ||
+        (Array.isArray(ios.appGroups) && ios.appGroups.every((group) => APP_GROUP.test(group))),
+      "ios.appGroups: e.g. ['group.com.company.myapp']",
+    ),
     check(
       ANDROID_PACKAGE.test(android.package ?? ''),
       "android.package: e.g. android: { package: 'com.company.myapp' }, without hyphens",

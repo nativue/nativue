@@ -41,6 +41,28 @@ export interface AndroidGradle {
   properties: Record<string, string>
 }
 
+/**
+ * An iOS app extension the app embeds, built from a folder of Swift files. It doesn't link nativue:
+ * it's plain Swift.
+ */
+export interface IosTarget {
+  /** The target's name, and its Swift module: letters, digits and underscores. */
+  name: string
+  type: 'notification-service' | 'notification-content' | 'widget' | 'share'
+  /** The folder of its Swift files: a package passes an absolute path. */
+  sources: string
+  /** Added to the app's bundle identifier, e.g. '.NotificationService'. */
+  bundleIdSuffix: string
+  /** Defaults to the app's, 15.1. */
+  deploymentTarget?: string
+  /** Merged over { NSExtension: { NSExtensionPointIdentifier } } for its type. */
+  infoPlist?: PlistDictionary
+  entitlements?: PlistDictionary
+  /** true: shares the app's ios.appGroups. */
+  appGroups?: boolean
+  buildSettings?: Record<string, string>
+}
+
 export interface PrebuildContext {
   /** nativue.config.ts, with its defaults. */
   config: NativueConfig
@@ -68,6 +90,8 @@ export interface NativuePlugin {
   ios?: {
     infoPlist?: (infoPlist: PlistDictionary, context: PrebuildContext) => void
     entitlements?: (entitlements: PlistDictionary, context: PrebuildContext) => void
+    /** Extension targets the app embeds: push yours. */
+    targets?: (targets: IosTarget[], context: PrebuildContext) => void
   }
   android?: {
     /** The app's AndroidManifest.xml: a package's own entries belong in its library manifest. */
@@ -114,6 +138,8 @@ export interface GeneratedProjectsConfig {
     infoPlist?: Record<string, PlistValue>
     /** e.g. { 'aps-environment': 'development' } */
     entitlements?: Record<string, PlistValue>
+    /** The app's App Groups, shared with extension targets that ask for them, e.g. ['group.com.company.myapp']. */
+    appGroups?: string[]
   }
   android: {
     /** The applicationId and the Kotlin package, e.g. com.company.myapp: no hyphens. */
