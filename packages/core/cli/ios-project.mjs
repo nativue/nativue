@@ -3,6 +3,7 @@
 // removes the template's.
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { applyMods } from './plugins.mjs'
 import { pbxproj, plist } from './serialize.mjs'
 
 const DEPLOYMENT_TARGET = '15.1'
@@ -52,14 +53,10 @@ function configurationList(configurations) {
   }
 }
 
-function hasEntitlements(app) {
-  return Object.keys(app.ios.entitlements ?? {}).length > 0
-}
-
-function targetBuildSettings(app) {
+function targetBuildSettings(app, hasEntitlements) {
   return {
     ASSETCATALOG_COMPILER_APPICON_NAME: 'AppIcon',
-    CODE_SIGN_ENTITLEMENTS: hasEntitlements(app) ? ENTITLEMENTS_FILE : undefined,
+    CODE_SIGN_ENTITLEMENTS: hasEntitlements ? ENTITLEMENTS_FILE : undefined,
     CODE_SIGN_STYLE: 'Automatic',
     CURRENT_PROJECT_VERSION: app.buildNumber,
     DEVELOPMENT_TEAM: app.ios.appleTeamId,
@@ -74,7 +71,7 @@ function targetBuildSettings(app) {
   }
 }
 
-function projectObjects(app) {
+function projectObjects(app, hasEntitlements) {
   return {
     [ID.pluginsBuildFile]: { isa: 'PBXBuildFile', productRef: ID.pluginsProduct },
     [ID.product]: {
@@ -176,12 +173,12 @@ function projectObjects(app) {
     },
     [ID.targetDebug]: {
       isa: 'XCBuildConfiguration',
-      buildSettings: targetBuildSettings(app),
+      buildSettings: targetBuildSettings(app, hasEntitlements),
       name: 'Debug',
     },
     [ID.targetRelease]: {
       isa: 'XCBuildConfiguration',
-      buildSettings: targetBuildSettings(app),
+      buildSettings: targetBuildSettings(app, hasEntitlements),
       name: 'Release',
     },
     [ID.targetConfigurations]: configurationList([ID.targetDebug, ID.targetRelease]),
@@ -216,7 +213,7 @@ function isDictionary(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** The app's keys win over nativue's; dictionaries in both are merged, lists joined. */
+/** The app's keys win over nativue's; dictionaries in both are merged, lists joined without repeats. */
 function mergeDictionaries(base, overrides = {}) {
   const keys = [...new Set([...Object.keys(base), ...Object.keys(overrides)])]
 
@@ -227,7 +224,7 @@ function mergeDictionaries(base, overrides = {}) {
         isDictionary(value) && isDictionary(override)
           ? mergeDictionaries(value, override)
           : Array.isArray(value) && Array.isArray(override)
-            ? [...value, ...override]
+            ? [...new Set([...value, ...override])]
             : (override ?? value)
 
       return [key, merged]
@@ -235,8 +232,18 @@ function mergeDictionaries(base, overrides = {}) {
   )
 }
 
-function infoPlist(app) {
-  return mergeDictionaries(nativueInfoPlist(app), app.ios.infoPlist)
+/** nativue's keys, then the plugins', then the app's. */
+function infoPlist(app, plugins, context) {
+  const document = applyMods(plugins, 'ios', 'infoPlist', nativueInfoPlist(app), context)
+
+  return mergeDictionaries(document, app.ios.infoPlist)
+}
+
+function entitlements(app, plugins, context) {
+  return mergeDictionaries(
+    applyMods(plugins, 'ios', 'entitlements', {}, context),
+    app.ios.entitlements,
+  )
 }
 
 function nativueInfoPlist(app) {
@@ -310,19 +317,22 @@ function launchLogoFiles(splash, readAppFile) {
 }
 
 /** Paths relative to ios/. */
-export function iosProjectFiles(app, appDirectory) {
+export function iosProjectFiles(app, appDirectory, plugins = []) {
   const readAppFile = (path) => readFileSync(resolve(appDirectory, path))
+  const context = { config: app, projectRoot: appDirectory }
+  const appEntitlements = entitlements(app, plugins, context)
+  const hasEntitlements = Object.keys(appEntitlements).length > 0
   const project = {
     objectVersion: 77,
-    objects: projectObjects(app),
+    objects: projectObjects(app, hasEntitlements),
     rootObject: ID.project,
     comments: COMMENTS,
   }
 
   return {
     'App.xcodeproj/project.pbxproj': pbxproj(project),
-    'Info.plist': plist(infoPlist(app)),
-    ...(hasEntitlements(app) && { [ENTITLEMENTS_FILE]: plist(app.ios.entitlements) }),
+    'Info.plist': plist(infoPlist(app, plugins, context)),
+    ...(hasEntitlements && { [ENTITLEMENTS_FILE]: plist(appEntitlements) }),
     ...(app.icon && {
       [`${ASSETS}/AppIcon.appiconset/icon.png`]: { content: readAppFile(app.icon) },
     }),

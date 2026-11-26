@@ -25,8 +25,8 @@ export default defineConfig({
 })
 ```
 
-A plugin is an object with a `name`, Vite plugins for the build (`vite`), and a module the app
-imports before it starts (`runtime`).
+A plugin is an object with a `name`, Vite plugins for the build (`vite`), a module the app
+imports before it starts (`runtime`), and mods of the native files (`ios`, `android`, below).
 
 ## Writing a package with native code
 
@@ -96,6 +96,65 @@ export const CameraView = defineComponent(
       h('CameraView', attrs),
 )
 ```
+
+### Changing the app's native files
+
+A package whose native code needs something in the app's `Info.plist`, entitlements, manifest or
+strings declares a plugin in its `package.json`, next to its native code:
+
+```json
+"nativue": {
+  "plugin": "./plugin.mjs",
+  "ios": { "sources": "ios", "plugin": "PushPlugin" }
+}
+```
+
+`plugin.mjs` exports by default a function from options to a plugin named after the package. Its
+mods change each document in place, when `nativue prebuild` generates `ios/` and `android/`:
+
+```js
+export default function push({ channelName = 'Updates' } = {}) {
+  return {
+    name: '@acme/push',
+    ios: {
+      infoPlist(infoPlist) {
+        infoPlist.UIBackgroundModes = [
+          ...(infoPlist.UIBackgroundModes ?? []),
+          'remote-notification',
+        ]
+      },
+      entitlements(entitlements) {
+        entitlements['aps-environment'] = 'production'
+      },
+    },
+    android: {
+      // The app's manifest: { tag, attributes, children }, attributes with their prefix.
+      manifest(manifest) {
+        const application = manifest.children.find((child) => child.tag === 'application')
+        application.children.push({
+          tag: 'meta-data',
+          attributes: { 'android:name': 'push.channel', 'android:value': 'default' },
+          children: [],
+        })
+      },
+      strings(strings) {
+        strings.push_channel_name = channelName
+      },
+    },
+  }
+}
+```
+
+- The app applies it without options, with nothing to configure. To pass options, the app lists it
+  in `plugins` (`plugins: [push({ channelName: 'News' })]`), which replaces the default one.
+- Plugins run in the order of the app's dependencies, then `plugins`, and the app's own fields
+  (`ios.infoPlist`, `android.permissions`...) apply last: the app always wins.
+- Permissions and components the package always uses go in its own `AndroidManifest.xml`, which
+  Gradle merges into the app. The `manifest` mod is for what depends on options, or must be in the
+  app's manifest.
+- An app with `prebuild: false` keeps its native files by hand: `dev`, `build` and `run` stop and
+  list what the plugins add that its files lack, to paste in. Its mods then get a `config` with
+  only `prebuild` and `plugins`.
 
 ## Native code in your app
 

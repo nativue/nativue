@@ -23,6 +23,10 @@
 	<string>Scans receipts</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Connects to the Nativue dev server on your Mac for hot reload.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

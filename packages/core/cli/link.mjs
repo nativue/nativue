@@ -41,13 +41,24 @@ function moduleName(packageName) {
     .join('')
 }
 
-function iosPlugins(appDirectory) {
-  const { dependencies = {}, devDependencies = {} } = readJson(join(appDirectory, 'package.json'))
-  const names = [...Object.keys(dependencies), ...Object.keys(devDependencies)]
+/** The app's packages with a "nativue" field in their package.json, in the order it lists them. */
+export function nativuePackages(appDirectory) {
+  if (!existsSync(join(appDirectory, 'package.json'))) return []
 
-  return names.flatMap((name) => {
+  const { dependencies = {}, devDependencies = {} } = readJson(join(appDirectory, 'package.json'))
+  const names = new Set([...Object.keys(dependencies), ...Object.keys(devDependencies)])
+
+  return [...names].flatMap((name) => {
     const directory = packageDirectory(name, appDirectory)
-    const ios = directory && readJson(join(directory, 'package.json')).nativue?.ios
+    const nativue = directory && readJson(join(directory, 'package.json')).nativue
+
+    return nativue ? [{ name, directory, nativue }] : []
+  })
+}
+
+function iosPlugins(appDirectory) {
+  return nativuePackages(appDirectory).flatMap(({ name, directory, nativue }) => {
+    const ios = nativue.ios
     if (!ios) return []
 
     return [

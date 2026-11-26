@@ -1,19 +1,51 @@
 import type { Plugin as VitePlugin } from 'vite'
 
+/** A value of Info.plist or the entitlements. */
+export type PlistValue = string | number | boolean | PlistValue[] | { [key: string]: PlistValue }
+
+export type PlistDictionary = { [key: string]: PlistValue }
+
+/** An XML element: attribute names keep their prefix, 'android:name' or 'tools:node'. */
+export interface XmlElement {
+  tag: string
+  attributes: Record<string, string>
+  children: XmlElement[]
+  text?: string
+}
+
+export interface PrebuildContext {
+  /** nativue.config.ts, with its defaults. */
+  config: NativueConfig
+  /** The app's folder. */
+  projectRoot: string
+  platform: 'ios' | 'android'
+}
+
 /**
- * A plugin of nativue.config.ts, e.g. @nativue/tailwind: build-time work through Vite plugins, and a
- * module the app imports before it runs.
+ * A plugin of nativue.config.ts, e.g. @nativue/tailwind: build-time work through Vite plugins, a
+ * module the app imports before it runs, and mods of the native files prebuild generates. A package
+ * declares its own in package.json, `"nativue": { "plugin": "./plugin.mjs" }`, whose default export
+ * is `(options?) => NativuePlugin`: it's applied without options unless nativue.config.ts lists it.
  */
 export interface NativuePlugin {
+  /** A package's own plugin: the package's name. */
   name: string
   /** Added to the bundler's (Vite's) plugins. */
   vite?: VitePlugin | VitePlugin[]
   /** Imported before the app runs, resolved from the app: a package path or a virtual module. */
   runtime?: string
+  /** Change the documents in place; the app's own config fields are applied after them. */
+  ios?: {
+    infoPlist?: (infoPlist: PlistDictionary, context: PrebuildContext) => void
+    entitlements?: (entitlements: PlistDictionary, context: PrebuildContext) => void
+  }
+  android?: {
+    /** The app's AndroidManifest.xml: a package's own entries belong in its library manifest. */
+    manifest?: (manifest: XmlElement, context: PrebuildContext) => void
+    /** res/values/strings.xml, by name. */
+    strings?: (strings: Record<string, string>, context: PrebuildContext) => void
+  }
 }
-
-/** A value of Info.plist or the entitlements. */
-export type PlistValue = string | number | boolean | PlistValue[] | { [key: string]: PlistValue }
 
 /** nativue.config.ts: the app, which `nativue prebuild` generates ios/ and android/ from. */
 export interface GeneratedProjectsConfig {
@@ -54,6 +86,8 @@ export interface GeneratedProjectsConfig {
     package: string
     /** e.g. ['android.permission.CAMERA'] */
     permissions?: string[]
+    /** Removed even when a package's manifest asks for them, e.g. ['android.permission.READ_MEDIA_IMAGES'] */
+    blockedPermissions?: string[]
     /** Android 8+'s icon: a square PNG whose logo fits in the middle 61%, on a color. */
     adaptiveIcon?: { foregroundImage: string; backgroundColor?: string }
     /**
