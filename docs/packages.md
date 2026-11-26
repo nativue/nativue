@@ -156,6 +156,7 @@ export default function push({ channelName = 'Updates' } = {}) {
 - Permissions and components the package always uses go in its own `AndroidManifest.xml`, which
   Gradle merges into the app. The `manifest` mod is for what depends on options, or must be in the
   app's manifest.
+- An `ios.targets` mod adds an iOS app extension (below) the app embeds.
 - An app with `prebuild: false` keeps its native files by hand: `dev`, `build` and `run` stop and
   list what the plugins add that its files lack, to paste in. Its mods then get a `config` with
   only `prebuild` and `plugins`.
@@ -217,6 +218,52 @@ libraries for Android (from Google's Maven and Maven Central).
 
 A package lists its Swift packages the same way, in `"nativue": { "ios": { "dependencies": [...] } }`;
 its Android libraries go in its `build.gradle.kts`.
+
+### iOS app extensions
+
+A Notification Service Extension, a widget or a share extension is its own target in the Xcode
+project, built from a folder of Swift files. It's plain Swift: it doesn't link nativue, and doesn't
+run JavaScript.
+
+An app puts one in `native/extensions/<name>/`, with a `nativue.json`:
+
+```
+native/
+  extensions/
+    Widget/
+      Widget.swift
+      nativue.json   { "ios": { "target": { "type": "widget", "bundleIdSuffix": ".Widget" } } }
+```
+
+A package adds one with its plugin's `ios.targets` mod:
+
+```js
+import { fileURLToPath } from 'node:url'
+
+// in the plugin's ios:
+targets(targets) {
+  targets.push({
+    name: 'NotificationService',
+    type: 'notification-service',
+    sources: fileURLToPath(new URL('./ios-extension', import.meta.url)),
+    bundleIdSuffix: '.NotificationService',
+    infoPlist: {
+      NSExtension: { NSExtensionPrincipalClass: '$(PRODUCT_MODULE_NAME).NotificationService' },
+    },
+  })
+},
+```
+
+- `type`: `notification-service`, `notification-content`, `widget` or `share`. Its
+  `NSExtensionPointIdentifier` is set; `infoPlist` adds the rest, like the principal class.
+- The bundle id is the app's plus `bundleIdSuffix`. The version, build number and team are the app's.
+- Its Swift module is `App<Name>` (`AppNotificationService`), as for `native/` modules: name the
+  principal class `$(PRODUCT_MODULE_NAME).<Class>`.
+- `appGroups: true` gives the extension the app's `ios.appGroups`, to share files and
+  `UserDefaults(suiteName:)` with it. `entitlements`, `deploymentTarget` (the app's, 15.1, by default)
+  and `buildSettings` set the rest.
+- `ios/Extensions/<name>` links to the folder: edits to its Swift files are built without a
+  prebuild.
 
 Native changes need the app rebuilt with `npm run ios` or `npm run android`, not just a reload. To turn
 a folder into a package later, move it out and add a `package.json` with its `"nativue"` field (and,

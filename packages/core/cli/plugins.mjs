@@ -145,7 +145,18 @@ function pluginRequirements(plugin, platform, { context, manifest }) {
   const fonts = iosFonts(resources)
 
   if (platform === 'ios') {
+    // An invalid target is only refused when generating: here, it's skipped.
+    const targetNames = run('targets', [])
+      .map((target) => target?.name)
+      .filter((name) => typeof name === 'string')
+
     return [
+      ...targetNames.map((name) => ({
+        file: 'project.pbxproj',
+        entry: `an extension target named ${name}`,
+        isPresent: (text) =>
+          new RegExp(`isa = PBXNativeTarget;[^}]*\\bname = "?${name}"?;`).test(text),
+      })),
       ...plistChecks('Info.plist', run('infoPlist', {})),
       ...plistChecks('.entitlements', run('entitlements', {})),
       ...plistChecks('Info.plist', fonts.length > 0 ? { UIAppFonts: fonts } : {}),
@@ -191,6 +202,7 @@ function projectFiles(appDirectory) {
     'Info.plist': texts(iosPaths, (name) => name.endsWith('Info.plist')),
     '.entitlements': texts(iosPaths, (name) => name.endsWith('.entitlements')),
     'ios resources': iosPaths,
+    'project.pbxproj': texts(iosPaths, (name) => name === 'project.pbxproj'),
     'AndroidManifest.xml': texts(androidPaths, (name) => name === 'AndroidManifest.xml'),
     'res/values strings': texts(androidPaths, (name) => /^strings.*\.xml$/.test(name)),
     'build.gradle.kts': texts(androidPaths, (name) => /\.gradle(\.kts)?$/.test(name)),

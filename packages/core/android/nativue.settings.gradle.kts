@@ -46,6 +46,8 @@ fun pascalCase(name: String): String =
 val appDirectory: File = settingsDir.parentFile
 val androidPlugins = dependencyNames(appDirectory).mapNotNull { name -> androidPlugin(name, appDirectory) }
 val appSourceDirectories = File(appDirectory, "native").listFiles().orEmpty()
+    // native/extensions holds iOS extension targets, not modules.
+    .filter { it.name != "extensions" }
     .sortedBy { it.name }
     .map { File(it, "android") }
     .filter { it.isDirectory }
