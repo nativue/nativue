@@ -13,6 +13,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { resolvePlugins } from '../cli/plugins.mjs'
 import { linkNativePackages, prebuild } from '../cli/prebuild.mjs'
 
 const CORE_DIRECTORY = fileURLToPath(new URL('..', import.meta.url))
@@ -52,6 +53,43 @@ const CONFIG = {
   },
 }
 const MANUAL_CONFIG = { prebuild: false }
+// Every mod, as a package's plugin would use them.
+const PUSH_PLUGIN = {
+  name: 'push',
+  ios: {
+    infoPlist(infoPlist) {
+      infoPlist.UIBackgroundModes = ['remote-notification']
+      infoPlist.NSCameraUsageDescription = 'From the plugin'
+    },
+    entitlements(entitlements) {
+      entitlements['aps-environment'] = 'production'
+    },
+  },
+  android: {
+    manifest(manifest, { config }) {
+      manifest.children.unshift({
+        tag: 'uses-permission',
+        attributes: { 'android:name': 'android.permission.POST_NOTIFICATIONS' },
+        children: [],
+      })
+      manifest.children
+        .find((child) => child.tag === 'application')
+        .children.push({
+          tag: 'meta-data',
+          attributes: {
+            'android:name': 'push.channel',
+            // With prebuild: false, the config has no android.
+            'android:value': `${config.android?.package}.default`,
+            'tools:replace': 'android:value',
+          },
+          children: [],
+        })
+    },
+    strings(strings) {
+      strings.push_channel_name = "Tom's updates"
+    },
+  },
+}
 
 /** Only a PNG's header: what prebuild reads of it, besides copying it. */
 function png(width, height, colorType = 2) {
@@ -73,7 +111,13 @@ function createApp() {
 }
 
 function run(appDirectory, options = {}) {
-  return prebuild({ config: CONFIG, appDirectory, coreDirectory: CORE_DIRECTORY, ...options })
+  return prebuild({
+    config: CONFIG,
+    plugins: [PUSH_PLUGIN],
+    appDirectory,
+    coreDirectory: CORE_DIRECTORY,
+    ...options,
+  })
 }
 
 const read = (appDirectory, path) => readFileSync(join(appDirectory, path), 'utf8')
@@ -100,6 +144,13 @@ function test(name, body) {
   const appDirectory = createApp()
   appDirectories.push(appDirectory)
   body(appDirectory)
+  console.log(`ok - ${name}`)
+}
+
+async function asyncTest(name, body) {
+  const appDirectory = createApp()
+  appDirectories.push(appDirectory)
+  await body(appDirectory)
   console.log(`ok - ${name}`)
 }
 
@@ -186,7 +237,7 @@ try {
     const renamed = { ...CONFIG, name: 'Renamed' }
     const renamedApp = createApp()
     appDirectories.push(renamedApp)
-    prebuild({ config: renamed, appDirectory: renamedApp, coreDirectory: CORE_DIRECTORY })
+    run(renamedApp, { config: renamed })
     const pending = JSON.parse(
       readFileSync(join(renamedApp, 'ios/.nativue/generated.json'), 'utf8'),
     )
@@ -195,7 +246,7 @@ try {
     writeFileSync(recordPath, JSON.stringify({ ...finished, pending: pending.files }))
     writeFileSync(join(appDirectory, 'ios/Info.plist'), read(renamedApp, 'ios/Info.plist'))
 
-    const written = prebuild({ config: renamed, appDirectory, coreDirectory: CORE_DIRECTORY })
+    const written = run(appDirectory, { config: renamed })
 
     assert.ok(written.includes('ios/App.xcodeproj/project.pbxproj'))
     assert.strictEqual(
@@ -279,7 +330,7 @@ try {
       splash: { image: './assets/splash.png' },
     }
 
-    prebuild({ config, appDirectory, coreDirectory: CORE_DIRECTORY })
+    run(appDirectory, { config })
 
     const launchLogo = 'ios/App/Assets.xcassets/LaunchLogo.imageset'
     const resources = 'android/app/src/main/res'
@@ -357,7 +408,7 @@ try {
       android: { ...CONFIG.android, signing: { ...CONFIG.android.signing, keyAlias: 'my$"key' } },
     }
 
-    prebuild({ config, appDirectory, coreDirectory: CORE_DIRECTORY })
+    run(appDirectory, { config })
 
     const infoPlist = read(appDirectory, 'ios/Info.plist')
     assert.match(infoPlist, /NSAllowsLocalNetworking/)
@@ -365,6 +416,85 @@ try {
     assert.match(infoPlist, /<string>tomsapp<\/string>/)
     assert.match(infoPlist, /com\.googleusercontent\.apps\.123/)
     assert.match(read(appDirectory, 'android/app/build.gradle.kts'), /keyAlias = "my\\\$\\"key"/)
+  })
+
+  test("applies the app's own fields after the plugins' mods", (appDirectory) => {
+    const android = {
+      ...CONFIG.android,
+      blockedPermissions: ['android.permission.POST_NOTIFICATIONS'],
+    }
+
+    run(appDirectory, { config: { ...CONFIG, android } })
+
+    const manifest = read(appDirectory, 'android/app/src/main/AndroidManifest.xml')
+
+    assert.match(read(appDirectory, 'ios/Info.plist'), /<string>Scans receipts<\/string>/)
+    assert.match(read(appDirectory, 'ios/App.entitlements'), /<string>development<\/string>/)
+    assert.match(
+      manifest,
+      /android:name="android.permission.POST_NOTIFICATIONS"\n\s+tools:node="remove"/,
+    )
+    assert.strictEqual(manifest.match(/POST_NOTIFICATIONS/g).length, 1)
+
+    const requested = { ...CONFIG.android, permissions: ['android.permission.POST_NOTIFICATIONS'] }
+    run(appDirectory, { config: { ...CONFIG, android: requested } })
+
+    assert.match(
+      read(appDirectory, 'android/app/src/main/AndroidManifest.xml'),
+      /<uses-permission android:name="android.permission.POST_NOTIFICATIONS" \/>/,
+    )
+  })
+
+  test("with prebuild: false, asks for what the plugins' mods add", (appDirectory) => {
+    mkdirSync(join(appDirectory, 'ios'))
+    mkdirSync(join(appDirectory, 'android/app/src/main/res/values'), { recursive: true })
+    const link = (options) =>
+      linkNativePackages({
+        config: MANUAL_CONFIG,
+        plugins: [PUSH_PLUGIN],
+        appDirectory,
+        coreDirectory: CORE_DIRECTORY,
+        ...options,
+      })
+    const missing = [
+      'Info.plist: <key>UIBackgroundModes</key>',
+      '.entitlements: <key>aps-environment</key>',
+      'AndroidManifest.xml: <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />',
+      'res/values strings: <string name="push_channel_name">',
+    ]
+    const failingPlugin = { name: 'failing', ios: { infoPlist: () => JSON.parse('') } }
+
+    assert.throws(link, (error) => missing.every((entry) => error.message.includes(entry)))
+    assert.throws(() => link({ plugins: [failingPlugin] }), /failing's ios\.infoPlist mod failed/)
+
+    writeFileSync(
+      join(appDirectory, 'android/app/src/main/AndroidManifest.xml'),
+      '<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />',
+    )
+    writeFileSync(
+      join(appDirectory, 'android/app/src/main/res/values/strings.xml'),
+      '<string name="push_channel_name">Updates</string>',
+    )
+    // The key without the plugin's value isn't enough.
+    writeFileSync(
+      join(appDirectory, 'ios/Info.plist'),
+      '<key>UIBackgroundModes</key><array><string>audio</string></array>',
+    )
+
+    link({ platforms: ['android'] })
+    assert.throws(link, /Info\.plist: <key>UIBackgroundModes<\/key>/)
+
+    writeFileSync(
+      join(appDirectory, 'ios/Info.plist'),
+      '<key>UIBackgroundModes</key><array><string>remote-notification</string></array>' +
+        '<key>NSCameraUsageDescription</key><string>From the plugin</string>',
+    )
+    writeFileSync(
+      join(appDirectory, 'ios/App.entitlements'),
+      '<key>aps-environment</key><string>production</string>',
+    )
+
+    link()
   })
 
   test('says where a hand edit belongs', (appDirectory) => {
@@ -405,6 +535,61 @@ try {
       (error) => fields.every((field) => error.message.includes(field)),
     )
   })
+
+  await asyncTest(
+    "finds packages' plugins, replaced by the config's of the same name",
+    async (appDirectory) => {
+      const writePackage = (name, plugin, file = 'plugin.mjs') => {
+        const directory = join(appDirectory, 'node_modules', name)
+        const manifest = { name, nativue: { plugin: `./${file}` } }
+
+        mkdirSync(directory, { recursive: true })
+        writeFileSync(join(directory, 'package.json'), JSON.stringify(manifest))
+        writeFileSync(join(directory, file), plugin)
+      }
+      const writeDependencies = (names) => {
+        const dependencies = Object.fromEntries(names.map((name) => [name, '1.0.0']))
+
+        writeFileSync(join(appDirectory, 'package.json'), JSON.stringify({ dependencies }))
+      }
+
+      writePackage(
+        'nativue-push',
+        "export default (options = {}) => ({ name: 'nativue-push', options })",
+      )
+      writePackage('nativue-photos', "export default async () => ({ name: 'nativue-photos' })")
+      writeDependencies(['nativue-push', 'nativue-photos'])
+
+      assert.deepStrictEqual(await resolvePlugins(appDirectory), [
+        { name: 'nativue-push', options: {} },
+        { name: 'nativue-photos' },
+      ])
+
+      // A required option: the package's plugin is never created without it.
+      writePackage(
+        'nativue-maps',
+        "export default ({ apiKey }) => { if (!apiKey) throw new Error('apiKey'); return { name: 'nativue-maps' } }",
+      )
+      writeDependencies(['nativue-push', 'nativue-photos', 'nativue-maps'])
+      const configured = await resolvePlugins(appDirectory, [
+        { name: 'nativue-push', options: { exactAlarms: true } },
+        { name: 'nativue-maps' },
+      ])
+
+      assert.deepStrictEqual(
+        configured.map((plugin) => plugin.name),
+        ['nativue-photos', 'nativue-push', 'nativue-maps'],
+      )
+      assert.deepStrictEqual(configured[1].options, { exactAlarms: true })
+
+      // Another file: Node keeps the module it imported first.
+      writePackage('nativue-photos', "export default () => ({ name: 'photos' })", 'renamed.mjs')
+      await assert.rejects(
+        resolvePlugins(appDirectory, [{ name: 'nativue-maps' }]),
+        /must export by default a function returning \{ name: 'nativue-photos'/,
+      )
+    },
+  )
 } finally {
   appDirectories.forEach((directory) => rmSync(directory, { recursive: true, force: true }))
 }

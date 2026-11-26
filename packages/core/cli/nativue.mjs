@@ -29,6 +29,7 @@ import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { dirname, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { resolvePlugins } from './plugins.mjs'
 import { linkNativePackages, PLATFORMS, prebuild } from './prebuild.mjs'
 import { runOnAndroid, runOnIOS } from './run.mjs'
 import { createSymbolicator, framedFiles } from './symbolicate.mjs'
@@ -186,7 +187,10 @@ function pluginRuntimes(plugins) {
 }
 
 const appConfig = await loadAppConfig()
-const appPlugins = appConfig.plugins ?? []
+const appPlugins = await resolvePlugins(process.cwd(), appConfig.plugins).catch((error) => {
+  console.error(`\n${error.message}`)
+  process.exit(1)
+})
 const APP_VITE_PLUGINS = [
   pluginRuntimes(appPlugins),
   ...appPlugins.flatMap((plugin) => plugin.vite ?? []),
@@ -520,8 +524,8 @@ function generateNativeProjects(platforms, { force = false } = {}) {
   const directories = { appDirectory: process.cwd(), coreDirectory: frameworkPath('') }
   const changedPaths =
     appConfig.prebuild === false
-      ? linkNativePackages({ ...directories, config: appConfig })
-      : prebuild({ ...directories, config: appConfig, platforms, force })
+      ? linkNativePackages({ ...directories, config: appConfig, plugins: appPlugins, platforms })
+      : prebuild({ ...directories, config: appConfig, plugins: appPlugins, platforms, force })
 
   if (changedPaths.length > 0) console.log(`prebuild: ${changedPaths.length} file(s) updated`)
 }

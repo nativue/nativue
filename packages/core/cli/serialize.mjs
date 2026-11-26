@@ -6,7 +6,7 @@ const PLIST_HEADER = `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0">
 `
 
-function escapeXml(text) {
+export function escapeXml(text) {
   return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
 }
 

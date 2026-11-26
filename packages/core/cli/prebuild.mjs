@@ -24,10 +24,11 @@ import {
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
-import { androidProjectFiles } from './android-project.mjs'
+import { androidProjectFiles, nativueManifest } from './android-project.mjs'
 import { appConfig, validateConfig } from './app-config.mjs'
 import { iosProjectFiles } from './ios-project.mjs'
 import { iosPluginFiles, toPosixPath } from './link.mjs'
+import { checkManualProjects } from './plugins.mjs'
 
 export const PLATFORMS = ['ios', 'android']
 
@@ -146,7 +147,7 @@ function asEntries(files) {
 }
 
 /** Every file of platform's folder, by path relative to it: { content, executable } or { symlink }. */
-function generatedFiles(platform, { app, appDirectory, coreDirectory }) {
+function generatedFiles(platform, { app, plugins, appDirectory, coreDirectory }) {
   const platformDirectory = join(appDirectory, platform)
   const placeholders = {
     __ANDROID_PACKAGE__: app.android.package,
@@ -158,8 +159,11 @@ function generatedFiles(platform, { app, appDirectory, coreDirectory }) {
   const template = templateFiles(join(coreDirectory, 'template', platform), placeholders)
   const generated =
     platform === 'ios'
-      ? { ...iosProjectFiles(app, appDirectory), ...iosPluginFiles(appDirectory, coreDirectory) }
-      : androidProjectFiles(app, appDirectory)
+      ? {
+          ...iosProjectFiles(app, appDirectory, plugins),
+          ...iosPluginFiles(appDirectory, coreDirectory),
+        }
+      : androidProjectFiles(app, appDirectory, plugins)
   const files = { ...template, ...generated }
 
   // A null replaces a template file with nothing.
@@ -343,6 +347,7 @@ function writePlatform(platformDirectory, files, existingPaths, record, version)
  */
 export function prebuild({
   config,
+  plugins = [],
   appDirectory,
   coreDirectory,
   platforms = PLATFORMS,
@@ -354,7 +359,7 @@ export function prebuild({
   const { version } = JSON.parse(readFileSync(join(coreDirectory, 'package.json'), 'utf8'))
   const plans = platforms.map((platform) => {
     const platformDirectory = join(appDirectory, platform)
-    const files = generatedFiles(platform, { app, appDirectory, coreDirectory })
+    const files = generatedFiles(platform, { app, plugins, appDirectory, coreDirectory })
     const existingPaths = filesIn(platformDirectory)
     const record = readRecord(platformDirectory)
     const changes = findManualChanges(existingPaths, record, platformDirectory)
@@ -381,8 +386,20 @@ export function prebuild({
  * With `prebuild: false`: only ios/NativuePlugins, the packages' native code, written into the app's
  * own ios/ when it has one, as before prebuild existed.
  */
-export function linkNativePackages({ config, appDirectory, coreDirectory }) {
+export function linkNativePackages({
+  config,
+  plugins = [],
+  appDirectory,
+  coreDirectory,
+  platforms = PLATFORMS,
+}) {
   validateConfig(config, appDirectory)
+  checkManualProjects(plugins, {
+    config,
+    appDirectory,
+    platforms,
+    manifest: nativueManifest({ schemes: [] }),
+  })
 
   const iosDirectory = join(appDirectory, 'ios')
   if (!existsSync(iosDirectory)) return []

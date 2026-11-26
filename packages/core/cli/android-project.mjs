@@ -4,6 +4,7 @@
 import { readFileSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { toPosixPath } from './link.mjs'
+import { applyMods } from './plugins.mjs'
 import { androidString, xml } from './serialize.mjs'
 
 // Changes the activity handles itself, so they don't recreate it and restart JS.
@@ -20,6 +21,7 @@ const CONFIG_CHANGES = [
   'layoutDirection',
 ]
 const ANDROID_NAMESPACE = 'http://schemas.android.com/apk/res/android'
+const TOOLS_NAMESPACE = 'http://schemas.android.com/tools'
 // The splash icon without a background is 288dp; the logo, 120dp as on iOS, is inset in it. A
 // fraction, since Android scales the icon to its own size.
 const SPLASH_LOGO_INSET = `${(((288 - 120) / 2 / 288) * 100).toFixed(2)}%`
@@ -41,7 +43,8 @@ function intentFilter(action, categories, children = []) {
   ])
 }
 
-function manifest(app) {
+/** The base manifest, every element a plugin's manifest mod may change. */
+export function nativueManifest(app) {
   const mainActivity = element(
     'activity',
     {
@@ -69,21 +72,56 @@ function manifest(app) {
     },
     [mainActivity],
   )
-  const permissions = (app.android.permissions ?? []).map((permission) =>
-    element('uses-permission', { 'android:name': permission }),
-  )
 
   return element(
     'manifest',
-    { 'xmlns:android': ANDROID_NAMESPACE, 'xmlns:tools': 'http://schemas.android.com/tools' },
-    [...permissions, application],
+    { 'xmlns:android': ANDROID_NAMESPACE, 'xmlns:tools': TOOLS_NAMESPACE },
+    [application],
   )
 }
 
-function strings(app) {
-  return element('resources', {}, [
-    { tag: 'string', attributes: { name: 'app_name' }, text: androidString(app.name) },
-  ])
+function isPermission(child, names) {
+  return child.tag === 'uses-permission' && names.includes(child.attributes['android:name'])
+}
+
+/**
+ * nativue's manifest, then the plugins' mods, then the app's permissions. A blocked permission is
+ * removed here and, with tools:node="remove", from the packages' manifests Gradle merges in.
+ */
+function manifest(app, plugins, context) {
+  const document = applyMods(plugins, 'android', 'manifest', nativueManifest(app), context)
+  const blocked = app.android.blockedPermissions ?? []
+  const requested = (app.android.permissions ?? []).filter((name) => !blocked.includes(name))
+  const permissions = [
+    ...requested.map((name) => element('uses-permission', { 'android:name': name })),
+    ...blocked.map((name) =>
+      element('uses-permission', { 'android:name': name, 'tools:node': 'remove' }),
+    ),
+  ]
+
+  return {
+    ...document,
+    children: [
+      ...permissions,
+      // The app's entry replaces a plugin's of the same name, whatever attributes it had.
+      ...document.children.filter((child) => !isPermission(child, [...requested, ...blocked])),
+    ],
+  }
+}
+
+/** The plugins' strings, then the app's name. */
+function strings(app, plugins, context) {
+  const values = { ...applyMods(plugins, 'android', 'strings', {}, context), app_name: app.name }
+
+  return element(
+    'resources',
+    {},
+    Object.entries(values).map(([name, text]) => ({
+      tag: 'string',
+      attributes: { name },
+      text: androidString(String(text)),
+    })),
+  )
 }
 
 /** Release signing from a keystore outside android/, its passwords never written to a file. */
@@ -218,13 +256,14 @@ function iconFiles(app, readAppFile) {
 }
 
 /** Paths relative to android/. */
-export function androidProjectFiles(app, appDirectory) {
+export function androidProjectFiles(app, appDirectory, plugins = []) {
   const readAppFile = (path) => readFileSync(resolve(appDirectory, path))
+  const context = { config: app, projectRoot: appDirectory }
 
   return {
     'app/build.gradle.kts': appGradle(app, appDirectory),
-    'app/src/main/AndroidManifest.xml': xml(manifest(app)),
-    'app/src/main/res/values/strings.xml': xml(strings(app)),
+    'app/src/main/AndroidManifest.xml': xml(manifest(app, plugins, context)),
+    'app/src/main/res/values/strings.xml': xml(strings(app, plugins, context)),
     ...iconFiles(app, readAppFile),
     ...splashFiles(app.splash, readAppFile),
   }

@@ -191,6 +191,12 @@ function generatedProjectProblems(config, appDirectory) {
       "android.permissions: full names, e.g. ['android.permission.CAMERA']",
     ),
     check(
+      android.blockedPermissions === undefined ||
+        (Array.isArray(android.blockedPermissions) &&
+          android.blockedPermissions.every((permission) => ANDROID_PERMISSION.test(permission))),
+      "android.blockedPermissions: full names, e.g. ['android.permission.READ_MEDIA_IMAGES']",
+    ),
+    check(
       android.adaptiveIcon === undefined || android.adaptiveIcon.foregroundImage !== undefined,
       "android.adaptiveIcon.foregroundImage: the icon's square PNG, e.g. './assets/adaptive-icon.png'",
     ),
