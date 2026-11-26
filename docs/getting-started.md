@@ -76,7 +76,7 @@ src/
   lib/             everything else: stores, theme, helpers (optional)
   app.ts           sets the app up before it starts: Vue plugins like Pinia (optional)
   tailwind.css     the Tailwind theme, with @nativue/tailwind (optional)
-nativue.config.ts  the app: name, scheme, bundle id, Android package; plugins, e.g. @nativue/tailwind
+nativue.config.ts  the app: name, ids, version, icon, permissions (see the docs' app config); plugins
 ios/               generated from nativue.config.ts: the iOS app (App.xcodeproj); not committed
 android/           generated from nativue.config.ts: the Android app; not committed
 native/            your own native code, a folder per feature (optional; see packages.md)
@@ -129,7 +129,11 @@ This bundles the app for production: minified and compiled to bytecode for faste
 written into `ios/` and `android/`. Then build the release as you would any native app:
 
 - **iOS:** in Xcode, Product → Archive.
-- **Android:** in Android Studio, Build → Generate Signed App Bundle or APK.
+- **Android:** with `android.signing` in `nativue.config.ts` ([app config](app-config.md#signing-android-releases)),
+  `cd android && ./gradlew bundleRelease`, or Build → Generate App Bundle in Android Studio.
+
+Raise `buildNumber` in `nativue.config.ts` for every build you upload, and `version` when people
+should see a new one.
 
 Run `npm run build` again before each release build: the native project uses the bundle it finds.
 

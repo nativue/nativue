@@ -62,6 +62,7 @@ To run on a phone, see [Getting started](docs/getting-started.md#run-on-a-phone)
 ## Documentation
 
 - [Getting started](docs/getting-started.md): create, run, project structure, release builds
+- [App config](docs/app-config.md): name, ids, version, icon, splash, permissions, signing
 - [Components](docs/components/README.md): every component, its props, events and slots
 - [Styling](docs/styling.md): styles, colors, dark mode, pressed and focused states
 - [Navigation](docs/navigation.md): routes, stacks, tabs, modals, deep links

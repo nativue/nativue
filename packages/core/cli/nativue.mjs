@@ -520,7 +520,7 @@ function generateNativeProjects(platforms, { force = false } = {}) {
   const directories = { appDirectory: process.cwd(), coreDirectory: frameworkPath('') }
   const changedPaths =
     appConfig.prebuild === false
-      ? linkNativePackages(directories)
+      ? linkNativePackages({ ...directories, config: appConfig })
       : prebuild({ ...directories, config: appConfig, platforms, force })
 
   if (changedPaths.length > 0) console.log(`prebuild: ${changedPaths.length} file(s) updated`)

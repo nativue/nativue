@@ -2,7 +2,7 @@
     <!-- Light or dark with the system: values-night/styles.xml has the dark ones. -->
     <style name="AppTheme.Base" parent="@android:style/Theme.Material.Light.NoActionBar" />
     <bool name="light_system_bars">true</bool>
-    <color name="splash_background">#FFFFFF</color>
+    <color name="splash_background">__SPLASH_BACKGROUND__</color>
 
     <!-- Status and navigation bar icons that contrast with the screens. The splash screen (Android
          12+) matches the iOS launch screen: the logo, 120dp, on white, or on ink in dark mode. -->

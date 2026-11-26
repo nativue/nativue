@@ -6,18 +6,20 @@ A new app is two parts, both generated:
   `package.json`, `tsconfig.json`, `nativue.config.ts`, `.gitignore` shipped as `template/gitignore`).
 - `ios/` and `android/`: written by `nativue prebuild` (`packages/core/cli/prebuild.mjs`) on every
   `dev`, `build` and `run`, from `packages/core/template/{ios,android}` plus the files it builds from
-  `nativue.config.ts` (the Xcode project in `cli/ios-project.mjs`, the Android manifest and strings in
-  `cli/android-project.mjs`). Apps, the demo included, don't commit them.
+  `nativue.config.ts` (the Xcode project, `Info.plist`, entitlements and assets in `cli/ios-project.mjs`;
+  the manifest, `app/build.gradle.kts`, strings and images in `cli/android-project.mjs`). Apps, the demo
+  included, don't commit them.
 
 When a change to the framework (`packages/core`, `packages/icons`, the CLI) affects how an app is set
 up, update the right part in the same change, for example:
 
 - Xcode settings, build phases or `Info.plist` keys: `cli/ios-project.mjs`; `App.swift` and assets:
   `packages/core/template/ios`
-- the Android manifest: `cli/android-project.mjs`; Gradle files and resources:
-  `packages/core/template/android`
-- a new `nativue.config.ts` field: `cli/config.d.mts`, its validation in `cli/prebuild.mjs`, and the
-  template's `nativue.config.ts` when every app needs it
+- the Android manifest or the app's `build.gradle.kts`: `cli/android-project.mjs`; the other Gradle
+  files and resources: `packages/core/template/android`
+- a new `nativue.config.ts` field: `cli/config.d.mts`, its validation and default in
+  `cli/app-config.mjs`, `docs/app-config.md`, and the template's `nativue.config.ts` when every app
+  needs it
 - the app's `package.json` scripts or dependencies, `tsconfig.json`, `.gitignore`, `src/env.d.ts`
 - a renamed or removed API that `template/src` uses
 

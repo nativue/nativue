@@ -25,6 +25,7 @@ import {
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { androidProjectFiles } from './android-project.mjs'
+import { appConfig, validateConfig } from './app-config.mjs'
 import { iosProjectFiles } from './ios-project.mjs'
 import { iosPluginFiles, toPosixPath } from './link.mjs'
 
@@ -53,38 +54,6 @@ const IGNORED_PATHS = new Set(['App.xcodeproj/project.xcworkspace'])
 const SEEDED_PATHS = new Set([
   'App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved',
 ])
-
-const IOS_BUNDLE_IDENTIFIER = /^[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)+$/
-const APPLE_TEAM_ID = /^[A-Z0-9]{10}$/
-const ANDROID_PACKAGE = /^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$/
-const URL_SCHEME = /^[a-zA-Z][a-zA-Z0-9+.-]*$/
-
-/** Every problem of the config at once, before anything is generated. */
-function validateConfig(config) {
-  const problems = [
-    typeof config.name === 'string' && config.name.trim() !== ''
-      ? null
-      : "name: the app's name, e.g. name: 'My App'",
-    URL_SCHEME.test(config.scheme ?? '')
-      ? null
-      : "scheme: e.g. scheme: 'myapp', for myapp:// links",
-    IOS_BUNDLE_IDENTIFIER.test(config.ios?.bundleIdentifier ?? '')
-      ? null
-      : "ios.bundleIdentifier: e.g. ios: { bundleIdentifier: 'com.company.myapp' }",
-    ANDROID_PACKAGE.test(config.android?.package ?? '')
-      ? null
-      : "android.package: e.g. android: { package: 'com.company.myapp' }, without hyphens",
-    config.ios?.appleTeamId === undefined || APPLE_TEAM_ID.test(config.ios.appleTeamId)
-      ? null
-      : 'ios.appleTeamId: the 10 characters of your team id, from Signing & Capabilities in Xcode',
-  ].filter(Boolean)
-
-  if (problems.length === 0) return
-
-  throw new Error(
-    `nativue.config.ts is missing or has invalid fields, which nativue generates ios/ and android/ from:\n${problems.map((problem) => `  ${problem}`).join('\n')}`,
-  )
-}
 
 function isIgnored(path) {
   const name = path.split('/').pop()
@@ -177,19 +146,24 @@ function asEntries(files) {
 }
 
 /** Every file of platform's folder, by path relative to it: { content, executable } or { symlink }. */
-function generatedFiles(platform, { config, appDirectory, coreDirectory }) {
+function generatedFiles(platform, { app, appDirectory, coreDirectory }) {
   const platformDirectory = join(appDirectory, platform)
   const placeholders = {
-    __ANDROID_PACKAGE__: config.android.package,
+    __ANDROID_PACKAGE__: app.android.package,
     __CORE_PATH__: toPosixPath(relative(platformDirectory, coreDirectory)),
+    __SPLASH_BACKGROUND__: app.splash.backgroundColor,
+    __DARK_SPLASH_BACKGROUND__: app.splash.darkBackgroundColor,
+    __ICON_BACKGROUND__: app.iconBackgroundColor,
   }
   const template = templateFiles(join(coreDirectory, 'template', platform), placeholders)
   const generated =
     platform === 'ios'
-      ? { ...iosProjectFiles(config), ...iosPluginFiles(appDirectory, coreDirectory) }
-      : androidProjectFiles(config)
+      ? { ...iosProjectFiles(app, appDirectory), ...iosPluginFiles(appDirectory, coreDirectory) }
+      : androidProjectFiles(app, appDirectory)
+  const files = { ...template, ...generated }
 
-  return { ...template, ...asEntries(generated) }
+  // A null replaces a template file with nothing.
+  return asEntries(Object.fromEntries(Object.entries(files).filter(([, file]) => file !== null)))
 }
 
 /** What the folder holds that prebuild didn't write, or wrote and was changed since. */
@@ -237,6 +211,35 @@ function diffAgainstGenerated(path, label, entry) {
     .replaceAll(path.slice(1), `${label} (yours)`)
 }
 
+// Where a hand edit of each generated file belongs instead.
+const DESTINATIONS = [
+  [/^Info\.plist$/, 'ios.infoPlist in nativue.config.ts'],
+  [/^App\.entitlements$/, 'ios.entitlements in nativue.config.ts'],
+  [
+    /^App\.xcodeproj\//,
+    'nativue.config.ts: version, buildNumber, ios.appleTeamId, ios.entitlements',
+  ],
+  [/^App\/Assets\.xcassets\//, 'icon or splash in nativue.config.ts'],
+  [/^app\/src\/main\/AndroidManifest\.xml$/, 'android.permissions in nativue.config.ts'],
+  [/^app\/build\.gradle\.kts$/, 'nativue.config.ts: version, buildNumber, android.signing'],
+  [/^app\/src\/main\/res\/values\/strings\.xml$/, 'name in nativue.config.ts'],
+  [
+    /^app\/src\/main\/res\/values(-night)?\/(styles|colors)\.xml$/,
+    'splash or android.adaptiveIcon.backgroundColor in nativue.config.ts',
+  ],
+  [
+    /^app\/src\/main\/res\/(mipmap|drawable)/,
+    'icon, android.adaptiveIcon or splash in nativue.config.ts',
+  ],
+  [/\.(swift|kt|java)$/, 'a module in native/<name>/'],
+]
+
+function destination(path) {
+  const match = DESTINATIONS.find(([pattern]) => pattern.test(path))
+
+  return match ? `  → ${match[1]}` : ''
+}
+
 /** For a team picked in Xcode, the config field that keeps it. */
 function teamHint(path, platformDirectory) {
   if (!path.endsWith('project.pbxproj')) return ''
@@ -263,8 +266,8 @@ prebuild: false in nativue.config.ts: ${MIGRATION_GUIDE_URL}`
       teamHint(path, platformDirectory),
   )
   const lines = [
-    ...changes.edited.map((path) => `  changed: ${platform}/${path}`),
-    ...changes.added.map((path) => `  added:   ${platform}/${path}`),
+    ...changes.edited.map((path) => `  changed: ${platform}/${path}${destination(path)}`),
+    ...changes.added.map((path) => `  added:   ${platform}/${path}${destination(path)}`),
   ]
 
   return `${platform}/ is generated by nativue, but was changed by hand: the next prebuild would lose this.
@@ -345,12 +348,13 @@ export function prebuild({
   platforms = PLATFORMS,
   force = false,
 }) {
-  validateConfig(config)
+  validateConfig(config, appDirectory)
 
+  const app = appConfig(config)
   const { version } = JSON.parse(readFileSync(join(coreDirectory, 'package.json'), 'utf8'))
   const plans = platforms.map((platform) => {
     const platformDirectory = join(appDirectory, platform)
-    const files = generatedFiles(platform, { config, appDirectory, coreDirectory })
+    const files = generatedFiles(platform, { app, appDirectory, coreDirectory })
     const existingPaths = filesIn(platformDirectory)
     const record = readRecord(platformDirectory)
     const changes = findManualChanges(existingPaths, record, platformDirectory)
@@ -377,7 +381,9 @@ export function prebuild({
  * With `prebuild: false`: only ios/NativuePlugins, the packages' native code, written into the app's
  * own ios/ when it has one, as before prebuild existed.
  */
-export function linkNativePackages({ appDirectory, coreDirectory }) {
+export function linkNativePackages({ config, appDirectory, coreDirectory }) {
+  validateConfig(config, appDirectory)
+
   const iosDirectory = join(appDirectory, 'ios')
   if (!existsSync(iosDirectory)) return []
 

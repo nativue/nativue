@@ -3,3 +3,5 @@ node_modules
 # Generated from nativue.config.ts by nativue prebuild
 /ios/
 /android/
+# Signing keys: never committed
+/credentials/

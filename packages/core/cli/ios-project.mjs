@@ -1,8 +1,16 @@
 // The iOS project files prebuild builds from the config, instead of copying them from the template:
-// the Xcode project and Info.plist.
+// the Xcode project, Info.plist, the entitlements, and the icon and launch screen. A null file
+// removes the template's.
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { pbxproj, plist } from './serialize.mjs'
 
 const DEPLOYMENT_TARGET = '15.1'
+const ENTITLEMENTS_FILE = 'App.entitlements'
+const ASSETS = 'App/Assets.xcassets'
+const TEMPLATE_LAUNCH_LOGOS = ['logo', 'logo-dark'].flatMap((name) =>
+  [1, 2, 3].map((scale) => `${name}@${scale}x.png`),
+)
 const DEV_SERVER_HOST_SCRIPT = `# Lets a physical device reach the dev server on this Mac.
 [ "$CONFIGURATION" = "Debug" ] || exit 0
 echo "$(scutil --get LocalHostName).local" > "$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/dev-server-host.txt"
@@ -44,24 +52,29 @@ function configurationList(configurations) {
   }
 }
 
-function targetBuildSettings(config) {
+function hasEntitlements(app) {
+  return Object.keys(app.ios.entitlements ?? {}).length > 0
+}
+
+function targetBuildSettings(app) {
   return {
     ASSETCATALOG_COMPILER_APPICON_NAME: 'AppIcon',
+    CODE_SIGN_ENTITLEMENTS: hasEntitlements(app) ? ENTITLEMENTS_FILE : undefined,
     CODE_SIGN_STYLE: 'Automatic',
-    CURRENT_PROJECT_VERSION: 1,
-    DEVELOPMENT_TEAM: config.ios.appleTeamId,
+    CURRENT_PROJECT_VERSION: app.buildNumber,
+    DEVELOPMENT_TEAM: app.ios.appleTeamId,
     GENERATE_INFOPLIST_FILE: 'YES',
     INFOPLIST_FILE: 'Info.plist',
-    INFOPLIST_KEY_CFBundleDisplayName: config.name,
+    INFOPLIST_KEY_CFBundleDisplayName: app.name,
     LD_RUNPATH_SEARCH_PATHS: '$(inherited) @executable_path/Frameworks',
-    MARKETING_VERSION: 0.1,
-    PRODUCT_BUNDLE_IDENTIFIER: config.ios.bundleIdentifier,
+    MARKETING_VERSION: app.version,
+    PRODUCT_BUNDLE_IDENTIFIER: app.ios.bundleIdentifier,
     PRODUCT_NAME: '$(TARGET_NAME)',
     TARGETED_DEVICE_FAMILY: '1,2',
   }
 }
 
-function projectObjects(config) {
+function projectObjects(app) {
   return {
     [ID.pluginsBuildFile]: { isa: 'PBXBuildFile', productRef: ID.pluginsProduct },
     [ID.product]: {
@@ -163,12 +176,12 @@ function projectObjects(config) {
     },
     [ID.targetDebug]: {
       isa: 'XCBuildConfiguration',
-      buildSettings: targetBuildSettings(config),
+      buildSettings: targetBuildSettings(app),
       name: 'Debug',
     },
     [ID.targetRelease]: {
       isa: 'XCBuildConfiguration',
-      buildSettings: targetBuildSettings(config),
+      buildSettings: targetBuildSettings(app),
       name: 'Release',
     },
     [ID.targetConfigurations]: configurationList([ID.targetDebug, ID.targetRelease]),
@@ -199,10 +212,37 @@ const COMMENTS = {
   [ID.devServerHostPhase]: 'Write Dev Server Host',
 }
 
-function infoPlist(config) {
+function isDictionary(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** The app's keys win over nativue's; dictionaries in both are merged, lists joined. */
+function mergeDictionaries(base, overrides = {}) {
+  const keys = [...new Set([...Object.keys(base), ...Object.keys(overrides)])]
+
+  return Object.fromEntries(
+    keys.map((key) => {
+      const [value, override] = [base[key], overrides[key]]
+      const merged =
+        isDictionary(value) && isDictionary(override)
+          ? mergeDictionaries(value, override)
+          : Array.isArray(value) && Array.isArray(override)
+            ? [...value, ...override]
+            : (override ?? value)
+
+      return [key, merged]
+    }),
+  )
+}
+
+function infoPlist(app) {
+  return mergeDictionaries(nativueInfoPlist(app), app.ios.infoPlist)
+}
+
+function nativueInfoPlist(app) {
   return {
     CFBundleURLTypes: [
-      { CFBundleURLName: config.ios.bundleIdentifier, CFBundleURLSchemes: [config.scheme] },
+      { CFBundleURLName: app.ios.bundleIdentifier, CFBundleURLSchemes: app.schemes },
     ],
     NSAppTransportSecurity: { NSAllowsLocalNetworking: true },
     NSLocalNetworkUsageDescription:
@@ -211,17 +251,82 @@ function infoPlist(config) {
   }
 }
 
+const DARK_APPEARANCE = [{ appearance: 'luminosity', value: 'dark' }]
+const ASSET_INFO = { author: 'xcode', version: 1 }
+
+function assetJson(contents) {
+  return `${JSON.stringify(contents, null, 2)}\n`
+}
+
+function colorComponents(hex) {
+  const [red, green, blue] = [1, 3, 5].map((start) =>
+    (parseInt(hex.slice(start, start + 2), 16) / 255).toFixed(3),
+  )
+
+  return { 'color-space': 'srgb', components: { red, green, blue, alpha: '1.000' } }
+}
+
+function launchBackground(splash) {
+  return assetJson({
+    colors: [
+      { color: colorComponents(splash.backgroundColor), idiom: 'universal' },
+      {
+        appearances: DARK_APPEARANCE,
+        color: colorComponents(splash.darkBackgroundColor),
+        idiom: 'universal',
+      },
+    ],
+    info: ASSET_INFO,
+  })
+}
+
+/** The template's logo, or the app's: one 360px image, shown at 120 points (@3x). */
+function launchLogoFiles(splash, readAppFile) {
+  if (!splash.image) return {}
+
+  const directory = `${ASSETS}/LaunchLogo.imageset`
+  const removed = Object.fromEntries(
+    TEMPLATE_LAUNCH_LOGOS.map((file) => [`${directory}/${file}`, null]),
+  )
+  const contents = {
+    images: [
+      { filename: 'logo@3x.png', idiom: 'universal', scale: '3x' },
+      {
+        appearances: DARK_APPEARANCE,
+        filename: 'logo-dark@3x.png',
+        idiom: 'universal',
+        scale: '3x',
+      },
+    ],
+    info: ASSET_INFO,
+  }
+
+  return {
+    ...removed,
+    [`${directory}/Contents.json`]: assetJson(contents),
+    [`${directory}/logo@3x.png`]: { content: readAppFile(splash.image) },
+    [`${directory}/logo-dark@3x.png`]: { content: readAppFile(splash.darkImage) },
+  }
+}
+
 /** Paths relative to ios/. */
-export function iosProjectFiles(config) {
+export function iosProjectFiles(app, appDirectory) {
+  const readAppFile = (path) => readFileSync(resolve(appDirectory, path))
   const project = {
     objectVersion: 77,
-    objects: projectObjects(config),
+    objects: projectObjects(app),
     rootObject: ID.project,
     comments: COMMENTS,
   }
 
   return {
     'App.xcodeproj/project.pbxproj': pbxproj(project),
-    'Info.plist': plist(infoPlist(config)),
+    'Info.plist': plist(infoPlist(app)),
+    ...(hasEntitlements(app) && { [ENTITLEMENTS_FILE]: plist(app.ios.entitlements) }),
+    ...(app.icon && {
+      [`${ASSETS}/AppIcon.appiconset/icon.png`]: { content: readAppFile(app.icon) },
+    }),
+    [`${ASSETS}/LaunchBackground.colorset/Contents.json`]: launchBackground(app.splash),
+    ...launchLogoFiles(app.splash, readAppFile),
   }
 }
