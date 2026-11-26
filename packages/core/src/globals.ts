@@ -12,7 +12,13 @@ declare global {
   var __fireTimer: (timerId: number) => void
   var __colorSchemeChanged: (colorScheme: ColorScheme) => void
   var __windowSizeChanged: (windowSize: WindowSize) => void
-  var __asyncFunctionFinished: (callId: number, value: unknown, errorMessage: string | null) => void
+  var __asyncFunctionFinished: (
+    callId: number,
+    value: unknown,
+    errorMessage: string | null,
+    errorCode: string | null,
+  ) => void
+  var __nativeEvent: (eventName: string, payload: unknown) => void
   var __animationFinished: (animationId: number, finished: boolean) => void
   var __networkEvent: <Name extends keyof NetworkEventPayloads>(
     requestId: number,

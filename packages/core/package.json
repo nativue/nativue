@@ -32,7 +32,7 @@
     }
   },
   "scripts": {
-    "test": "(cd ../../examples/demo && nativue build) && node test/test.mjs && node test/prebuild.test.mjs",
+    "test": "(cd ../../examples/demo && nativue build) && node test/test.mjs && node test/native-events.test.mjs && node test/prebuild.test.mjs",
     "typecheck": "vue-tsc"
   },
   "dependencies": {

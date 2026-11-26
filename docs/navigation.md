@@ -193,3 +193,19 @@ navigate to `/items/42`. Change it with `scheme` in `nativue.config.ts`, then re
 
 Try it on a simulator with `xcrun simctl openurl booted myapp://items/42`, or on an emulator with
 `adb shell am start -a android.intent.action.VIEW -d myapp://items/42`.
+
+To handle a URL yourself instead, like a login's redirect, listen with `onOpenURL`: returning true
+keeps the router from navigating to it. Add it in `src/app.ts` or the root layout: the URL that
+opens the app arrives as soon as it starts.
+
+```ts
+import { onOpenURL } from 'vue'
+
+onOpenURL((url) => {
+  if (!url.startsWith('myapp://oauth')) return false
+
+  finishLogin(url)
+
+  return true
+})
+```

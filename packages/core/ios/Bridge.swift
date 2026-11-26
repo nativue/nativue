@@ -34,6 +34,9 @@ final class Bridge {
     private var nextLayoutAnimation: LayoutAnimation?
     /// Appearance.getColorScheme(): read on the main thread at start, then kept up to date.
     private var colorScheme = "light"
+    /// AppState.current: "active" or "background". Set on the main thread in start(), before the bundle
+    /// runs; then only on the JS queue.
+    private var appState = "active"
     /// Kept on the JS queue, for AccessibilityInfo.
     private var accessibilityStatus = AccessibilityStatus()
     /// Kept on the JS queue: the router's screens, reopened after a reload in development.
@@ -90,6 +93,23 @@ final class Bridge {
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [unowned self] _ in
                 let nextStatus = AccessibilityStatus()
                 evaluate { [unowned self] in accessibilityStatus = nextStatus }
+            }
+        }
+
+        pluginRegistry.sendToJavaScript = { [unowned self] eventName, payload in
+            sendNativeEvent(eventName, payload)
+        }
+        // A background launch (a push) starts in the background.
+        let isInBackground = UIApplication.shared.applicationState == .background
+
+        appState = isInBackground ? "background" : "active"
+        let appStates = [
+            UIApplication.didBecomeActiveNotification: "active",
+            UIApplication.didEnterBackgroundNotification: "background",
+        ]
+        for (name, nextAppState) in appStates {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [unowned self] _ in
+                appStateDidChange(to: nextAppState)
             }
         }
 
@@ -180,12 +200,32 @@ final class Bridge {
     }
 
     /// Results reaching a runtime that has since been reloaded are dropped: call ids start over in the new one.
-    private func finishAsyncFunction(_ callId: Int, owner: JavaScriptRuntime?, value: Any?, errorMessage: String?) {
+    private func finishAsyncFunction(_ callId: Int, owner: JavaScriptRuntime?, value: Any?, error: Error?) {
         evaluate { [unowned self] in
             guard runtime === owner else { return }
 
-            let arguments: [Any] = [callId, value ?? NSNull(), errorMessage ?? NSNull()]
+            let errorCode = (error as? PluginError)?.code
+            let arguments: [Any] = [
+                callId, value ?? NSNull(), error?.localizedDescription ?? NSNull(), errorCode ?? NSNull(),
+            ]
+
             runtime?.call("__asyncFunctionFinished", arguments: arguments)
+        }
+    }
+
+    /// For addNativeListener; dropped while no runtime runs.
+    private func sendNativeEvent(_ eventName: String, _ payload: Any?) {
+        evaluate { [unowned self] in
+            runtime?.call("__nativeEvent", arguments: [eventName, payload ?? NSNull()])
+        }
+    }
+
+    private func appStateDidChange(to nextAppState: String) {
+        evaluate { [unowned self] in
+            guard nextAppState != appState else { return }
+
+            appState = nextAppState
+            runtime?.call("__nativeEvent", arguments: ["app.state", nextAppState])
         }
     }
 
@@ -332,15 +372,16 @@ final class Bridge {
                 Task {
                     do {
                         let value = try await function(Array(arguments.dropFirst()))
-                        finishAsyncFunction(callId, owner: owner, value: value, errorMessage: nil)
+                        finishAsyncFunction(callId, owner: owner, value: value, error: nil)
                     } catch {
-                        finishAsyncFunction(callId, owner: owner, value: nil, errorMessage: error.localizedDescription)
+                        finishAsyncFunction(callId, owner: owner, value: nil, error: error)
                     }
                 }
             }
         }
 
         defineGetter("colorScheme") { [unowned self] _ in colorScheme }
+        defineGetter("appState") { [unowned self] _ in appState }
         defineGetter("savedNavigation") { [unowned self] _ in savedNavigation }
         define("saveNavigation") { [unowned self] arguments in savedNavigation = arguments[0] as? String }
 

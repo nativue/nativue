@@ -97,6 +97,48 @@ export const CameraView = defineComponent(
 )
 ```
 
+### Events and errors
+
+A plugin tells JavaScript about something it didn't ask for (a notification arrived, a download
+finished) with `registry.sendEvent`, from any thread. Name events `package.event`:
+
+```swift
+registry.sendEvent("camera.captured", ["uri": fileURL.absoluteString])
+```
+
+```ts
+import { addNativeListener } from 'vue'
+
+const subscription = addNativeListener<{ uri: string }>('camera.captured', ({ uri }) => show(uri))
+subscription.remove() // also removed when the component that added it unmounts
+```
+
+Events sent while no JavaScript runs (the app closed, a reload) are lost: keep what must outlive it
+natively and let JavaScript read it with a function. The app's own `app.state` event says when it
+goes `'active'` or `'background'`; `AppState.current` reads it.
+
+An async function rejects with a code JavaScript can branch on: iOS throws
+`PluginError(code: "ERR_PERMISSION_DENIED", message: "Camera access was denied")`, Android calls
+`promise.reject(code = "ERR_PERMISSION_DENIED", errorMessage = "Camera access was denied")` (or throws a
+`PluginException`). JavaScript gets a `NativeError` whose `code` is that one. Use these codes when
+they fit, so apps handle every package the same way:
+
+| Code                    | When                                                |
+| ----------------------- | --------------------------------------------------- |
+| `ERR_PERMISSION_DENIED` | The user denied the permission the function needs.  |
+| `ERR_UNAVAILABLE`       | The device or OS version can't do it.               |
+| `ERR_CANCELED`          | The user dismissed it (a picker, a prompt).         |
+| `ERR_INVALID_ARGUMENT`  | JavaScript passed something the function can't use. |
+
+```ts
+try {
+  await takePhoto()
+} catch (error) {
+  if (error instanceof NativeError && error.code === 'ERR_CANCELED') return
+  throw error
+}
+```
+
 ### Changing the app's native files
 
 A package whose native code needs something in the app's `Info.plist`, entitlements, manifest or

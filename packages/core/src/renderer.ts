@@ -36,7 +36,9 @@ export {
   type PlatformOS,
   type WindowSize,
 } from './appearance'
-export { requireNativeFunction } from './native-functions'
+export { NativeError, requireNativeFunction } from './native-functions'
+export { addNativeListener, AppState, onOpenURL } from './native-events'
+export type { AppStateStatus, NativeSubscription } from './native-events'
 export { AsyncStorage } from './storage'
 export type * from './types'
 export type { SvgElement, SvgIcon } from './native-components'

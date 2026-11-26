@@ -70,7 +70,15 @@ Import navigation from `@nativue/core/router`:
 
 Import the runtime from `vue`: `ref`, `computed`, `StyleSheet`, `Animated`, `LayoutAnimation`,
 `Platform`, `AsyncStorage`, `Keyboard`, `Dimensions`, `useWindowDimensions`, `useColorScheme`,
-`AccessibilityInfo`, `requireNativeFunction`.
+`AccessibilityInfo`, `requireNativeFunction`, `addNativeListener`, `onOpenURL`, `AppState`,
+`NativeError`.
+
+- Native events: `addNativeListener('camera.captured', (payload) => ...)` returns a subscription;
+  in a component it's removed on unmount. `addNativeListener('app.state', (state) => ...)` and
+  `AppState.current` say whether the app is `'active'` or `'background'`.
+- A rejected native call is a `NativeError` with a `code`: `ERR_PERMISSION_DENIED`,
+  `ERR_UNAVAILABLE`, `ERR_CANCELED`, `ERR_INVALID_ARGUMENT`.
+- `onOpenURL((url) => true)` takes a URL the app was opened with before the router does.
 
 - `AsyncStorage`: `getItem`, `setItem`, `removeItem`, `getAllKeys`, `multiGet`, `multiSet`,
   `clear`; promise-based, string values. Store objects as JSON. For large data or queries, use
