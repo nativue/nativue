@@ -3,43 +3,51 @@ package dev.nativue
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.DashPathEffect
+import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PointF
+import android.graphics.RadialGradient
 import android.graphics.RectF
+import android.graphics.Region
+import android.graphics.Shader
+import android.graphics.Typeface
+import android.view.MotionEvent
 import android.view.View
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.ceil
 import kotlin.math.cos
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 import kotlin.math.tan
 
 /**
- * View behind <Svg>: draws SVG elements ([tag, attributes] pairs, the shape of Lucide's icon nodes),
- * scaled from `viewBox` to its bounds like preserveAspectRatio="xMidYMid meet". Elements are stroked
- * with `color` (round caps and joins, as icon sets expect); those whose fill isn't "none" are also
- * filled with it. Mirrors ios/SvgView.swift.
+ * View behind <svg>: draws what JS sends as `drawing`, [tag, attributes, children or text] (src/svg.ts),
+ * scaled from the root's viewBox like preserveAspectRatio="xMidYMid meet" (or "none"). Icons send
+ * `elements` instead, Lucide's [tag, attributes] pairs, stroked with `color`. Mirrors ios/SvgView.swift.
  */
-// Limitation: Only the shapes icon sets use and a single color; add per-element colors, gradients or
-// transforms when a real-world SVG needs them.
+// Limitation: no clipPath, mask, filter, pattern or image; text is a single line, filled with a color.
 class SvgView(context: Context) : View(context) {
     var viewBox = RectF(0f, 0f, 24f, 24f)
         set(value) {
             field = value
-            invalidate()
+            updateIconDrawing()
         }
 
     var strokeWidth = 2f
         set(value) {
             field = value
-            invalidate()
+            updateIconDrawing()
         }
 
+    /** currentColor. */
     var color = 0xFF000000.toInt()
         set(value) {
             field = value
@@ -49,55 +57,80 @@ class SvgView(context: Context) : View(context) {
     var elements: List<*> = emptyList<Any>()
         set(value) {
             field = value
-            buildPaths()
-            invalidate()
+            updateIconDrawing()
         }
 
-    private var strokePath = Path()
-    private var fillPath = Path()
-    private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-        strokeJoin = Paint.Join.ROUND
-    }
-    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    /** From JS (an <svg>'s content). An icon's `elements` draw instead, when it has them. */
+    var drawing: Any? = null
+        set(value) {
+            field = value
+            drawingRoot = SvgElement.from(value)
+            rootDidChange()
+        }
+
+    /** The ids of the elements pressed, innermost first, and where (in pixels, in the view). */
+    var onElementPress: ((nodeIds: List<Int>, x: Float, y: Float) -> Unit)? = null
+
+    private var drawingRoot: SvgElement? = null
+    private var iconRoot: SvgElement? = null
+    private val root: SvgElement? get() = if (elements.isEmpty()) drawingRoot else iconRoot
+    /** Pressable shapes as last drawn, in view coordinates, topmost last. */
+    private var pressTargets: List<SvgPressTarget> = emptyList()
 
     init {
         isClickable = false // a press on an icon presses what contains it
     }
 
     override fun onDraw(canvas: Canvas) {
-        if (viewBox.width() <= 0 || viewBox.height() <= 0) return
-
-        val scale = min(width / viewBox.width(), height / viewBox.height())
-        val matrix = Matrix()
-        matrix.setTranslate(-viewBox.left, -viewBox.top)
-        matrix.postScale(scale, scale)
-        matrix.postTranslate((width - viewBox.width() * scale) / 2, (height - viewBox.height() * scale) / 2)
+        val root = root ?: return
+        val viewBoxMatrix = root.viewBoxMatrix(width.toFloat(), height.toFloat())
+        val renderer = SvgRenderer(canvas, color, root.gradientsById(), viewBoxMatrix, resources.displayMetrics.density)
 
         canvas.save()
-        canvas.concat(matrix)
-        fillPaint.color = color
-        strokePaint.color = color
-        strokePaint.strokeWidth = strokeWidth
-        canvas.drawPath(fillPath, fillPaint)
-        canvas.drawPath(strokePath, strokePaint)
+        canvas.concat(viewBoxMatrix)
+        renderer.draw(root, SvgStyle(), emptyList())
         canvas.restore()
+        pressTargets = renderer.pressTargets
     }
 
-    private fun buildPaths() {
-        strokePath = Path()
-        fillPath = Path()
+    /** Only a press on a pressable element is this view's: elsewhere it goes to what contains it. */
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        val target = pressTargets.lastOrNull { it.contains(event.x, event.y) } ?: return false
 
-        for (element in elements.filterIsInstance<List<*>>()) {
-            val tag = element.firstOrNull() as? String ?: continue
-            val attributes = element.lastOrNull() as? Map<*, *> ?: continue
-            val shape = shape(tag, SvgAttributes(attributes)) ?: continue
+        if (event.actionMasked == MotionEvent.ACTION_UP) onElementPress?.invoke(target.nodeIds, event.x, event.y)
 
-            strokePath.addPath(shape)
-            val fill = attributes["fill"] as? String
-            if (fill != null && fill != "none") fillPath.addPath(shape)
+        return true
+    }
+
+    private fun rootDidChange() {
+        isClickable = root?.hasPressableElements == true
+        invalidate()
+    }
+
+    /**
+     * An icon: its elements, stroked with currentColor (round caps and joins, as icon sets expect), and
+     * filled with it when their fill isn't "none".
+     */
+    private fun updateIconDrawing() {
+        if (elements.isEmpty()) return rootDidChange()
+
+        val rootAttributes = mapOf(
+            "viewBox" to listOf(viewBox.left, viewBox.top, viewBox.width(), viewBox.height()),
+            "fill" to "none",
+            "stroke" to "currentColor",
+            "stroke-width" to strokeWidth,
+            "stroke-linecap" to "round",
+            "stroke-linejoin" to "round",
+        )
+        val children = elements.filterIsInstance<List<*>>().map { element ->
+            val attributes = (element.lastOrNull() as? Map<*, *>).orEmpty().toMutableMap()
+            val fill = attributes["fill"]
+
+            if (fill != null && fill.toString() != "none") attributes["fill"] = "currentColor"
+            listOf(element.firstOrNull(), attributes, emptyList<Any>())
         }
+        iconRoot = SvgElement.from(listOf("svg", rootAttributes, children))
+        rootDidChange()
     }
 
     companion object {
@@ -122,60 +155,410 @@ class SvgView(context: Context) : View(context) {
 
             return bitmap
         }
+    }
+}
 
-        private fun shape(tag: String, attributes: SvgAttributes): Path? = when (tag) {
-            "path" -> SvgPathParser(attributes.text("d")).parse()
+/** One element of a drawing. */
+private class SvgElement(
+    val tag: String,
+    val attributes: SvgAttributes,
+    val children: List<SvgElement>,
+    val text: String,
+) {
+    val hasPressableElements: Boolean
+        get() = attributes.values["nodeId"] != null || children.any { it.hasPressableElements }
 
-            "circle" -> {
-                val radius = attributes.number("r")
-                Path().apply { addOval(ellipseBounds(attributes, radius, radius), Path.Direction.CW) }
-            }
+    fun gradientsById(): Map<String, SvgElement> {
+        val gradients = mutableMapOf<String, SvgElement>()
+        val id = attributes.values["id"] as? String
 
-            "ellipse" -> Path().apply {
-                addOval(ellipseBounds(attributes, attributes.number("rx"), attributes.number("ry")), Path.Direction.CW)
-            }
+        if ((tag == "linearGradient" || tag == "radialGradient") && id != null) gradients[id] = this
+        children.forEach { child -> child.gradientsById().forEach { (key, value) -> gradients.putIfAbsent(key, value) } }
 
-            "rect" -> roundedRect(attributes)
+        return gradients
+    }
 
-            "line" -> Path().apply {
-                moveTo(attributes.number("x1"), attributes.number("y1"))
-                lineTo(attributes.number("x2"), attributes.number("y2"))
-            }
+    /** The root's viewBox fitted into the view: centered and scaled to fit, or stretched with "none". */
+    fun viewBoxMatrix(width: Float, height: Float): Matrix {
+        val numbers = (attributes.values["viewBox"] as? List<*>)?.mapNotNull { (it as? Number)?.toFloat() }
+        val matrix = Matrix()
+        if (numbers == null || numbers.size != 4 || numbers[2] <= 0 || numbers[3] <= 0) return matrix
 
-            "polyline", "polygon" -> Path().apply {
-                SvgPathParser(attributes.text("points")).points().forEachIndexed { index, point ->
-                    if (index == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y)
-                }
-                if (tag == "polygon") close()
-            }
+        val (minX, minY, viewWidth, viewHeight) = numbers
+        matrix.setTranslate(-minX, -minY)
+        if (attributes.text("preserveAspectRatio") == "none") {
+            matrix.postScale(width / viewWidth, height / viewHeight)
 
+            return matrix
+        }
+
+        val scale = min(width / viewWidth, height / viewHeight)
+        matrix.postScale(scale, scale)
+        matrix.postTranslate((width - viewWidth * scale) / 2, (height - viewHeight * scale) / 2)
+
+        return matrix
+    }
+
+    /** Its own transform attribute, [a, b, c, d, tx, ty]. */
+    val transform: Matrix?
+        get() {
+            val numbers = (attributes.values["transform"] as? List<*>)?.mapNotNull { (it as? Number)?.toFloat() }
+            if (numbers == null || numbers.size != 6) return null
+
+            return matrixOf(numbers)
+        }
+
+    companion object {
+        fun from(value: Any?): SvgElement? {
+            val parts = value as? List<*> ?: return null
+            val tag = parts.firstOrNull() as? String ?: return null
+            val content = parts.getOrNull(2)
+
+            return SvgElement(
+                tag,
+                SvgAttributes(parts.getOrNull(1) as? Map<*, *> ?: emptyMap<String, Any>()),
+                (content as? List<*>)?.mapNotNull(::from) ?: emptyList(),
+                content as? String ?: "",
+            )
+        }
+    }
+}
+
+/** SVG's [a, b, c, d, e, f] as an Android matrix. */
+private fun matrixOf(numbers: List<Float>): Matrix = Matrix().apply {
+    setValues(floatArrayOf(numbers[0], numbers[2], numbers[4], numbers[1], numbers[3], numbers[5], 0f, 0f, 1f))
+}
+
+/** fill and stroke: none, a color, currentColor, or a gradient (url(#id)). */
+private sealed class SvgPaint {
+    object None : SvgPaint()
+    object CurrentColor : SvgPaint()
+    class Color(val color: Int) : SvgPaint()
+    class Gradient(val id: String) : SvgPaint()
+
+    companion object {
+        fun from(value: Any?): SvgPaint? = when {
+            value is Number -> androidColor(value)?.let(::Color)
+            value == "none" -> None
+            value == "currentColor" -> CurrentColor
+            value is String && value.startsWith("url(#") -> Gradient(value.removePrefix("url(#").removeSuffix(")"))
             else -> null
         }
+    }
+}
 
-        private fun ellipseBounds(attributes: SvgAttributes, radiusX: Float, radiusY: Float): RectF {
-            val centerX = attributes.number("cx")
-            val centerY = attributes.number("cy")
+/** What children inherit, as SVG's presentation attributes cascade. */
+private data class SvgStyle(
+    val fill: SvgPaint = SvgPaint.Color(0xFF000000.toInt()),
+    val stroke: SvgPaint = SvgPaint.None,
+    val strokeWidth: Float = 1f,
+    val fillOpacity: Float = 1f,
+    val strokeOpacity: Float = 1f,
+    val lineCap: Paint.Cap = Paint.Cap.BUTT,
+    val lineJoin: Paint.Join = Paint.Join.MITER,
+    val dashes: List<Float> = emptyList(),
+    val isEvenOdd: Boolean = false,
+    val fontSize: Float = 16f,
+    val isBold: Boolean = false,
+    val fontFamily: String? = null,
+    val textAnchor: String = "start",
+) {
+    fun inheriting(attributes: SvgAttributes): SvgStyle {
+        val values = attributes.values
+        val weight = values["font-weight"]?.toString()
 
-            return RectF(centerX - radiusX, centerY - radiusY, centerX + radiusX, centerY + radiusY)
+        return copy(
+            fill = SvgPaint.from(values["fill"]) ?: fill,
+            stroke = SvgPaint.from(values["stroke"]) ?: stroke,
+            strokeWidth = attributes.optionalNumber("stroke-width") ?: strokeWidth,
+            fillOpacity = attributes.optionalNumber("fill-opacity") ?: fillOpacity,
+            strokeOpacity = attributes.optionalNumber("stroke-opacity") ?: strokeOpacity,
+            lineCap = when (values["stroke-linecap"]) {
+                "round" -> Paint.Cap.ROUND
+                "square" -> Paint.Cap.SQUARE
+                "butt" -> Paint.Cap.BUTT
+                else -> lineCap
+            },
+            lineJoin = when (values["stroke-linejoin"]) {
+                "round" -> Paint.Join.ROUND
+                "bevel" -> Paint.Join.BEVEL
+                "miter" -> Paint.Join.MITER
+                else -> lineJoin
+            },
+            dashes = (values["stroke-dasharray"] as? List<*>)?.mapNotNull { (it as? Number)?.toFloat() } ?: dashes,
+            isEvenOdd = (values["fill-rule"] as? String)?.let { it == "evenodd" } ?: isEvenOdd,
+            fontSize = attributes.optionalNumber("font-size") ?: fontSize,
+            isBold = weight?.let { it == "bold" || (it.toIntOrNull() ?: 400) >= 600 } ?: isBold,
+            fontFamily = values["font-family"] as? String ?: fontFamily,
+            textAnchor = values["text-anchor"] as? String ?: textAnchor,
+        )
+    }
+}
+
+private class SvgPressTarget(path: Path, val nodeIds: List<Int>) {
+    private val region = Region().apply {
+        val bounds = RectF().also { path.computeBounds(it, true) }
+        setPath(path, Region(bounds.left.toInt() - 1, bounds.top.toInt() - 1, bounds.right.toInt() + 1, bounds.bottom.toInt() + 1))
+    }
+
+    fun contains(x: Float, y: Float) = region.contains(x.roundToInt(), y.roundToInt())
+}
+
+/** Draws elements into a canvas already scaled to the viewBox, and notes what can be pressed. */
+private class SvgRenderer(
+    private val canvas: Canvas,
+    private val currentColor: Int,
+    private val gradients: Map<String, SvgElement>,
+    viewBoxMatrix: Matrix,
+    private val density: Float,
+) {
+    val pressTargets = mutableListOf<SvgPressTarget>()
+    /** From the element's coordinates to the view's: Canvas.getMatrix is deprecated. */
+    private var toView = Matrix(viewBoxMatrix)
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    fun draw(element: SvgElement, inherited: SvgStyle, pressableAncestors: List<Int>) {
+        if (element.tag in setOf("defs", "linearGradient", "radialGradient", "stop")) return
+
+        val style = inherited.inheriting(element.attributes)
+        val nodeId = (element.attributes.values["nodeId"] as? Number)?.toInt()
+        val pressable = listOfNotNull(nodeId) + pressableAncestors
+        val opacity = element.attributes.optionalNumber("opacity") ?: 1f
+        val savedToView = Matrix(toView)
+
+        // Opacity applies to the element as a whole, overlaps included: drawn apart, then blended.
+        val saveCount = if (opacity < 1f) canvas.saveLayerAlpha(null, (opacity * 255).roundToInt()) else canvas.save()
+        element.transform?.let { transform ->
+            canvas.concat(transform)
+            toView.preConcat(transform)
         }
 
-        /** rx and ry default to each other, and can't exceed half the side (like SVG). */
-        private fun roundedRect(attributes: SvgAttributes): Path {
-            val left = attributes.number("x")
-            val top = attributes.number("y")
-            val rect = RectF(left, top, left + attributes.number("width"), top + attributes.number("height"))
-            val radiusX = attributes.optionalNumber("rx") ?: attributes.optionalNumber("ry") ?: 0f
-            val radiusY = attributes.optionalNumber("ry") ?: radiusX
-
-            return Path().apply {
-                addRoundRect(rect, min(radiusX, rect.width() / 2), min(radiusY, rect.height() / 2), Path.Direction.CW)
+        when (element.tag) {
+            "svg", "g" -> {
+                // An <svg @press>: anywhere in it, under its elements.
+                if (element.tag == "svg" && nodeId != null) {
+                    val viewport = Path().apply { addRect(RectF(canvas.clipBounds), Path.Direction.CW) }
+                    viewport.transform(toView)
+                    pressTargets.add(SvgPressTarget(viewport, listOf(nodeId)))
+                }
+                element.children.forEach { draw(it, style, pressable) }
             }
+            "text" -> drawText(element, style, pressable)
+            else -> SvgShapes.path(element.tag, element.attributes)?.let { drawShape(it, style, pressable) }
+        }
+
+        canvas.restoreToCount(saveCount)
+        toView = savedToView
+    }
+
+    private fun drawShape(shape: Path, style: SvgStyle, pressable: List<Int>) {
+        shape.fillType = if (style.isEvenOdd) Path.FillType.EVEN_ODD else Path.FillType.WINDING
+        if (configure(style.fill, style.fillOpacity, shape)) {
+            paint.style = Paint.Style.FILL
+            canvas.drawPath(shape, paint)
+        }
+        if (configure(style.stroke, style.strokeOpacity, shape)) {
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = style.strokeWidth
+            paint.strokeCap = style.lineCap
+            paint.strokeJoin = style.lineJoin
+            paint.pathEffect = style.dashes.takeIf { it.isNotEmpty() }?.let { DashPathEffect(it.toFloatArray(), 0f) }
+            canvas.drawPath(shape, paint)
+            paint.pathEffect = null
+        }
+
+        if (pressable.isEmpty()) return
+
+        // A thin line is hard to hit: at least 44dp wide, like the targets of iOS's guidelines.
+        val scale = max(hypot(toViewValue(Matrix.MSCALE_X), toViewValue(Matrix.MSKEW_Y)), 0.01f)
+        val area = Path()
+        val touchWidth = max(style.strokeWidth, 44 * density / scale)
+        val outline = Paint().apply {
+            this.style = Paint.Style.STROKE
+            strokeWidth = touchWidth
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+        val strokeArea = Path()
+
+        if (style.fill !is SvgPaint.None) area.addPath(shape)
+        outline.getFillPath(shape, strokeArea)
+        area.addPath(strokeArea)
+        area.transform(toView)
+        pressTargets.add(SvgPressTarget(area, pressable))
+    }
+
+    private fun drawText(element: SvgElement, style: SvgStyle, pressable: List<Int>) {
+        val color = resolved(style.fill) as? SvgPaint.Color ?: return
+
+        paint.reset()
+        paint.isAntiAlias = true
+        paint.style = Paint.Style.FILL
+        paint.color = withOpacity(color.color, style.fillOpacity)
+        paint.textSize = style.fontSize
+        paint.typeface = Typeface.create(style.fontFamily, if (style.isBold) Typeface.BOLD else Typeface.NORMAL)
+        paint.textAlign = when (style.textAnchor) {
+            "middle" -> Paint.Align.CENTER
+            "end" -> Paint.Align.RIGHT
+            else -> Paint.Align.LEFT
+        }
+        // y is the baseline, as drawText takes it.
+        val x = element.attributes.number("x") + element.attributes.number("dx")
+        val y = element.attributes.number("y") + element.attributes.number("dy")
+        canvas.drawText(element.text, x, y, paint)
+
+        if (pressable.isEmpty()) return
+
+        val width = paint.measureText(element.text)
+        val left = when (paint.textAlign) {
+            Paint.Align.CENTER -> x - width / 2
+            Paint.Align.RIGHT -> x - width
+            else -> x
+        }
+        val box = Path().apply { addRect(left, y + paint.ascent(), left + width, y + paint.descent(), Path.Direction.CW) }
+        box.transform(toView)
+        pressTargets.add(SvgPressTarget(box, pressable))
+    }
+
+    private fun toViewValue(index: Int): Float = FloatArray(9).also(toView::getValues)[index]
+
+    private fun resolved(paint: SvgPaint): SvgPaint =
+        if (paint is SvgPaint.CurrentColor) SvgPaint.Color(currentColor) else paint
+
+    /** Sets up the paint for a fill or a stroke; false when there's nothing to draw. */
+    private fun configure(svgPaint: SvgPaint, opacity: Float, shape: Path): Boolean {
+        paint.reset()
+        paint.isAntiAlias = true
+
+        return when (val resolved = resolved(svgPaint)) {
+            is SvgPaint.Color -> {
+                paint.color = withOpacity(resolved.color, opacity)
+                true
+            }
+            is SvgPaint.Gradient -> {
+                val gradient = gradients[resolved.id] ?: return false
+                val bounds = RectF().also { shape.computeBounds(it, true) }
+                paint.shader = SvgGradients.shader(gradient, bounds) ?: return false
+                paint.alpha = (opacity * 255).roundToInt()
+                true
+            }
+            else -> false
+        }
+    }
+
+    private fun withOpacity(color: Int, opacity: Float): Int {
+        val alpha = ((color ushr 24) * opacity).roundToInt().coerceIn(0, 255)
+
+        return (color and 0xFFFFFF) or (alpha shl 24)
+    }
+}
+
+/**
+ * <linearGradient> and <radialGradient>: coordinates in the shape's box (objectBoundingBox, the default) or
+ * in the drawing's (userSpaceOnUse).
+ */
+private object SvgGradients {
+    fun shader(element: SvgElement, bounds: RectF): Shader? {
+        val stops = element.children.filter { it.tag == "stop" }
+        if (stops.isEmpty()) return null
+
+        val colors = stops.map { stop ->
+            val color = (SvgPaint.from(stop.attributes.values["stop-color"]) as? SvgPaint.Color)?.color ?: 0xFF000000.toInt()
+            val opacity = stop.attributes.optionalNumber("stop-opacity") ?: 1f
+            val alpha = ((color ushr 24) * opacity).roundToInt().coerceIn(0, 255)
+
+            (color and 0xFFFFFF) or (alpha shl 24)
+        }.toIntArray()
+        val positions = stops.map { it.attributes.optionalNumber("offset") ?: 0f }.toFloatArray()
+        val attributes = element.attributes
+        val shader = if (element.tag == "linearGradient") {
+            LinearGradient(
+                attributes.optionalNumber("x1") ?: 0f,
+                attributes.optionalNumber("y1") ?: 0f,
+                attributes.optionalNumber("x2") ?: 1f,
+                attributes.optionalNumber("y2") ?: 0f,
+                colors,
+                positions,
+                Shader.TileMode.CLAMP,
+            )
+        } else {
+            RadialGradient(
+                attributes.optionalNumber("cx") ?: 0.5f,
+                attributes.optionalNumber("cy") ?: 0.5f,
+                max(attributes.optionalNumber("r") ?: 0.5f, 0.0001f),
+                colors,
+                positions,
+                Shader.TileMode.CLAMP,
+            )
+        }
+        val matrix = Matrix()
+
+        (attributes.values["gradientTransform"] as? List<*>)?.mapNotNull { (it as? Number)?.toFloat() }
+            ?.takeIf { it.size == 6 }
+            ?.let { matrix.setConcat(matrixOf(it), Matrix()) }
+        if (attributes.text("gradientUnits") != "userSpaceOnUse") {
+            matrix.postScale(bounds.width(), bounds.height())
+            matrix.postTranslate(bounds.left, bounds.top)
+        }
+        shader.setLocalMatrix(matrix)
+
+        return shader
+    }
+}
+
+private object SvgShapes {
+    fun path(tag: String, attributes: SvgAttributes): Path? = when (tag) {
+        "path" -> SvgPathParser(attributes.text("d")).parse()
+
+        "circle" -> {
+            val radius = attributes.number("r")
+            Path().apply { addOval(ellipseBounds(attributes, radius, radius), Path.Direction.CW) }
+        }
+
+        "ellipse" -> Path().apply {
+            addOval(ellipseBounds(attributes, attributes.number("rx"), attributes.number("ry")), Path.Direction.CW)
+        }
+
+        "rect" -> roundedRect(attributes)
+
+        "line" -> Path().apply {
+            moveTo(attributes.number("x1"), attributes.number("y1"))
+            lineTo(attributes.number("x2"), attributes.number("y2"))
+        }
+
+        "polyline", "polygon" -> Path().apply {
+            SvgPathParser(attributes.text("points")).points().forEachIndexed { index, point ->
+                if (index == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y)
+            }
+            if (tag == "polygon") close()
+        }
+
+        else -> null
+    }
+
+    private fun ellipseBounds(attributes: SvgAttributes, radiusX: Float, radiusY: Float): RectF {
+        val centerX = attributes.number("cx")
+        val centerY = attributes.number("cy")
+
+        return RectF(centerX - radiusX, centerY - radiusY, centerX + radiusX, centerY + radiusY)
+    }
+
+    /** rx and ry default to each other, and can't exceed half the side (like SVG). */
+    private fun roundedRect(attributes: SvgAttributes): Path {
+        val left = attributes.number("x")
+        val top = attributes.number("y")
+        val rect = RectF(left, top, left + attributes.number("width"), top + attributes.number("height"))
+        val radiusX = attributes.optionalNumber("rx") ?: attributes.optionalNumber("ry") ?: 0f
+        val radiusY = attributes.optionalNumber("ry") ?: radiusX
+
+        return Path().apply {
+            addRoundRect(rect, min(radiusX, rect.width() / 2), min(radiusY, rect.height() / 2), Path.Direction.CW)
         }
     }
 }
 
 /** Attribute values arrive as strings ("12") or numbers. */
-private class SvgAttributes(private val values: Map<*, *>) {
+private class SvgAttributes(val values: Map<*, *>) {
     fun text(name: String): String = values[name]?.toString() ?: ""
 
     fun optionalNumber(name: String): Float? = when (val value = values[name]) {

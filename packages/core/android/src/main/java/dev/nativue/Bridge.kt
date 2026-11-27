@@ -787,7 +787,13 @@ class Bridge(private val activity: ComponentActivity, private val rootView: Root
             setIndicatorSize(node, "medium")
         }
 
-        "Svg" -> NativeNode(SvgView(activity), measuresContent = false)
+        "Svg" -> {
+            val svgView = SvgView(activity)
+            svgView.onElementPress = { nodeIds, x, y ->
+                dispatchEvent("elementpress", id, mapOf("nodeIds" to nodeIds, "x" to x / density, "y" to y / density))
+            }
+            NativeNode(svgView, measuresContent = false)
+        }
 
         else -> {
             val makeView = pluginRegistry.viewMakers[type]
@@ -999,6 +1005,8 @@ class Bridge(private val activity: ComponentActivity, private val rootView: Root
             "viewBox" -> SvgView.rect(value)?.let { (view as? SvgView)?.viewBox = it }
 
             "elements" -> (view as? SvgView)?.elements = value as? List<*> ?: emptyList<Any>()
+
+            "drawing" -> (view as? SvgView)?.drawing = value
 
             "strokeWidth" -> (view as? SvgView)?.strokeWidth = number(value) ?: 2f
 

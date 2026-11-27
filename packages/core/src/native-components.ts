@@ -24,6 +24,29 @@ export interface AccessibilityProps {
   'aria-checked'?: BooleanAttribute
 }
 type EventHandler<Payload> = ((payload: Payload) => void) | AnimatedEvent<Payload>
+type SvgLength = number | string
+/** Inherited by what's inside, as in SVG: fill, stroke... A color, 'none', 'currentColor' or 'url(#id)'. */
+export interface SvgPresentationAttributes {
+  id?: string
+  fill?: string
+  stroke?: string
+  strokeWidth?: SvgLength
+  strokeLinecap?: 'butt' | 'round' | 'square'
+  strokeLinejoin?: 'miter' | 'round' | 'bevel'
+  strokeDasharray?: string
+  opacity?: number | string
+  fillOpacity?: number | string
+  strokeOpacity?: number | string
+  fillRule?: 'nonzero' | 'evenodd'
+  transform?: string
+  /** A press on the element (or on a group's), where it's drawn. */
+  onPress?: (location: { x: number; y: number }) => void
+}
+type SvgGradientAttributes = {
+  gradientUnits?: 'objectBoundingBox' | 'userSpaceOnUse'
+  gradientTransform?: string
+}
+type SvgComponent<Props = {}> = DefineComponent<SvgPresentationAttributes & Props>
 // [tag, attributes], e.g. ['circle', { cx: 12, cy: 12, r: 10 }]: path, circle, ellipse, rect, line,
 // polyline and polygon. Stroked with `color`; filled too when `fill` isn't 'none'.
 export type SvgElement = [tag: string, attributes: Record<string, string | number>]
@@ -91,13 +114,58 @@ declare module '@vue/runtime-core' {
       color?: string
       size?: 'small' | 'large'
     }>
-    // Low level: draws SVG elements, e.g. an icon set's nodes (see @nativue/icons).
-    Svg: NativeComponent<{
-      viewBox?: [number, number, number, number]
-      elements: SvgElement[]
-      color?: string
-      strokeWidth?: number
+    // <svg> as a component: the same drawing. Icons (@nativue/icons) pass `elements` instead.
+    Svg: NativeComponent<
+      SvgPresentationAttributes & {
+        viewBox?: string | [number, number, number, number]
+        width?: number | string
+        height?: number | string
+        preserveAspectRatio?: string
+        elements?: SvgElement[]
+        color?: string
+        strokeWidth?: number
+      }
+    >
+    G: SvgComponent
+    Path: SvgComponent<{ d?: string }>
+    Circle: SvgComponent<{ cx?: SvgLength; cy?: SvgLength; r?: SvgLength }>
+    Ellipse: SvgComponent<{ cx?: SvgLength; cy?: SvgLength; rx?: SvgLength; ry?: SvgLength }>
+    Rect: SvgComponent<{
+      x?: SvgLength
+      y?: SvgLength
+      width?: SvgLength
+      height?: SvgLength
+      rx?: SvgLength
+      ry?: SvgLength
     }>
+    Line: SvgComponent<{ x1?: SvgLength; y1?: SvgLength; x2?: SvgLength; y2?: SvgLength }>
+    Polyline: SvgComponent<{ points?: string }>
+    Polygon: SvgComponent<{ points?: string }>
+    SvgText: SvgComponent<{
+      x?: SvgLength
+      y?: SvgLength
+      dx?: SvgLength
+      dy?: SvgLength
+      fontSize?: SvgLength
+      fontWeight?: string | number
+      fontFamily?: string
+      textAnchor?: 'start' | 'middle' | 'end'
+    }>
+    Tspan: SvgComponent
+    Defs: SvgComponent
+    LinearGradient: SvgComponent<
+      SvgGradientAttributes & { x1?: SvgLength; y1?: SvgLength; x2?: SvgLength; y2?: SvgLength }
+    >
+    RadialGradient: SvgComponent<
+      SvgGradientAttributes & {
+        cx?: SvgLength
+        cy?: SvgLength
+        r?: SvgLength
+        fx?: SvgLength
+        fy?: SvgLength
+      }
+    >
+    Stop: SvgComponent<{ offset?: SvgLength; stopColor?: string; stopOpacity?: number | string }>
     Modal: NativeComponent<{
       visible?: boolean
       animationType?: 'none' | 'slide' | 'fade'

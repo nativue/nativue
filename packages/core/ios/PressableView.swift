@@ -51,7 +51,10 @@ final class PressableView: UIControl {
     private func isInteractiveChild(_ view: UIView) -> Bool {
         sequence(first: view, next: \.superview)
             .prefix { $0 !== self }
-            .contains { $0 is UIControl || $0 is UIScrollView || !($0.gestureRecognizers ?? []).isEmpty }
+            // An <svg> is hit only where an element with @press is: that press is the element's.
+            .contains {
+                $0 is UIControl || $0 is UIScrollView || $0 is SvgView || !($0.gestureRecognizers ?? []).isEmpty
+            }
     }
 
     /// VoiceOver's double tap: a press, even when something interactive sits under the activation point.

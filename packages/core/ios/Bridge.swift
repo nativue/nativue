@@ -639,7 +639,11 @@ final class Bridge {
             return NativeNode(view: SwipeableView(frame: .zero), measuresContent: false)
 
         case "Svg":
-            return NativeNode(view: SvgView(frame: .zero), measuresContent: false)
+            let svgView = SvgView(frame: .zero)
+            svgView.onElementPress = { [unowned self] nodeIds, location in
+                dispatchEvent("elementpress", toNodeId: id, payload: ["nodeIds": nodeIds, "x": location.x, "y": location.y])
+            }
+            return NativeNode(view: svgView, measuresContent: false)
 
         case "PressableView":
             let pressableView = PressableView()
@@ -1008,6 +1012,9 @@ final class Bridge {
 
         case "elements":
             (node.view as? SvgView)?.elements = value as? [[Any]] ?? []
+
+        case "drawing":
+            (node.view as? SvgView)?.drawing = value
 
         case "strokeWidth":
             (node.view as? SvgView)?.strokeWidth = CGFloat((value as? NSNumber)?.doubleValue ?? 2)

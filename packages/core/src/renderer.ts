@@ -8,7 +8,9 @@ import {
   camelize,
   createRenderer,
   ErrorCodes,
+  h,
   type Component,
+  type FunctionalComponent,
   type ComponentInternalInstance,
   type ComponentPublicInstance,
   type Directive,
@@ -22,6 +24,16 @@ import { animatedEventMapping, animatedStyleBinding, isAnimatedEvent } from './a
 import { Appearance } from './appearance'
 import { COLOR_PROPERTIES, processColor } from './colors'
 import { FlatListComponent, ImageBackground, Pressable, Swipeable } from './components'
+import {
+  attributeName,
+  drawingAttribute,
+  drawingOf,
+  isSvgRoot,
+  SVG_COMPONENTS,
+  SVG_ROOT,
+  svgPartTag,
+  svgRootOf,
+} from './svg'
 import type { LayoutAnimationConfig, Style } from './types'
 export * from '@vue/runtime-core'
 export { AccessibilityInfo } from './accessibility'
@@ -64,6 +76,12 @@ interface Node {
   /** <TextInput v-model.trim>: its modifiers, and the text typed last. */
   modelModifiers?: ModelModifiers
   typedText?: string
+  /** Inside an <svg>, and on the root itself: the attributes its drawing reads. */
+  svgAttributes?: Record<string, unknown>
+  /** An <svg>'s width and height attributes: under its class and style, as on the web. */
+  svgSize?: Style
+  /** An icon (@nativue/icons): its native view draws `elements`, not a drawing. */
+  drawsElements?: boolean
 }
 
 type ModelModifiers = { trim?: boolean; number?: boolean; lazy?: boolean }
@@ -101,9 +119,90 @@ function nativeIdsIn(node: Node): number[] {
   return [...ownId, ...node.children.flatMap(nativeIdsIn)]
 }
 
-// '#text' and '#comment' nodes only exist in JS (Vue anchors / raw text); native never sees them.
+// '#text' and '#comment' nodes only exist in JS (Vue anchors / raw text), and so does what's inside an
+// <svg>, which its root view draws: native never sees them.
 function isNativeNode(node: Node): boolean {
-  return !node.type.startsWith('#')
+  return !node.type.startsWith('#') && !svgPartTag(node.type)
+}
+
+const svgRootsToRedraw = new Set<Node>()
+
+/** Every change inside an <svg> in one batch: the drawing is sent once, after them. */
+function redrawSvg(node: Node | null) {
+  const root = svgRootOf(node) as Node | null
+  if (!root) return
+
+  if (svgRootsToRedraw.size === 0) Promise.resolve().then(sendSvgDrawings)
+  svgRootsToRedraw.add(root)
+}
+
+function sendSvgDrawings() {
+  const isPressable = (node: Node) => Boolean(eventHandlersByNodeId[node.id]?.press)
+
+  for (const root of svgRootsToRedraw) {
+    if (!root.drawsElements)
+      native.setProp(root.id, 'drawing', drawingOf(root, isPressable as never))
+  }
+  svgRootsToRedraw.clear()
+}
+
+function patchSvgAttribute(element: Node, key: string, value: unknown) {
+  const attribute = drawingAttribute(key, value)
+
+  element.svgAttributes ??= {}
+  if (attribute) element.svgAttributes[attribute[0]] = attribute[1]
+  else delete element.svgAttributes[attributeName(key)]
+  redrawSvg(element)
+}
+
+/** <svg width height>: they size it, under its class and style. */
+function patchSvgSize(element: Node, key: string, value: unknown) {
+  const previousStyle = combinedStyle(element)
+
+  element.svgSize = { ...element.svgSize, [key]: svgSizeValue(value) }
+  patchStyle(element, previousStyle, combinedStyle(element))
+}
+
+function svgSizeValue(value: unknown): number | string | undefined {
+  if (value == null) return undefined
+
+  return /^\s*[\d.]+(px)?\s*$/.test(String(value))
+    ? Number.parseFloat(String(value))
+    : String(value)
+}
+
+/** An icon's props, which its native view reads as they are; viewBox and stroke-width also draw. */
+const SVG_ICON_PROPS = new Set(['elements', 'color'])
+const SVG_SHARED_PROPS = new Set(['viewBox', 'strokeWidth'])
+
+/** An <svg>'s own props: false for those that go on as for any view. */
+function patchSvgRootProp(element: Node, key: string, value: unknown): boolean {
+  const name = camelize(key)
+
+  if (key === 'width' || key === 'height') {
+    patchSvgSize(element, key, value)
+
+    return true
+  }
+  if (name === 'elements') element.drawsElements = value != null
+  if (SVG_ICON_PROPS.has(name)) return false
+  if (SVG_SHARED_PROPS.has(name)) {
+    patchSvgAttribute(element, key, value)
+
+    return false
+  }
+  if (key === 'style' || key === 'class' || isEventProp(name) || isAccessibilityAttribute(key)) {
+    return false
+  }
+
+  patchSvgAttribute(element, key, value)
+
+  return true
+}
+
+/** <Path> for <path>, and so on: it renders the element with what it's given. */
+function svgComponent(tag: string): FunctionalComponent {
+  return (_props, { attrs, slots }) => h(tag, attrs, slots.default?.())
 }
 
 // Vue removes only the root of an unmounted subtree: its descendants go with it.
@@ -198,9 +297,9 @@ function withoutAnimatedProperties(
 // The class's styles come first, so the style prop overrides them, as inline styles do on the web.
 function combinedStyle(element: Node): Style | null {
   const focusedStyle = element.focused ? element.focusedStyle : null
-  if (!element.classStyle && !focusedStyle) return element.style ?? null
+  if (!element.classStyle && !focusedStyle && !element.svgSize) return element.style ?? null
 
-  return { ...element.classStyle, ...element.style, ...focusedStyle }
+  return { ...element.svgSize, ...element.classStyle, ...element.style, ...focusedStyle }
 }
 
 function classStyleOf(element: Node): Style | undefined {
@@ -266,6 +365,23 @@ function reportsToJavaScript(eventName: string, handler: unknown): boolean {
 
 // An Animated.event handler writes into values natively; JS keeps only its listener. Handlers run
 // through Vue's error handling, like on the web, so an error names the component it came from.
+/** Inside an <svg> there's no native view to tell: the drawing says which elements take presses. */
+function patchSvgEventHandler(
+  element: Node,
+  key: string,
+  handler: unknown,
+  component: ComponentInternalInstance | null,
+) {
+  const listener = handler as Function | undefined
+
+  eventHandlersByNodeId[element.id] ??= {}
+  eventHandlersByNodeId[element.id][key.slice(2).toLowerCase()] =
+    listener &&
+    ((payload) =>
+      callWithAsyncErrorHandling(listener, component, ErrorCodes.NATIVE_EVENT_HANDLER, [payload]))
+  redrawSvg(element)
+}
+
 function patchEventHandler(
   element: Node,
   key: string,
@@ -291,8 +407,10 @@ function patchEventHandler(
 
 const { createApp: createBaseApp } = createRenderer<Node, Node>({
   createElement(type) {
-    const element = createNode(type)
-    native.create(element.id, type)
+    if (svgPartTag(type)) return createNode(type)
+
+    const element = createNode(isSvgRoot(type) ? SVG_ROOT : type)
+    native.create(element.id, element.type)
     if (type === 'TextInput') textInputsById.set(element.id, element)
 
     return element
@@ -312,11 +430,16 @@ const { createApp: createBaseApp } = createRenderer<Node, Node>({
   setText(textNode, text) {
     textNode.text = text
     syncTextContent(textNode.parent)
+    redrawSvg(textNode.parent)
   },
 
   setElementText(element, text) {
     element.children = []
     if (element.type === 'Text') native.setText(element.id, text.trim())
+    if (svgPartTag(element.type)) {
+      element.children = [{ ...createNode('#text'), text, parent: element }]
+      redrawSvg(element)
+    }
   },
 
   insert(child, parent, anchor) {
@@ -328,6 +451,7 @@ const { createApp: createBaseApp } = createRenderer<Node, Node>({
 
     if (isNativeNode(child)) native.insert(parent.id, child.id, nativeIndexBefore(parent, index))
     else syncTextContent(parent)
+    redrawSvg(parent)
   },
 
   remove(child) {
@@ -336,6 +460,7 @@ const { createApp: createBaseApp } = createRenderer<Node, Node>({
 
     if (isNativeNode(child)) native.remove(child.id, nativeIdsIn(child))
     else syncTextContent(parent)
+    redrawSvg(parent)
   },
 
   parentNode(node) {
@@ -349,7 +474,12 @@ const { createApp: createBaseApp } = createRenderer<Node, Node>({
   },
 
   patchProp(element, key, previousValue, nextValue, _namespace, component) {
-    if (key === 'style') updateStyle(element, { style: nextValue })
+    if (svgPartTag(element.type)) {
+      if (isEventProp(camelize(key)))
+        patchSvgEventHandler(element, camelize(key), nextValue, component ?? null)
+      else patchSvgAttribute(element, key, nextValue)
+    } else if (element.type === SVG_ROOT && patchSvgRootProp(element, key, nextValue)) return
+    else if (key === 'style') updateStyle(element, { style: nextValue })
     else if (key === 'class') updateStyle(element, { className: nextValue ?? undefined })
     else if (key === 'pressed') updateStyle(element, { pressed: nextValue })
     else if (isAccessibilityAttribute(key)) updateAccessibility(element, key, nextValue)
@@ -373,6 +503,13 @@ const MODEL_EVENT_BY_NATIVE_EVENT: Record<string, string> = {
 }
 
 globalThis.__dispatch = (nodeId, eventName, payload) => {
+  // A press on an <svg>'s elements: the innermost first, then the groups around it.
+  if (eventName === 'elementpress') {
+    const { nodeIds, ...location } = payload as { nodeIds: number[] }
+
+    return nodeIds.forEach((id) => eventHandlersByNodeId[id]?.press?.(location))
+  }
+
   updateFocus(nodeId, eventName)
 
   const handlers = eventHandlersByNodeId[nodeId]
@@ -517,6 +654,7 @@ export function createApp(rootComponent: Component) {
   app.component('FlatList', FlatListComponent)
   app.component('Swipeable', Swipeable)
   app.component('ImageBackground', ImageBackground)
+  for (const [name, tag] of Object.entries(SVG_COMPONENTS)) app.component(name, svgComponent(tag))
 
   return Object.assign(app, { mount: () => mountOnContainer(rootNode) })
 }

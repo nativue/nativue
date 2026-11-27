@@ -1093,6 +1093,46 @@ const platformCardId = findViewId(
 )
 assert.ok(viewsById[platformCardId].style.backgroundColor) // ios:bg-sky-100, not android:'s
 
+// ---------- SVG: <svg> as on the web, drawn by one native view ----------
+
+const svgScreenId = await open('explore/svg')
+const [chartId, illustrationId] = renderedViewIds(svgScreenId).filter(
+  (id) => viewsById[id].type === 'Svg',
+)
+const drawingOf = (id) => viewsById[id].props.drawing
+const elementsTagged = (element, tag) => [
+  ...(element[0] === tag ? [element] : []),
+  ...(Array.isArray(element[2]) ? element[2].flatMap((child) => elementsTagged(child, tag)) : []),
+]
+const chartTitle = () => elementsTagged(drawingOf(chartId), 'text').at(-1)[2].trim()
+
+// What's inside the <svg> never becomes a native view: the root gets it all as one drawing.
+assert.equal(renderedViewIds(chartId).length, 1)
+assert.deepEqual(drawingOf(chartId)[1].viewBox, [0, 0, 300, 170])
+assert.equal(elementsTagged(drawingOf(chartId), 'stop')[0][1]['stop-opacity'], 0.45)
+assert.equal(elementsTagged(drawingOf(chartId), 'stop')[0][1].offset, 0)
+assert.deepEqual(viewsById[chartId].style.width, 320) // the width attribute sizes it
+assert.equal(chartTitle(), 'Sun: 8,300 steps')
+
+const circles = elementsTagged(drawingOf(chartId), 'circle')
+assert.equal(circles.length, 7)
+assert.ok(circles.every(([, attributes]) => typeof attributes.nodeId === 'number')) // they take presses
+assert.equal(typeof circles[0][1].fill, 'number') // colors as 0xRRGGBBAA, like styles
+
+globalThis.__dispatch(chartId, 'elementpress', { nodeIds: [circles[3][1].nodeId], x: 0, y: 0 })
+await settle()
+assert.equal(chartTitle(), 'Thu: 9,800 steps')
+assert.equal(elementsTagged(drawingOf(chartId), 'circle')[3][1].r, 7)
+
+// <Svg>, <Circle>, <G>: the same drawing, the transform as a matrix.
+const group = elementsTagged(drawingOf(illustrationId), 'g')[0]
+assert.equal(group[1].opacity, 0.85)
+assert.deepEqual(
+  group[1].transform.map((value) => Number(value.toFixed(3))),
+  [0.966, 0.259, -0.259, 0.966, 80, 14],
+)
+assert.equal(elementsTagged(drawingOf(illustrationId), 'radialGradient')[0][1].id, 'sun')
+
 // ---------- Native plugins (@nativue/haptics, @nativue/clipboard) ----------
 
 const hapticsId = await open('explore/haptics')
