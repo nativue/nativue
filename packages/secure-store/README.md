@@ -47,8 +47,10 @@ ignores `accessible`.
 
 ## Errors
 
-The functions reject with a `NativeError`: `ERR_UNAVAILABLE` when the Keychain or the Keystore
-refuses, with the system's message. An empty key or a value that isn't a string throws a `TypeError`.
+The functions reject with a `NativeError` whose `code` is `ERR_UNAVAILABLE` when the Keychain or the
+Keystore refuses, or the file can't be written, with the system's message: the value is left as it
+was, for the next try. An empty key, a value that isn't a string or an unknown `accessible` rejects
+with a `TypeError`.
 
 ## Not yet
 

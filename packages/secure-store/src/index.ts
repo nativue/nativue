@@ -6,11 +6,14 @@ import { requireNativeFunction } from '@nativue/core'
  * Both move to a new device with an encrypted backup; their 'ThisDeviceOnly' versions don't. Android
  * ignores it: the Keystore keeps its keys on the device.
  */
-export type Accessibility =
-  | 'whenUnlocked'
-  | 'afterFirstUnlock'
-  | 'whenUnlockedThisDeviceOnly'
-  | 'afterFirstUnlockThisDeviceOnly'
+const ACCESSIBILITIES = [
+  'whenUnlocked',
+  'afterFirstUnlock',
+  'whenUnlockedThisDeviceOnly',
+  'afterFirstUnlockThisDeviceOnly',
+] as const
+
+export type Accessibility = (typeof ACCESSIBILITIES)[number]
 
 export interface SetItemOptions {
   accessible?: Accessibility
@@ -41,7 +44,12 @@ export const SecureStore = {
     checkKey(key)
     if (typeof value !== 'string') throw new TypeError('SecureStore.setItem takes a string value')
 
-    await nativeSetItem(key, value, options.accessible ?? 'whenUnlocked')
+    const accessible = options.accessible ?? 'whenUnlocked'
+    if (!ACCESSIBILITIES.includes(accessible)) {
+      throw new TypeError(`SecureStore.setItem: accessible is one of ${ACCESSIBILITIES.join(', ')}`)
+    }
+
+    await nativeSetItem(key, value, accessible)
   },
 
   /** The value under `key`; null when there's none, or when it can no longer be read. */

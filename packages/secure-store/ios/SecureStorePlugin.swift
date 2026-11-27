@@ -12,42 +12,64 @@ public final class SecureStorePlugin: NativuePlugin {
         "afterFirstUnlockThisDeviceOnly": kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
     ]
 
+    // One call at a time, as on Android: two writes to a key don't race.
+    private let queue = DispatchQueue(label: "nativue.secure-store")
+
     public init() {}
 
     public func register(in registry: PluginRegistry) {
-        registry.addAsyncFunction("secureStore.setItem") { arguments in
+        registry.addAsyncFunction("secureStore.setItem") { [queue] arguments in
             let key = arguments[0] as! String
-            let value = arguments[1] as! String
-            var item = Self.query(for: key)
+            let value = Data((arguments[1] as! String).utf8)
+            let accessible = Self.accessibilities[arguments[2] as! String] ?? kSecAttrAccessibleWhenUnlocked
 
-            // Deleted first: updating an item can't change when it's accessible.
-            SecItemDelete(item as CFDictionary)
-            item[kSecValueData as String] = Data(value.utf8)
-            item[kSecAttrAccessible as String] = Self.accessibilities[arguments[2] as? String ?? ""] ?? kSecAttrAccessibleWhenUnlocked
-            try Self.check(SecItemAdd(item as CFDictionary, nil))
+            try await Self.run(on: queue) {
+                // Updated in place: a failed write leaves the old value as it was.
+                let changes = [kSecValueData as String: value, kSecAttrAccessible as String: accessible] as [String: Any]
+                let status = SecItemUpdate(Self.query(for: key) as CFDictionary, changes as CFDictionary)
+                guard status == errSecItemNotFound else { return try Self.check(status) }
+
+                try Self.check(SecItemAdd(Self.query(for: key).merging(changes) { _, change in change } as CFDictionary, nil))
+            }
 
             return nil
         }
 
-        registry.addAsyncFunction("secureStore.getItem") { arguments in
-            var query = Self.query(for: arguments[0] as! String)
-            var result: AnyObject?
+        registry.addAsyncFunction("secureStore.getItem") { [queue] arguments in
+            let key = arguments[0] as! String
 
-            query[kSecReturnData as String] = true
-            query[kSecMatchLimit as String] = kSecMatchLimitOne
+            return try await Self.run(on: queue) { () -> String? in
+                var query = Self.query(for: key)
+                var result: AnyObject?
 
-            let status = SecItemCopyMatching(query as CFDictionary, &result)
-            if status == errSecItemNotFound { return nil }
-            try Self.check(status)
+                query[kSecReturnData as String] = true
+                query[kSecMatchLimit as String] = kSecMatchLimitOne
 
-            return (result as? Data).flatMap { String(data: $0, encoding: .utf8) }
+                let status = SecItemCopyMatching(query as CFDictionary, &result)
+
+                if status == errSecItemNotFound { return nil }
+                try Self.check(status)
+
+                return (result as? Data).flatMap { String(data: $0, encoding: .utf8) }
+            }
         }
 
-        registry.addAsyncFunction("secureStore.deleteItem") { arguments in
-            let status = SecItemDelete(Self.query(for: arguments[0] as! String) as CFDictionary)
-            if status != errSecItemNotFound { try Self.check(status) }
+        registry.addAsyncFunction("secureStore.deleteItem") { [queue] arguments in
+            let key = arguments[0] as! String
+
+            try await Self.run(on: queue) {
+                let status = SecItemDelete(Self.query(for: key) as CFDictionary)
+
+                if status != errSecItemNotFound { try Self.check(status) }
+            }
 
             return nil
+        }
+    }
+
+    private static func run<Value>(on queue: DispatchQueue, _ work: @escaping () throws -> Value) async throws -> Value {
+        try await withCheckedThrowingContinuation { continuation in
+            queue.async { continuation.resume(with: Result { try work() }) }
         }
     }
 
@@ -59,7 +81,7 @@ public final class SecureStorePlugin: NativuePlugin {
         ]
     }
 
-    /// errSecInteractionNotAllowed: a 'whenUnlocked' item read while the device is locked.
+    /// errSecInteractionNotAllowed: a 'whenUnlocked' item used while the device is locked.
     private static func check(_ status: OSStatus) throws {
         guard status != errSecSuccess else { return }
 

@@ -1,15 +1,17 @@
 package dev.nativue.securestore
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import dev.nativue.NativuePlugin
 import dev.nativue.PluginRegistry
 import dev.nativue.Promise
-import java.security.GeneralSecurityException
+import java.io.IOException
 import java.security.KeyStore
 import java.util.concurrent.Executors
+import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -28,36 +30,41 @@ class SecureStorePlugin : NativuePlugin {
 
         registry.addAsyncFunction("secureStore.setItem") { arguments, promise ->
             inBackground(promise) {
-                preferences.edit().putString(arguments[0] as String, encrypt(arguments[1] as String)).commit()
-                null
+                write(preferences.edit().putString(arguments[0] as String, encrypt(arguments[1] as String)))
             }
         }
 
         registry.addAsyncFunction("secureStore.getItem") { arguments, promise ->
             inBackground(promise) {
                 val key = arguments[0] as String
-                val stored = preferences.getString(key, null)
 
-                stored?.let { decryptOrForget(it) { preferences.edit().remove(key).commit() } }
+                preferences.getString(key, null)?.let { stored ->
+                    decrypt(stored) ?: write(preferences.edit().remove(key))
+                }
             }
         }
 
         registry.addAsyncFunction("secureStore.deleteItem") { arguments, promise ->
-            inBackground(promise) {
-                preferences.edit().remove(arguments[0] as String).commit()
-                null
-            }
+            inBackground(promise) { write(preferences.edit().remove(arguments[0] as String)) }
         }
     }
 
+    // Anything the Keystore or the disk throws rejects: the value stays, for the next try.
     private fun inBackground(promise: Promise, work: () -> Any?) {
         worker.execute {
             try {
                 promise.resolve(work())
-            } catch (error: GeneralSecurityException) {
+            } catch (error: Exception) {
                 promise.reject("ERR_UNAVAILABLE", error.message ?: "The Android Keystore failed")
             }
         }
+    }
+
+    /** null once written; throws when the disk refused it. */
+    private fun write(editor: SharedPreferences.Editor): Nothing? {
+        if (!editor.commit()) throw IOException("Couldn't write the secure store's file")
+
+        return null
     }
 
     /** Base64 of the IV, then the ciphertext and its tag. */
@@ -68,23 +75,32 @@ class SecureStorePlugin : NativuePlugin {
     }
 
     /**
-     * A value its key can't open (restored from a backup onto another device, whose Keystore doesn't have
-     * the key) reads as none, and is forgotten.
+     * null for a value its key can't open: restored from a backup onto another device, whose Keystore
+     * doesn't have the key. The Keystore's own failures throw.
      */
-    private fun decryptOrForget(stored: String, forget: () -> Unit): String? = try {
-        val bytes = Base64.decode(stored, Base64.NO_WRAP)
+    private fun decrypt(stored: String): String? {
+        val key = key()
+        val bytes = try {
+            Base64.decode(stored, Base64.NO_WRAP)
+        } catch (error: IllegalArgumentException) {
+            return null
+        }
+        if (bytes.size <= IV_BYTES) return null
+
         val cipher = Cipher.getInstance(TRANSFORMATION).apply {
-            init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(TAG_BITS, bytes, 0, IV_BYTES))
+            init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(TAG_BITS, bytes, 0, IV_BYTES))
         }
 
-        String(cipher.doFinal(bytes, IV_BYTES, bytes.size - IV_BYTES))
-    } catch (error: Exception) {
-        forget()
-        null
+        return try {
+            String(cipher.doFinal(bytes, IV_BYTES, bytes.size - IV_BYTES))
+        } catch (error: AEADBadTagException) {
+            null
+        }
     }
 
     private fun key(): SecretKey {
         val keyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }
+
         (keyStore.getKey(KEY_ALIAS, null) as? SecretKey)?.let { return it }
 
         val specification = KeyGenParameterSpec.Builder(
