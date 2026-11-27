@@ -239,7 +239,9 @@ void installBlobCollector(jsi::Runtime &runtime, NativueNativeFunction release) 
   self = [super init];
   if (self == nil) return nil;
 
-  auto config = ::hermes::vm::RuntimeConfig::Builder().withMicrotaskQueue(true).build();
+  // Off by default: a let in a loop would be one variable for every iteration, so callbacks made
+  // in the loop would all see its last value. Bytecode gets the same from hermesc's -Xes6-block-scoping.
+  auto config = ::hermes::vm::RuntimeConfig::Builder().withMicrotaskQueue(true).withES6BlockScoping(true).build();
   _hermes = facebook::hermes::makeHermesRuntime(config);
   _onError = onError;
   [self installNativeModule:functions];
