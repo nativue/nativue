@@ -83,6 +83,7 @@ final class VueScrollView: UIScrollView {
     override func layoutSubviews() {
         super.layoutSubviews()
 
+        applyBackgroundGradients()
         onOffsetChange?(contentOffset)
         reportScrollThrottled()
     }

@@ -85,6 +85,12 @@ To run on a phone, see [Getting started](docs/getting-started.md#run-on-a-phone)
 | [`@nativue/notifications`](packages/notifications) | local notifications                             |
 | [`@nativue/sqlite`](packages/sqlite)               | SQLite databases                                |
 
+## Not affiliated
+
+nativue is an independent project. It isn't affiliated with, endorsed or sponsored by Vue.js or its
+team, nor by the other projects it builds on, such as Tailwind CSS, Lucide and Hermes. Their names
+and logos are trademarks of their owners.
+
 ## License
 
 [MIT](LICENSE)

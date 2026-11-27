@@ -131,5 +131,24 @@ const selectedPlan = ref('Pro')
         </Text>
       </View>
     </Section>
+
+    <Section
+      title="Text and corners"
+      footer="italic, uppercase, tracking-*, leading-*, line-clamp-*, truncate, rounded-t-*."
+    >
+      <View class="rounded-t-2xl bg-emerald-500 p-4">
+        <Text class="text-xs font-semibold tracking-widest text-white uppercase">
+          Rounded on top
+        </Text>
+        <Text class="text-white italic">and italic below</Text>
+      </View>
+      <Text class="line-clamp-2 leading-6 text-slate-700 dark:text-slate-300">
+        A long paragraph that line-clamp-2 cuts after its second line, ending it with an ellipsis,
+        however much text follows it on a narrow phone screen.
+      </Text>
+      <Text class="truncate text-slate-500 dark:text-slate-400">
+        truncate keeps this sentence on one line, however long it gets on the screen.
+      </Text>
+    </Section>
   </Page>
 </template>

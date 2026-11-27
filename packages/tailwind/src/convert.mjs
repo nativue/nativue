@@ -3,6 +3,8 @@
 // have (dark:, active:, focus:, disabled:, ios:, android:) become conditions; other variants, and CSS properties the
 // native views don't have, are reported instead.
 
+import { closingParenthesis, nextVariable, resolveVariables } from './variables.mjs'
+
 const ROOT_FONT_SIZE = 16 // rem, in points
 const INFINITE_LENGTH = 9999 // rounded-full is calc(infinity * 1px)
 
@@ -118,36 +120,6 @@ function splitTopLevel(value, separator) {
   if (current.trim()) parts.push(current.trim())
 
   return parts
-}
-
-/** The index of the parenthesis closing the one at `start`. */
-function closingParenthesis(text, start) {
-  let depth = 0
-
-  for (let index = start; index < text.length; index++) {
-    if (text[index] === '(') depth++
-    if (text[index] === ')' && --depth === 0) return index
-  }
-
-  return -1
-}
-
-/**
- * Replaces var(--name, fallback) with the variable's value: the rule's own, then the theme's, then
- * @property's initial value, then the fallback. null when one can't be resolved.
- */
-function resolveVariables(value, lookup) {
-  const start = value.indexOf('var(')
-  if (start === -1) return value
-
-  const end = closingParenthesis(value, start + 3)
-  const [name, ...fallbackParts] = splitTopLevel(value.slice(start + 4, end), ',')
-  const fallback = fallbackParts.length > 0 ? fallbackParts.join(',') : null
-  const replacement =
-    lookup(name.trim()) ?? (fallback === null ? null : resolveVariables(fallback, lookup))
-  if (replacement === null) return null
-
-  return resolveVariables(value.slice(0, start) + replacement + value.slice(end + 1), lookup)
 }
 
 // calc() and plain lengths, as { number, unit }: '', 'px' (rem converted), '%' or 'deg'.
@@ -425,6 +397,15 @@ const POINT_PROPERTIES = {
   'column-gap': 'columnGap',
   'border-width': 'borderWidth',
   'border-radius': 'borderRadius',
+  'border-top-left-radius': 'borderTopLeftRadius',
+  'border-top-right-radius': 'borderTopRightRadius',
+  'border-bottom-right-radius': 'borderBottomRightRadius',
+  'border-bottom-left-radius': 'borderBottomLeftRadius',
+  // Left to right: start is left, end is right.
+  'border-start-start-radius': 'borderTopLeftRadius',
+  'border-start-end-radius': 'borderTopRightRadius',
+  'border-end-end-radius': 'borderBottomRightRadius',
+  'border-end-start-radius': 'borderBottomLeftRadius',
   'font-size': 'fontSize',
 }
 
@@ -442,7 +423,10 @@ const FLEX_START_END = {
 }
 
 const KEYWORD_PROPERTIES = {
-  display: ['display', { flex: 'flex', 'inline-flex': 'flex', none: 'none' }],
+  display: [
+    'display',
+    { flex: 'flex', 'inline-flex': 'flex', '-webkit-box': 'flex', none: 'none' },
+  ],
   position: ['position', { relative: 'relative', absolute: 'absolute', static: 'static' }],
   'flex-direction': [
     'flexDirection',
@@ -498,10 +482,16 @@ const KEYWORD_PROPERTIES = {
     'textDecorationLine',
     { none: 'none', underline: 'underline', 'line-through': 'line-through' },
   ],
+  'font-style': ['fontStyle', { normal: 'normal', italic: 'italic' }],
+  'text-transform': [
+    'textTransform',
+    { none: 'none', uppercase: 'uppercase', lowercase: 'lowercase', capitalize: 'capitalize' },
+  ],
 }
 
-// Declarations Tailwind adds next to the ones that matter (border-style: solid with border-2).
-const SILENTLY_IGNORED = new Set(['border-style'])
+// Declarations Tailwind adds next to the ones that matter (border-style: solid with border-2, the
+// -webkit-box line-clamp-2 needs on the web).
+const SILENTLY_IGNORED = new Set(['border-style', '-webkit-box-orient'])
 
 function flex(value) {
   if (value === 'auto') return { flexGrow: 1, flexShrink: 1, flexBasis: 'auto' }
@@ -565,7 +555,13 @@ function boxShadow(value) {
     }))
     .filter(({ rgba }) => rgba && rgba.alpha > 0)
 
-  if (visibleLayers.length === 0) return { shadowOpacity: 0 }
+  if (visibleLayers.length === 0) {
+    // shadow-none: every layer transparent. A ring or an inset shadow only: nothing native draws, and it
+    // mustn't take away the shadow of a shadow-md next to it.
+    const isNone = layers.every((parts) => rgbaOf(parts.at(-1))?.alpha === 0)
+
+    return isNone ? { shadowOpacity: 0 } : null
+  }
 
   // Limitation: Native views draw one shadow, without spread: the first layer, its blur halved to look alike;
   // stack shadow layers natively if richer shadows are wanted.
@@ -578,6 +574,31 @@ function boxShadow(value) {
     shadowRadius: blur / 2,
     shadowOffset: { width: offsetX, height: offsetY },
   }
+}
+
+/** '0.025em' stays in ems, which native multiplies by the font size; lengths are points. */
+function emsOrPoints(value) {
+  if (/^-?[\d.]+em$/.test(value)) return value
+
+  return points(value)
+}
+
+/** 1.25, a multiple of the font size, is in ems; lengths are points. */
+function lineHeight(value) {
+  if (/^-?[\d.]+$/.test(value)) return { lineHeight: `${Number(value)}em` }
+
+  const converted = emsOrPoints(value)
+
+  return converted === null ? null : { lineHeight: converted }
+}
+
+/** line-clamp-2's lines; unset (line-clamp-none) lifts the limit. */
+function lineClamp(value) {
+  if (value === 'unset' || value === 'none') return { lineClamp: 0 }
+
+  const lines = Number.parseInt(value, 10)
+
+  return Number.isNaN(lines) ? null : { lineClamp: lines }
 }
 
 const CONVERTERS = {
@@ -594,6 +615,14 @@ const CONVERTERS = {
   scale,
   translate,
   'box-shadow': boxShadow,
+  'letter-spacing': (value) => {
+    const converted = emsOrPoints(value)
+
+    return converted === null ? null : { letterSpacing: converted }
+  },
+  'line-height': lineHeight,
+  '-webkit-line-clamp': lineClamp,
+  'line-clamp': lineClamp,
 }
 
 /** The style for one declaration, or null when native views have nothing like it. */
@@ -651,9 +680,9 @@ function declarations(item) {
   return item.children.filter((child) => !child.children)
 }
 
-/** Theme variables (:root) and @property initial values. */
+/** Theme variables (:root), and @property initial values. */
 function globalVariables(items) {
-  const variables = new Map()
+  const theme = new Map()
   const initialValues = new Map()
 
   for (const { item } of walk(items)) {
@@ -661,14 +690,115 @@ function globalVariables(items) {
       const initialValue = declarations(item).find((child) => child.property === 'initial-value')
       if (initialValue) initialValues.set(item.prelude.slice(10).trim(), initialValue.value)
     } else if (item.prelude.split(',').some((selector) => selector.trim() === ':root')) {
-      for (const { property, value } of declarations(item)) variables.set(property, value)
+      for (const { property, value } of declarations(item)) theme.set(property, value)
     }
   }
 
-  return (name) => variables.get(name) ?? initialValues.get(name) ?? null
+  return {
+    theme,
+    initialValues,
+    lookup: (name) => theme.get(name) ?? initialValues.get(name) ?? null,
+  }
 }
 
-function convertRule(rule, globalLookup) {
+// ---------- Variables resolved at run time ----------
+
+// Properties whose value can come from variables other utilities set on the same element
+// (bg-linear-to-r with from-red-500 and to-green-500): kept with their var(), resolved per element at
+// run time (runtime.ts), as CSS resolves them.
+const RUN_TIME_PROPERTIES = { 'background-image': 'backgroundImage' }
+const VARIABLE_REFERENCE = /var\(\s*(--[\w-]+)/g
+
+/** The variables run-time properties read, directly or through other variables, the theme's left out. */
+function runTimeVariableNames(items, theme) {
+  const valuesByVariable = new Map()
+  const pending = []
+
+  for (const { item } of walk(items)) {
+    if (item.prelude.startsWith('@')) continue
+
+    for (const { property, value } of declarations(item)) {
+      if (property.startsWith('--'))
+        valuesByVariable.set(property, [...(valuesByVariable.get(property) ?? []), value])
+      if (RUN_TIME_PROPERTIES[property]) pending.push(value)
+    }
+  }
+
+  const names = new Set()
+
+  while (pending.length > 0) {
+    for (const [, name] of pending.pop().matchAll(VARIABLE_REFERENCE)) {
+      if (names.has(name) || theme.has(name)) continue
+
+      names.add(name)
+      pending.push(...(valuesByVariable.get(name) ?? []))
+    }
+  }
+
+  return names
+}
+
+/**
+ * var() of build-time variables replaced; run-time ones kept, with their fallback resolved. null when a
+ * build-time one can't be, or when a color stays one native can't read (currentcolor, hsl()...).
+ */
+function resolveBuildTimeVariables(value, lookup, runTimeNames) {
+  let result = ''
+  let rest = value.replace(/\s*!important$/, '')
+
+  for (let variable = nextVariable(rest); variable; variable = nextVariable(rest)) {
+    const { start, end, name, fallback } = variable
+
+    if (runTimeNames.has(name)) {
+      const resolvedFallback =
+        fallback === null ? '' : resolveBuildTimeVariables(fallback, lookup, runTimeNames)
+      if (resolvedFallback === null) return null
+
+      result += `${rest.slice(0, start)}var(${name}${resolvedFallback ? `, ${resolvedFallback}` : ''})`
+      rest = rest.slice(end + 1)
+    } else {
+      const replacement = lookup(name) ?? fallback
+      if (replacement === null) return null
+
+      rest = rest.slice(0, start) + replacement + rest.slice(end + 1)
+    }
+  }
+
+  const resolved = withHexColors(result + rest)
+
+  return hasUnreadableColor(resolved) ? null : resolved
+}
+
+/** What native can't read as a color: the text's color, inheritance, and the functions color() left. */
+function hasUnreadableColor(value) {
+  return /\b(currentcolor|inherit)\b/i.test(value) || UNREAD_COLOR_FUNCTION.test(value)
+}
+
+const COLOR_FUNCTION = /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color-mix|color)\(/g
+// Left after withHexColors: one color() couldn't convert.
+const UNREAD_COLOR_FUNCTION = /\b(?:hsla?|hwb|lab|lch|oklab|oklch|color-mix|color)\(/
+// What the native side draws as a background image.
+const DRAWN_BACKGROUND_IMAGE = /^(none|(linear|radial)-gradient\()/
+
+/** The color functions in a value (oklch from the theme...) as hex colors, which native reads. */
+function withHexColors(value) {
+  let result = ''
+  let index = 0
+
+  for (const match of value.matchAll(COLOR_FUNCTION)) {
+    if (match.index < index) continue
+
+    const end = closingParenthesis(value, match.index + match[0].length - 1)
+    const text = value.slice(match.index, end + 1)
+
+    result += value.slice(index, match.index) + (color(text) ?? text)
+    index = end + 1
+  }
+
+  return result + value.slice(index)
+}
+
+function convertRule(rule, globalLookup, runTimeNames) {
   const ruleDeclarations = declarations(rule)
   const localVariables = new Map(
     ruleDeclarations
@@ -676,11 +806,41 @@ function convertRule(rule, globalLookup) {
       .map(({ property, value }) => [property, value]),
   )
   const lookup = (name) => localVariables.get(name) ?? globalLookup(name)
+  const buildTimeLookup = (name) => (runTimeNames.has(name) ? null : lookup(name))
   const style = {}
   const unsupported = []
+  // truncate: white-space: nowrap with text-overflow: ellipsis is one line ending in an ellipsis. Either
+  // alone has no native equivalent.
+  const isTruncated = ['white-space: nowrap', 'text-overflow: ellipsis'].every((declaration) =>
+    ruleDeclarations.some(({ property, value }) => `${property}: ${value}` === declaration),
+  )
+
+  if (isTruncated) style.lineClamp = 1
 
   for (const { property, value } of ruleDeclarations) {
+    if (runTimeNames.has(property)) {
+      // One it can't resolve leaves the whole class out, with a warning: its gradient would come out
+      // wrong without it.
+      const resolved = resolveBuildTimeVariables(value, buildTimeLookup, runTimeNames)
+      if (resolved === null) return { style: {}, unsupported: [property] }
+
+      style[property] = resolved
+      continue
+    }
     if (property.startsWith('--') || SILENTLY_IGNORED.has(property)) continue
+    if (isTruncated && (property === 'white-space' || property === 'text-overflow')) continue
+    // text-sm's own line height, which leading-* overrides: text keeps the platform's.
+    if (property === 'line-height' && value.includes('--tw-leading')) continue
+    if (RUN_TIME_PROPERTIES[property]) {
+      const template = resolveBuildTimeVariables(value, buildTimeLookup, runTimeNames)
+      // An image native doesn't draw (conic-gradient(), url()) leaves the class out, with a warning.
+      if (template === null || !DRAWN_BACKGROUND_IMAGE.test(template)) {
+        return { style: {}, unsupported: [property] }
+      }
+
+      style[RUN_TIME_PROPERTIES[property]] = template
+      continue
+    }
 
     const resolvedValue = resolveVariables(value.replace(/\s*!important$/, ''), lookup)
     const converted = resolvedValue === null ? null : convertDeclaration(property, resolvedValue)
@@ -696,11 +856,19 @@ function convertRule(rule, globalLookup) {
  * The styles of every utility in `css`, keyed by class name: [order, style] or, for variants,
  * [order, style, conditions] ('dark', 'pressed', 'focused', 'disabled', 'ios', 'android', all of
  * which must hold). order is the rule's place in the stylesheet: later rules win, as in CSS.
+ * A style can hold variables ('--tw-gradient-from') and a backgroundImage reading them, resolved per
+ * element at run time, with `variables` (their initial values) for those no class sets.
  * `ignored` explains the classes that produced nothing.
  */
 export function stylesFromCss(css) {
   const { items } = parseBlock(stripComments(css))
-  const globalLookup = globalVariables(items)
+  const { theme, initialValues, lookup: globalLookup } = globalVariables(items)
+  const runTimeNames = runTimeVariableNames(items, theme)
+  const variables = Object.fromEntries(
+    [...runTimeNames]
+      .filter((name) => initialValues.has(name))
+      .map((name) => [name, withHexColors(initialValues.get(name))]),
+  )
   const styles = {}
   const ignored = {}
   let order = 0
@@ -717,18 +885,25 @@ export function stylesFromCss(css) {
       continue
     }
 
-    const { style, unsupported } = convertRule(item, globalLookup)
+    const { style, unsupported } = convertRule(item, globalLookup, runTimeNames)
     const ruleConditions = [...conditions, ...utility.states]
 
     if (Object.keys(style).length === 0) {
       ignored[utility.className] = `${unsupported.join(', ') || 'nothing'} has no native equivalent`
     } else {
-      styles[utility.className] =
-        ruleConditions.length > 0 ? [order++, style, ruleConditions] : [order++, style]
+      // Tailwind can split a class into several rules (dark:from-black/50): they add up.
+      const existing = styles[utility.className]
+      const sameConditions = existing && String(existing[2] ?? []) === String(ruleConditions)
+
+      if (sameConditions) Object.assign(existing[1], style)
+      else {
+        styles[utility.className] =
+          ruleConditions.length > 0 ? [order++, style, ruleConditions] : [order++, style]
+      }
     }
   }
 
   for (const className of Object.keys(styles)) delete ignored[className]
 
-  return { styles, ignored }
+  return { styles, variables, ignored }
 }

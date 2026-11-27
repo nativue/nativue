@@ -186,13 +186,17 @@ function parseRgbFunction(color: string) {
 export function processColor(color: unknown): number | null {
   if (color == null) return null
 
-  const normalized =
-    NAMED_COLORS[String(color).trim().toLowerCase()] ?? String(color).trim().toLowerCase()
-  const rgba = normalized.startsWith('#')
-    ? parseHex(normalized.slice(1))
-    : parseRgbFunction(normalized)
+  const rgba = parseColor(color)
 
   if (rgba === null) console.warn(`[Nativue] unsupported color: ${color}`)
 
   return rgba
+}
+
+/** The color as 0xRRGGBBAA, or null, quietly: for telling a color from something else. */
+export function parseColor(color: unknown): number | null {
+  const normalized =
+    NAMED_COLORS[String(color).trim().toLowerCase()] ?? String(color).trim().toLowerCase()
+
+  return normalized.startsWith('#') ? parseHex(normalized.slice(1)) : parseRgbFunction(normalized)
 }

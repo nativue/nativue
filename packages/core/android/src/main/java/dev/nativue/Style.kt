@@ -3,6 +3,10 @@ package dev.nativue
 import android.content.Context
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.TextUtils
+import android.text.style.LineHeightSpan
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -19,6 +23,7 @@ import com.facebook.yoga.YogaNode
 import com.facebook.yoga.YogaOverflow
 import com.facebook.yoga.YogaPositionType
 import com.facebook.yoga.YogaWrap
+import kotlin.math.roundToInt
 
 /**
  * Receives only the properties that changed: the JS renderer diffs style objects before sending. A removed
@@ -48,7 +53,14 @@ private fun NativeNode.applyVisualProperty(property: String, value: Any?) {
 
     when (property) {
         "backgroundColor" -> updateBox { backgroundColor = androidColor(value) ?: 0 }
+        "backgroundImage" -> updateBox {
+            gradients = (value as? List<*>)?.filterIsInstance<Map<*, *>>().orEmpty()
+            density = view.resources.displayMetrics.density
+        }
         "borderRadius" -> updateBox { cornerRadius = pixels(value) }
+        "borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius" -> updateBox {
+            cornerRadii[CORNERS.indexOf(property)] = value?.let { pixels(it) }
+        }
         "borderWidth" -> updateBox { borderWidth = pixels(value) }
         "borderColor" -> updateBox { borderColor = androidColor(value) ?: 0 }
         "shadowColor" -> updateBox { shadowColor = androidColor(value) ?: 0xFF000000.toInt() }
@@ -69,6 +81,26 @@ private fun NativeNode.applyVisualProperty(property: String, value: Any?) {
         }
         "textAlign" -> textView?.gravity = textGravities[value] ?: Gravity.START
         "textDecorationLine" -> textView?.let { it.paintFlags = decoratedPaintFlags(it.paintFlags, value as? String) }
+        "fontStyle" -> textView?.let {
+            isItalic = value == "italic"
+            it.typeface = typefaceOfWeight(it.context, fontWeight, isItalic)
+            markContentChanged()
+        }
+        "letterSpacing" -> {
+            letterSpacing = value
+            updateTextSpacing()
+        }
+        "lineHeight" -> {
+            lineHeight = value
+            updateTextSpacing()
+        }
+        "lineClamp" -> textView?.let {
+            val lines = number(value)?.toInt() ?: 0
+
+            it.maxLines = if (lines > 0) lines else Int.MAX_VALUE
+            it.ellipsize = if (lines > 0) TextUtils.TruncateAt.END else null
+            markContentChanged()
+        }
     }
 }
 
@@ -120,8 +152,8 @@ private fun degrees(value: Any?): Float {
 }
 
 /** The system font at a weight (100 to 900). */
-fun typefaceOfWeight(context: Context, weight: Int): Typeface =
-    TypefaceCompat.create(context, Typeface.DEFAULT, weight, false)
+fun typefaceOfWeight(context: Context, weight: Int, isItalic: Boolean = false): Typeface =
+    TypefaceCompat.create(context, Typeface.DEFAULT, weight, isItalic)
 
 /** Font size and weight can change independently, so the node remembers both. */
 private fun NativeNode.applyFont(changes: Map<String, Any?>) {
@@ -129,7 +161,7 @@ private fun NativeNode.applyFont(changes: Map<String, Any?>) {
     if ("fontWeight" in changes) fontWeight = changes["fontWeight"]?.let(::fontWeightOf) ?: 400
 
     val textView = view as? TextView ?: return
-    textView.typeface = typefaceOfWeight(textView.context, fontWeight)
+    textView.typeface = typefaceOfWeight(textView.context, fontWeight, isItalic)
     updateFontSize()
 }
 
@@ -141,7 +173,50 @@ fun NativeNode.updateFontSize() {
     val textView = view as? TextView ?: return
     textView.setTextSize(TypedValue.COMPLEX_UNIT_SP, fontSize)
 
+    if (letterSpacing != null || lineHeight != null) updateTextSpacing()
     markContentChanged()
+}
+
+/** letterSpacing and lineHeight, which can be in ems of the font size: set again when that size changes. */
+private fun NativeNode.updateTextSpacing() {
+    val textLabel = view as? TextLabel ?: return
+
+    // Android's is in ems already.
+    textLabel.letterSpacing = ems(letterSpacing) ?: number(letterSpacing)?.let { pixels(it) / textLabel.textSize } ?: 0f
+    textLabel.text = withLineHeight(textLabel.text.toString())
+    markContentChanged()
+}
+
+/** A <Text>'s text, its lines as tall as lineHeight when it has one. */
+fun NativeNode.withLineHeight(text: String): CharSequence {
+    val textSize = (view as? TextLabel)?.textSize ?: return text
+    val height = ems(lineHeight)?.let { it * textSize } ?: number(lineHeight)?.let { pixels(it) } ?: return text
+
+    return SpannableString(text).apply {
+        setSpan(CenteredLineHeightSpan(height.roundToInt()), 0, length, Spanned.SPAN_INCLUSIVE_INCLUSIVE)
+    }
+}
+
+/** "1.5em" as 1.5; null for anything else. */
+private fun ems(value: Any?): Float? = (value as? String)?.takeIf { it.endsWith("em") }?.dropLast(2)?.toFloatOrNull()
+
+/** Each line [height] pixels tall, the text centered in it, as CSS lays out a line height. */
+private class CenteredLineHeightSpan(private val height: Int) : LineHeightSpan {
+    override fun chooseHeight(
+        text: CharSequence,
+        start: Int,
+        end: Int,
+        spanStart: Int,
+        lineHeight: Int,
+        metrics: Paint.FontMetricsInt,
+    ) {
+        val extra = height - (metrics.descent - metrics.ascent)
+
+        metrics.ascent -= extra / 2
+        metrics.descent += extra - extra / 2
+        metrics.top = metrics.ascent
+        metrics.bottom = metrics.descent
+    }
 }
 
 private fun NativeNode.pixels(value: Any?): Float = (number(value) ?: 0f) * view.resources.displayMetrics.density
@@ -156,6 +231,9 @@ fun androidColor(value: Any?): Int? {
 }
 
 // ---------- CSS value tables ----------
+
+// In BoxDrawable.cornerRadii's order.
+private val CORNERS = listOf("borderTopLeftRadius", "borderTopRightRadius", "borderBottomRightRadius", "borderBottomLeftRadius")
 
 private val edgesBySuffix = mapOf(
     "" to YogaEdge.ALL,

@@ -47,9 +47,19 @@ export type Style = {
   overflow?: 'visible' | 'hidden' | 'scroll'
 
   backgroundColor?: ColorValue
+  /**
+   * CSS gradients over backgroundColor, the first on top: 'linear-gradient(135deg, #4af2ae, #10b39b)',
+   * 'radial-gradient(circle at top, white, transparent 70%)'. On iOS, on a View: not on a Text or Image.
+   */
+  backgroundImage?: string
   borderColor?: ColorValue
   borderWidth?: number
   borderRadius?: number
+  /** One corner's radius, over borderRadius. On iOS, the rounded corners share the largest radius. */
+  borderTopLeftRadius?: number
+  borderTopRightRadius?: number
+  borderBottomLeftRadius?: number
+  borderBottomRightRadius?: number
   opacity?: number | AnimatedNode
   transform?: TransformStep[]
   shadowColor?: ColorValue
@@ -63,6 +73,14 @@ export type Style = {
     'normal' | 'bold' | '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900'
   textAlign?: 'auto' | 'left' | 'right' | 'center' | 'justify'
   textDecorationLine?: 'none' | 'underline' | 'line-through' | 'underline line-through'
+  fontStyle?: 'normal' | 'italic'
+  textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize'
+  /** In points, or in ems of the font size: '0.05em'. <Text> only. */
+  letterSpacing?: number | `${number}em`
+  /** The height of a line, in points, or in ems of the font size: '1.5em'. <Text> only. */
+  lineHeight?: number | `${number}em`
+  /** At most this many lines, the last one ending in an ellipsis. */
+  lineClamp?: number
 }
 
 export type GestureState = 'began' | 'changed' | 'ended' | 'cancelled' | 'failed'

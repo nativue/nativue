@@ -23,6 +23,10 @@ class NativeNode(val view: View, measuresContent: Boolean) {
 
     var fontSize = DEFAULT_FONT_SIZE
     var fontWeight = 400
+    var isItalic = false
+    /** Points, or ems of the font size ('1.5em'); null for the font's own. */
+    var letterSpacing: Any? = null
+    var lineHeight: Any? = null
 
     /** WindowInsets types that pad this node (safe area, keyboard), 0 for none, and the last padding. */
     var insetTypes = 0

@@ -33,9 +33,15 @@ extension NativeNode {
         case "backgroundColor":
             view.backgroundColor = UIColor(rgba: value)
 
-        case "borderRadius":
-            view.layer.setValue(CGFloat(number(value) ?? 0), forKey: UIView.requestedCornerRadiusKey)
+        case "backgroundImage":
+            view.setBackgroundGradients(value as? [[String: Any]] ?? [])
+
+        case "borderRadius", "borderTopLeftRadius", "borderTopRightRadius", "borderBottomLeftRadius", "borderBottomRightRadius":
+            var radii = view.layer.value(forKey: UIView.requestedCornerRadiiKey) as? [String: CGFloat] ?? [:]
+            radii[property] = number(value).map { CGFloat($0) }
+            view.layer.setValue(radii, forKey: UIView.requestedCornerRadiiKey)
             view.applyCornerRadius()
+            view.applyBackgroundGradients()
 
         case "borderWidth":
             view.layer.borderWidth = CGFloat(number(value) ?? 0)
@@ -82,31 +88,69 @@ extension NativeNode {
 
         case "textDecorationLine":
             textDecorationLine = value as? String ?? "none"
-            updateTextDecoration()
+            updateTextAttributes()
+
+        case "letterSpacing":
+            letterSpacing = value is NSNull ? nil : value
+            updateTextAttributes()
+
+        case "lineHeight":
+            lineHeight = value is NSNull ? nil : value
+            updateTextAttributes()
+
+        case "fontStyle":
+            isItalic = value as? String == "italic"
+            updateFont()
+
+        case "lineClamp":
+            let lines = Int(number(value) ?? 0)
+
+            (view as? UILabel)?.numberOfLines = lines
+            markContentChanged()
 
         default:
             break
         }
     }
 
-    /// UILabel has no underline or strikethrough of its own: they're attributes of its text, which setting
-    /// `text` drops, so setText calls this again. Later font, color and alignment changes keep them.
-    func updateTextDecoration() {
+    /// UILabel has no underline, letter spacing or line height of its own: they're attributes of its text,
+    /// which setting `text` drops, so setText calls this again. Later color and alignment changes keep them;
+    /// a font change calls it, as ems depend on the font's size.
+    func updateTextAttributes() {
         guard let label = view as? UILabel, let text = label.text else { return }
 
+        let font = label.font ?? UIFont.systemFont(ofSize: fontSize)
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = label.textAlignment
-        paragraphStyle.lineBreakMode = label.lineBreakMode
 
         var attributes: [NSAttributedString.Key: Any] = [
-            .font: label.font as Any,
+            .font: font,
             .foregroundColor: label.textColor as Any,
             .paragraphStyle: paragraphStyle,
         ]
         if textDecorationLine.contains("underline") { attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue }
         if textDecorationLine.contains("line-through") { attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
+        if let spacing = points(letterSpacing, font: font) { attributes[.kern] = spacing }
+        if let height = points(lineHeight, font: font) {
+            paragraphStyle.minimumLineHeight = height
+            paragraphStyle.maximumLineHeight = height
+            // The extra space goes above the text: half of it below instead, as CSS centers a line.
+            attributes[.baselineOffset] = (height - font.lineHeight) / 2
+        }
 
+        let lineBreakMode = label.lineBreakMode
         label.attributedText = NSAttributedString(string: text, attributes: attributes)
+        label.lineBreakMode = lineBreakMode
+        markContentChanged()
+    }
+
+    /// A number of points, or ems of the font's size ("1.5em").
+    private func points(_ value: Any?, font: UIFont) -> CGFloat? {
+        if let text = value as? String, text.hasSuffix("em") {
+            return Double(text.dropLast(2)).map { CGFloat($0) * font.pointSize }
+        }
+
+        return number(value as Any).map { CGFloat($0) }
     }
 
     /// Font size and weight can change independently, so the node remembers both.
@@ -127,11 +171,17 @@ extension NativeNode {
     func updateFont() {
         guard view is UILabel || view is UITextField || view is UIButton else { return }
 
-        let font = UIFontMetrics.default.scaledFont(for: UIFont.systemFont(ofSize: fontSize, weight: fontWeight))
+        let systemFont = UIFont.systemFont(ofSize: fontSize, weight: fontWeight)
+        let italicTraits = systemFont.fontDescriptor.symbolicTraits.union(.traitItalic)
+        let styledFont = isItalic
+            ? systemFont.fontDescriptor.withSymbolicTraits(italicTraits).map { UIFont(descriptor: $0, size: fontSize) } ?? systemFont
+            : systemFont
+        let font = UIFontMetrics.default.scaledFont(for: styledFont)
         (view as? UILabel)?.font = font
         (view as? UITextField)?.font = font
         (view as? UIButton)?.titleLabel?.font = font
 
+        if hasTextAttributes { updateTextAttributes() }
         markContentChanged()
     }
 }
@@ -406,13 +456,25 @@ extension NativeNode {
 }
 
 extension UIView {
-    static let requestedCornerRadiusKey = "nativueCornerRadius"
+    /// borderRadius and the corners' own, as styles set them.
+    static let requestedCornerRadiiKey = "nativueCornerRadii"
 
     /// A radius over half the view's side (rounded-full is 9999) makes Core Animation draw nothing:
-    /// capped to a circle's, and applied again as the frame changes.
+    /// capped to a circle's, and applied again as the frame changes. Core Animation rounds every chosen
+    /// corner alike: corners with their own radius share the largest.
     func applyCornerRadius() {
-        guard let requestedRadius = layer.value(forKey: Self.requestedCornerRadiusKey) as? CGFloat else { return }
+        guard let radii = layer.value(forKey: Self.requestedCornerRadiiKey) as? [String: CGFloat] else { return }
 
-        layer.cornerRadius = min(requestedRadius, min(bounds.width, bounds.height) / 2)
+        let radius = radii["borderRadius"] ?? 0
+        let corners: [(CACornerMask, CGFloat)] = [
+            (.layerMinXMinYCorner, radii["borderTopLeftRadius"] ?? radius),
+            (.layerMaxXMinYCorner, radii["borderTopRightRadius"] ?? radius),
+            (.layerMinXMaxYCorner, radii["borderBottomLeftRadius"] ?? radius),
+            (.layerMaxXMaxYCorner, radii["borderBottomRightRadius"] ?? radius),
+        ]
+        let largest = corners.map(\.1).max() ?? 0
+
+        layer.cornerRadius = min(largest, min(bounds.width, bounds.height) / 2)
+        layer.maskedCorners = CACornerMask(corners.filter { $0.1 > 0 }.map(\.0))
     }
 }

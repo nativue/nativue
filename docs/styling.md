@@ -69,27 +69,64 @@ Sizes are numbers (points), percentages (`'50%'`) or `'auto'`:
 
 ## Appearance
 
-| Property                                                       |                                                                                                                                                          |
-| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `backgroundColor`                                              | a color                                                                                                                                                  |
-| `borderWidth`, `borderColor`                                   | the same on every side                                                                                                                                   |
-| `borderRadius`                                                 | the same on every corner                                                                                                                                 |
-| `opacity`                                                      | `0` to `1`                                                                                                                                               |
-| `transform`                                                    | a list of steps: `[{ translateX: 10 }, { scale: 1.1 }, { rotate: '45deg' }]`; also `translateY`, `scaleX`, `scaleY`, and `rotate` in radians as a number |
-| `shadowColor`, `shadowOpacity`, `shadowRadius`, `shadowOffset` | a shadow: `{ shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }`                                         |
+| Property                                                       |                                                                                                                                                                                   |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backgroundColor`                                              | a color                                                                                                                                                                           |
+| `backgroundImage`                                              | CSS gradients over the background color, see below                                                                                                                                |
+| `borderWidth`, `borderColor`                                   | the same on every side                                                                                                                                                            |
+| `borderRadius`                                                 | every corner; `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius` and `borderBottomRightRadius` set one (on iOS the rounded corners share the largest radius) |
+| `opacity`                                                      | `0` to `1`                                                                                                                                                                        |
+| `transform`                                                    | a list of steps: `[{ translateX: 10 }, { scale: 1.1 }, { rotate: '45deg' }]`; also `translateY`, `scaleX`, `scaleY`, and `rotate` in radians as a number                          |
+| `shadowColor`, `shadowOpacity`, `shadowRadius`, `shadowOffset` | a shadow: `{ shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }`                                                                  |
+
+### Gradients
+
+`backgroundImage` takes CSS's `linear-gradient()` and `radial-gradient()`, as on the web. They follow
+the view's corners, border and shadow:
+
+```vue
+<View
+  :style="{
+    height: 120,
+    borderRadius: 16,
+    backgroundImage: 'linear-gradient(135deg, #4af2ae, #10b39b)',
+  }"
+/>
+```
+
+- `linear-gradient`: an angle (`deg`, `rad`, `turn`, `grad`; `180deg`, top to bottom, by default) or
+  `to` a side or corner (`to right`, `to top right`), then colors, each with an optional position in
+  `%`.
+- `radial-gradient`: `circle` or `ellipse`, sized by `closest-side`, `closest-corner`,
+  `farthest-side`, `farthest-corner` (the default) or by lengths, `at` a position (`at top left`,
+  `at 30% 40%`).
+- Several, separated by commas, the first on top: `'radial-gradient(circle at top, white,
+transparent 40%), linear-gradient(#10b39b, #0b1220)'`.
+
+With [`@nativue/tailwind`](../packages/tailwind/README.md), `bg-linear-to-r from-emerald-400 to-teal-600`
+and the other gradient classes work too.
+
+Not drawn: `repeating-linear-gradient()`, `repeating-radial-gradient()` and `conic-gradient()`; color
+positions in lengths (`20px`) rather than `%`; and, on iOS, a gradient on a `<Text>` or an `<Image>`,
+which would cover them: put it on a `<View>` around them.
 
 ## Text
 
 These go on the [`<Text>`](components/text.md) (or the `<TextInput>`) itself: native views don't
 inherit them from their parents.
 
-| Property             |                                                                                      |
-| -------------------- | ------------------------------------------------------------------------------------ |
-| `color`              | a color                                                                              |
-| `fontSize`           | a number, scaled by the system's text size                                           |
-| `fontWeight`         | `'normal'`, `'bold'`, `'100'` to `'900'`                                             |
-| `textAlign`          | `'auto'`, `'left'`, `'right'`, `'center'`, `'justify'`                               |
-| `textDecorationLine` | `'none'`, `'underline'`, `'line-through'`, `'underline line-through'`; `<Text>` only |
+| Property             |                                                                                                             |
+| -------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `color`              | a color                                                                                                     |
+| `fontSize`           | a number, scaled by the system's text size                                                                  |
+| `fontWeight`         | `'normal'`, `'bold'`, `'100'` to `'900'`                                                                    |
+| `textAlign`          | `'auto'`, `'left'`, `'right'`, `'center'`, `'justify'`                                                      |
+| `textDecorationLine` | `'none'`, `'underline'`, `'line-through'`, `'underline line-through'`; `<Text>` only                        |
+| `fontStyle`          | `'normal'`, `'italic'`                                                                                      |
+| `textTransform`      | `'none'`, `'uppercase'`, `'lowercase'`, `'capitalize'`; `<Text>` only                                       |
+| `letterSpacing`      | points, or ems of the font size: `'0.05em'`; `<Text>` only                                                  |
+| `lineHeight`         | the height of a line, in points, or ems of the font size: `'1.5em'`, the text centered in it; `<Text>` only |
+| `lineClamp`          | at most this many lines, the last one ending in an ellipsis; `<Text>` only                                  |
 
 ## Colors
 

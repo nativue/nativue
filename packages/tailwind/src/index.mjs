@@ -111,10 +111,10 @@ function vitePlugin() {
       loadStylesheet,
       loadModule,
     })
-    const { styles, ignored } = stylesFromCss(compiler.build([...candidates]))
+    const { styles, variables, ignored } = stylesFromCss(compiler.build([...candidates]))
     reportIgnored(ignored, classAttributeCandidates)
 
-    return styles
+    return { styles, variables }
   }
 
   return {
@@ -127,10 +127,10 @@ function vitePlugin() {
     async load(id) {
       if (id !== RESOLVED_VIRTUAL_MODULE) return null
 
-      const styles = await buildStyles((file) => this.addWatchFile(file))
+      const { styles, variables } = await buildStyles((file) => this.addWatchFile(file))
 
       return `import { registerClassStyles } from '@nativue/tailwind/runtime'
-registerClassStyles(${JSON.stringify(styles)})
+registerClassStyles(${JSON.stringify(styles)}, ${JSON.stringify(variables)})
 import.meta.hot?.accept()`
     },
   }

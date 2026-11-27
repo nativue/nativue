@@ -24,8 +24,17 @@ final class NativeNode {
     var defaultFontSize: CGFloat = UIFont.labelFontSize
     var fontSize: CGFloat = UIFont.labelFontSize
     var fontWeight: UIFont.Weight = .regular
+    var isItalic = false
+    /// The text's attributes a label keeps in its attributed text (updateTextAttributes).
     /// textDecorationLine: 'none', 'underline', 'line-through' or both.
     var textDecorationLine = "none"
+    /// letterSpacing and lineHeight: points, or ems of the font size ('1.5em'); nil for the font's own.
+    var letterSpacing: Any?
+    var lineHeight: Any?
+
+    var hasTextAttributes: Bool {
+        textDecorationLine != "none" || letterSpacing != nil || lineHeight != nil
+    }
 
     /// Leaf nodes (Text, Button) measure their own content; containers are sized by their children.
     init(view: UIView, measuresContent: Bool) {
@@ -142,6 +151,7 @@ final class NativeNode {
                 place(childView, at: frame)
             }
             childView.applyCornerRadius()
+            childView.applyBackgroundGradients()
 
             applyFrames(of: child)
 
@@ -221,10 +231,17 @@ private func measureView(
 @MainActor private func singleLineSize(of label: UILabel, maxWidth: CGFloat) -> CGSize? {
     guard let text = label.text, !text.contains(where: \.isNewline) else { return nil }
 
-    let attributedText = NSAttributedString(string: text, attributes: [.font: label.font!])
+    // Its attributes too: letter spacing widens the line, a line height sets its height.
+    let attributedText = label.attributedText ?? NSAttributedString(string: text, attributes: [.font: label.font!])
     let line = CTLineCreateWithAttributedString(attributedText)
     let width = ceil(CTLineGetTypographicBounds(line, nil, nil, nil))
     guard width <= maxWidth else { return nil }
 
-    return CGSize(width: width, height: ceil(label.font.lineHeight))
+    let paragraphStyle = attributedText.length > 0
+        ? attributedText.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        : nil
+
+    let lineHeight = paragraphStyle.map(\.minimumLineHeight).flatMap { $0 > 0 ? $0 : nil } ?? label.font.lineHeight
+
+    return CGSize(width: width, height: ceil(lineHeight))
 }

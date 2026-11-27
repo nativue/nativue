@@ -45,10 +45,13 @@ Global, with no import: `View`, `Text`, `Image`, `ImageBackground`, `Pressable`,
   `:style="{ padding: 16, borderRadius: 12, backgroundColor: '#ffffff' }"`. Arrays merge, later wins:
   `:style="[styles.card, selected && styles.selected]"`.
 - `StyleSheet.create({...})` (from `vue`) groups and types a screen's styles.
+- Gradients: `backgroundImage: 'linear-gradient(135deg, #4af2ae, #10b39b)'` or `radial-gradient(...)`,
+  as in CSS, on a `View`; with Tailwind, `bg-linear-to-r from-emerald-400 to-teal-600`.
 - Every view is a flexbox container stacking its children in a **column** by default; `flex: 1` takes
   the space left. Percentages (`'50%'`) work for sizes.
-- Text styles (`color`, `fontSize`, `fontWeight`, `textAlign`, `textDecorationLine`) go on the
-  `<Text>` itself: native views don't inherit them from their parents.
+- Text styles (`color`, `fontSize`, `fontWeight`, `fontStyle`, `textAlign`, `textDecorationLine`,
+  `textTransform`, `letterSpacing`, `lineHeight`, `lineClamp`) go on the `<Text>` itself: native views
+  don't inherit them from their parents.
 - Pressed and focused states: `pressed-style` on `Pressable`, `focused-style` on `TextInput`.
 - Dark mode: `useColorScheme()` (from `vue`) gives `'light'` or `'dark'`, live.
 - Platform: `Platform.OS` is `'ios'` or `'android'`; `Platform.select({ ios, android })`.

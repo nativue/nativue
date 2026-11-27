@@ -181,6 +181,86 @@ assert.deepEqual(themedStyles, {
   'p-18': { padding: 36 },
 })
 
+// ---------- Text and corners ----------
+
+const text = await stylesOf([
+  'italic',
+  'uppercase',
+  'tracking-wide',
+  'leading-6',
+  'leading-tight',
+  'text-sm',
+  'line-clamp-2',
+  'truncate',
+  'rounded-t-lg',
+  'rounded-ee-lg',
+])
+assert.deepEqual(text.styles.italic, { fontStyle: 'italic' })
+assert.deepEqual(text.styles.uppercase, { textTransform: 'uppercase' })
+// Ems stay ems, multiplied by the font size natively; a unitless line height is in ems too.
+assert.deepEqual(text.styles['tracking-wide'], { letterSpacing: '0.025em' })
+assert.deepEqual(text.styles['leading-6'], { lineHeight: 24 })
+assert.deepEqual(text.styles['leading-tight'], { lineHeight: '1.25em' })
+// text-sm's own line height is left out: text keeps the platform's unless leading-* sets one.
+assert.deepEqual(text.styles['text-sm'], { fontSize: 14 })
+assert.equal(text.styles['line-clamp-2'].lineClamp, 2)
+assert.equal(text.styles.truncate.lineClamp, 1)
+// text-ellipsis alone doesn't cut text to one line, as on the web.
+const ellipsis = await stylesOf(['text-ellipsis'])
+assert.equal(ellipsis.styles['text-ellipsis'], undefined)
+assert.deepEqual(text.styles['rounded-t-lg'], { borderTopLeftRadius: 8, borderTopRightRadius: 8 })
+assert.deepEqual(text.styles['rounded-ee-lg'], { borderBottomRightRadius: 8 })
+
+// ---------- Gradients ----------
+
+// bg-linear-to-r, from-*, via-* and to-* each set variables; the backgroundImage reads them, and is
+// resolved per element at run time (runtime.ts), from the variables of its classes.
+const gradients = await stylesOf([
+  'bg-linear-to-r',
+  'from-red-500',
+  'to-90%',
+  'bg-[linear-gradient(45deg,red,blue)]',
+])
+assert.deepEqual(gradients.styles['bg-linear-to-r'], {
+  '--tw-gradient-position': 'to right',
+  backgroundImage: 'linear-gradient(var(--tw-gradient-stops))',
+})
+// Theme colors (oklch) arrive as hex, which native reads.
+assert.equal(gradients.styles['from-red-500']['--tw-gradient-from'], '#fb2c36')
+assert.equal(gradients.styles['to-90%']['--tw-gradient-to-position'], '90%')
+// An arbitrary gradient needs no variable.
+assert.equal(
+  gradients.styles['bg-[linear-gradient(45deg,red,blue)]'].backgroundImage,
+  'linear-gradient(45deg,red,blue)',
+)
+assert.equal(gradients.ignored['bg-linear-to-r'], undefined)
+
+// The ! modifier, a color with an opacity under dark: (Tailwind writes two rules for it), and what
+// native can't draw: a conic gradient, the text's color.
+const edgeCases = await stylesOf([
+  '!bg-linear-to-r',
+  'dark:from-black/50',
+  'bg-conic',
+  'from-current',
+])
+assert.equal(
+  edgeCases.styles['!bg-linear-to-r'].backgroundImage,
+  'linear-gradient(var(--tw-gradient-stops))',
+)
+assert.equal(edgeCases.styles['!bg-linear-to-r']['--tw-gradient-position'], 'to right')
+assert.equal(edgeCases.styles['dark:from-black/50']['--tw-gradient-from'], '#00000080')
+assert.ok(edgeCases.styles['dark:from-black/50']['--tw-gradient-stops'])
+assert.match(edgeCases.ignored['bg-conic'], /background-image/)
+assert.match(edgeCases.ignored['from-current'], /--tw-gradient-from/)
+
+// A ring or an inset shadow has no native equivalent, and leaves shadow-md's shadow alone;
+// shadow-none takes it away.
+const shadows = await stylesOf(['shadow-md', 'ring-2', 'inset-shadow-sm', 'shadow-none'])
+assert.equal(shadows.styles['ring-2'], undefined)
+assert.equal(shadows.styles['inset-shadow-sm'], undefined)
+assert.match(shadows.ignored['ring-2'], /box-shadow/)
+assert.deepEqual(shadows.styles['shadow-none'], { shadowOpacity: 0 })
+
 // ---------- Warnings ----------
 
 async function warningsFor(template) {

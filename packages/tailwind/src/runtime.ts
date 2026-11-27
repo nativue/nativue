@@ -7,6 +7,7 @@ import {
   type Style,
   type TransformStep,
 } from '@nativue/core'
+import { resolveVariables } from './variables.mjs'
 
 type Condition = 'dark' | 'pressed' | 'focused' | 'disabled' | 'ios' | 'android'
 /**
@@ -15,22 +16,40 @@ type Condition = 'dark' | 'pressed' | 'focused' | 'disabled' | 'ios' | 'android'
  */
 type ClassStyle = [order: number, style: Style, conditions?: Condition[]]
 
-// Transforms add up, as CSS's translate, rotate and scale properties do.
-function mergeStyles(styles: Style[]): Style {
-  const merged: Style = {}
+// Transforms add up, as CSS's translate, rotate and scale properties do. Variables ('--tw-gradient-from')
+// add up too, the last class's winning, and resolve the backgroundImage that reads them.
+function mergeStyles(styles: Style[], initialVariables: Record<string, string>): Style {
+  const merged: Record<string, unknown> = {}
+  const variables = { ...initialVariables }
   const transform: TransformStep[] = []
 
   for (const style of styles) {
-    Object.assign(merged, style)
+    for (const [property, value] of Object.entries(style)) {
+      if (property.startsWith('--')) variables[property] = value as string
+      else merged[property] = value
+    }
     if (style.transform) transform.push(...style.transform)
   }
 
   if (transform.length > 0) merged.transform = transform
+  if (typeof merged.backgroundImage === 'string') {
+    const backgroundImage = resolveVariables(merged.backgroundImage, (name) => variables[name])
 
-  return merged
+    if (backgroundImage === null) delete merged.backgroundImage
+    else merged.backgroundImage = backgroundImage
+  }
+
+  return merged as Style
 }
 
-export function registerClassStyles(classStyles: Record<string, ClassStyle>): void {
+/**
+ * The styles the build converted (index.mjs), and the initial values of the variables they read
+ * (`variables`), for those no class sets.
+ */
+export function registerClassStyles(
+  classStyles: Record<string, ClassStyle>,
+  initialVariables: Record<string, string> = {},
+): void {
   const stylesByKey = new Map<string, Style>()
 
   setClassStyleResolver((className, { pressed, focused, disabled }) => {
@@ -53,7 +72,10 @@ export function registerClassStyles(classStyles: Record<string, ClassStyle>): vo
       .filter((entry) => entry !== undefined)
       .filter(([, , conditions = []]) => conditions.every((condition) => holds[condition]))
       .sort(([firstOrder], [secondOrder]) => firstOrder - secondOrder)
-    const style = mergeStyles(entries.map(([, entryStyle]) => entryStyle))
+    const style = mergeStyles(
+      entries.map(([, entryStyle]) => entryStyle),
+      initialVariables,
+    )
     stylesByKey.set(key, style)
 
     return style
