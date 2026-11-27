@@ -158,7 +158,7 @@ final class Bridge {
     }
 
     private func modalTransitionInProgress() -> UIViewControllerTransitionCoordinator? {
-        guard let presentedViewController = rootView.window?.rootViewController?.presentedViewController else {
+        guard let presentedViewController = rootView.hostWindow?.rootViewController?.presentedViewController else {
             return nil
         }
 
@@ -440,7 +440,7 @@ final class Bridge {
         }
 
         define("dismissKeyboard") { [unowned self] _ in
-            enqueue { [unowned self] in rootView.window?.endEditing(true) }
+            enqueue { [unowned self] in rootView.hostWindow?.endEditing(true) }
         }
 
         return JavaScriptRuntime(functions: functions) { [unowned self] message, stack in
@@ -492,7 +492,7 @@ final class Bridge {
 
     private func resetNodeTree() {
         // Sheets of the old tree's screen stacks too, which only their stack knows about.
-        rootView.window?.rootViewController?.dismiss(animated: false)
+        rootView.hostWindow?.rootViewController?.dismiss(animated: false)
         rootView.subviews.forEach { $0.removeFromSuperview() }
         contentRootsByNodeId.values.forEach { ($0 as? ModalController)?.setVisible(false) }
         contentRootsByNodeId = [:]

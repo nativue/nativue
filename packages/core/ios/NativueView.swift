@@ -42,6 +42,8 @@ struct VueRoot: UIViewRepresentable {
 final class RootView: UIView {
     var onLayoutSubviews: (() -> Void)?
     var onTraitCollectionChange: ((_ previous: UITraitCollection?) -> Void)?
+    /// `window` is nil under a full-screen modal: the bridge finds that modal through this one.
+    private(set) weak var hostWindow: UIWindow?
 
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -53,6 +55,14 @@ final class RootView: UIView {
         onTraitCollectionChange?(previous)
     }
 
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if let window { hostWindow = window }
+        #if DEBUG
+        becomeFirstResponder()
+        #endif
+    }
+
     #if DEBUG
     var onReloadShortcut: (() -> Void)?
 
@@ -60,11 +70,6 @@ final class RootView: UIView {
 
     override var keyCommands: [UIKeyCommand]? {
         [UIKeyCommand(input: "r", modifierFlags: .command, action: #selector(reloadShortcutPressed))]
-    }
-
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        becomeFirstResponder()
     }
 
     @objc private func reloadShortcutPressed() {
