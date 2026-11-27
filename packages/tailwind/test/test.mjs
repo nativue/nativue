@@ -223,6 +223,14 @@ assert.ok(edgeCases.styles['dark:from-black/50']['--tw-gradient-stops'])
 assert.match(edgeCases.ignored['bg-conic'], /background-image/)
 assert.match(edgeCases.ignored['from-current'], /--tw-gradient-from/)
 
+// A ring or an inset shadow has no native equivalent, and leaves shadow-md's shadow alone;
+// shadow-none takes it away.
+const shadows = await stylesOf(['shadow-md', 'ring-2', 'inset-shadow-sm', 'shadow-none'])
+assert.equal(shadows.styles['ring-2'], undefined)
+assert.equal(shadows.styles['inset-shadow-sm'], undefined)
+assert.match(shadows.ignored['ring-2'], /box-shadow/)
+assert.deepEqual(shadows.styles['shadow-none'], { shadowOpacity: 0 })
+
 // ---------- Warnings ----------
 
 async function warningsFor(template) {

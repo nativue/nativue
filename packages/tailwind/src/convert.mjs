@@ -537,7 +537,13 @@ function boxShadow(value) {
     }))
     .filter(({ rgba }) => rgba && rgba.alpha > 0)
 
-  if (visibleLayers.length === 0) return { shadowOpacity: 0 }
+  if (visibleLayers.length === 0) {
+    // shadow-none: every layer transparent. A ring or an inset shadow only: nothing native draws, and it
+    // mustn't take away the shadow of a shadow-md next to it.
+    const isNone = layers.every((parts) => rgbaOf(parts.at(-1))?.alpha === 0)
+
+    return isNone ? { shadowOpacity: 0 } : null
+  }
 
   // Limitation: Native views draw one shadow, without spread: the first layer, its blur halved to look alike;
   // stack shadow layers natively if richer shadows are wanted.

@@ -61,18 +61,43 @@ configuration) aren't supported.
 
 ## What converts
 
-Spacing (`p-*`, `m-*`, `gap-*`, negative margins), sizing (`w-*`, `h-*`, `size-*`, `min-*`,
-`max-*`, fractions, `aspect-*`), flexbox (`flex-*`, `grow`, `shrink`, `basis-*`, `items-*`,
-`justify-*`, `self-*`, `content-*`), position (`absolute`, `inset-*`, `top-*`...), `hidden`,
-`overflow-*`, colors with opacity modifiers (`bg-*`, `text-*`, `border-*`), `border`,
-`rounded-*`, `opacity-*`, `text-{size}`, `font-{weight}`, `text-{align}`, `underline`,
-`line-through`, `no-underline`, `rotate-*`, `scale-*`, `translate-*`, `shadow-*` (its first shadow),
-gradients (`bg-linear-*`, `bg-radial`, `from-*`, `via-*`, `to-*` and their positions, `bg-[linear-gradient(…)]`)
-and arbitrary values (`bg-[#ff0000]`, `w-[72px]`).
+| Group      | Classes                                                                                                                                                                        |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Spacing    | `p-*`, `px-*`, `pt-*`..., `m-*` (negative too), `gap-*`, `gap-x-*`, `gap-y-*`                                                                                                  |
+| Sizing     | `w-*`, `h-*`, `size-*`, `min-w-*`, `min-h-*`, `max-w-*`, `max-h-*`, fractions (`w-1/2`), `aspect-*`                                                                            |
+| Flexbox    | `flex`, `flex-row`, `flex-col` and their reverses, `flex-wrap`, `flex-1`..., `grow`, `shrink`, `basis-*`, `items-*`, `justify-*`, `self-*`, `content-*`                        |
+| Position   | `relative`, `absolute`, `static`, `inset-*`, `top-*`, `right-*`, `bottom-*`, `left-*`                                                                                          |
+| Display    | `flex`, `inline-flex` (as `flex`), `hidden`, `overflow-hidden`, `overflow-visible`, `overflow-scroll`                                                                          |
+| Colors     | `bg-*`, `text-*`, `border-*`, with opacity modifiers (`bg-black/50`)                                                                                                           |
+| Gradients  | `bg-linear-*` (`bg-linear-to-r`, `bg-linear-45`), `bg-radial`, `bg-radial-[at_25%_25%]`, `from-*`, `via-*`, `to-*` and their positions (`from-10%`), `bg-[linear-gradient(…)]` |
+| Borders    | `border`, `border-2`... (every side), `rounded-*` (every corner)                                                                                                               |
+| Text       | `text-{size}`, `font-{weight}`, `text-left`, `text-center`, `text-right`, `text-justify`, `underline`, `line-through`, `no-underline`                                          |
+| Effects    | `opacity-*`, `shadow-*` (its first shadow)                                                                                                                                     |
+| Transforms | `rotate-*`, `scale-*`, `scale-x-*`, `scale-y-*`, `translate-*`                                                                                                                 |
+| Arbitrary  | values (`bg-[#ff0000]`, `w-[72px]`) and properties, for the properties above                                                                                                   |
 
-What native views have no equivalent for is left out, with a warning when the app is built: other
-variants (`hover:`, `md:`, `group-*`...), `space-*` and `divide-*` (they style children),
-`z-*`, `leading-*`, `tracking-*`, `bg-conic`, per-corner radius and per-side borders.
+Variants: `dark:`, `active:`, `focus:`, `disabled:`, `ios:` and `android:` (see above).
+
+## What doesn't convert
+
+Native views have no equivalent for these. They're left out, with a warning when the app is built
+that names the class:
+
+| Classes                                                                          | Why, and what to do instead                                                                                              |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `hover:`, `md:`, `lg:`..., `group-*`, `peer-*`, `first:`, `odd:`, `placeholder:` | no hover nor stylesheet: use `useWindowDimensions()` for sizes, and Vue for state (`:class="{ 'p-4': isWide }"`)         |
+| `space-*`, `divide-*`                                                            | they style children: use `gap-*`, and borders on the children                                                            |
+| `block`, `inline`, `grid`, `grid-cols-*`, `table`, `contents`                    | every view is a flexbox: use `flex-row`, `flex-wrap` and `basis-*`                                                       |
+| `rounded-t-*`, `rounded-tl-*`..., `border-t`, `border-x`...                      | corners and sides each the same: one radius, one border width                                                            |
+| `leading-*`, `tracking-*`, `font-sans`, `font-mono`, `italic`, `uppercase`       | text style the native views don't take yet: `style` can't set them either                                                |
+| `truncate`, `line-clamp-*`                                                       | only their `overflow-hidden` converts: no ellipsis, no line limit                                                        |
+| `z-*`                                                                            | views stack in the order they're written                                                                                 |
+| `bg-conic`, `bg-[url(…)]`, `from-current`                                        | conic gradients and image backgrounds aren't drawn, and a gradient takes colors only: use `<ImageBackground>` for images |
+| `shadow-*` past the first, `inset-shadow-*`, `ring-*`, `outline-*`               | a view has one shadow, outside it; a ring or an inset shadow leaves `shadow-*`'s alone                                   |
+| `blur-*`, `backdrop-*`, `brightness-*` and other filters, `mix-blend-*`          | no filters on views                                                                                                      |
+| `skew-*`, `perspective-*`, `rotate-x-*`, `origin-*`                              | transforms are translate, scale and rotate around the center                                                             |
+| `transition-*`, `duration-*`, `animate-*`                                        | animate with `Animated` or `LayoutAnimation`                                                                             |
+| `cursor-*`, `select-*`, `pointer-events-*`, `object-*`                           | no pointer, and `<Image>` has `resize-mode`                                                                              |
 
 ## How it works
 
