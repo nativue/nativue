@@ -544,7 +544,7 @@ function nativueInfoPlist(app) {
     ],
     NSAppTransportSecurity: { NSAllowsLocalNetworking: true },
     NSLocalNetworkUsageDescription:
-      'Connects to the Nativue dev server on your Mac for hot reload.',
+      'Connects to the nativue dev server on your Mac for hot reload.',
     UILaunchScreen: { UIColorName: 'LaunchBackground', UIImageName: 'LaunchLogo' },
   }
 }
