@@ -19,6 +19,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, watch }
 import { randomUUID } from 'node:crypto'
 import { relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { styleText } from 'node:util'
 import { compileToBytecode } from './hermes.mjs'
 import { hotPrelude } from './hot-prelude.mjs'
 import { resolvePlugins } from './plugins.mjs'
@@ -27,7 +28,9 @@ import { runOnAndroid, runOnIOS } from './run.mjs'
 import { createSymbolicator, framedFiles } from './symbolicate.mjs'
 
 const PORT = 40836 // 0x9F84, from #0E9F84, the nativue green
-const MAX_STACK_LENGTH = 1_000_000 // characters, of a stack the app posts to /symbolicate
+const MAX_POST_LENGTH = 1_000_000 // characters, of what the app posts: a stack, console output
+const LOG_COLORS = { info: 'blue', debug: 'gray', warn: 'yellow', error: 'red' }
+const PLATFORM_WIDTH = 'android'.length
 const BUNDLE_DIRECTORY = 'ios/App'
 const BUNDLE_PATH = `${BUNDLE_DIRECTORY}/main.bundle.js`
 const ANDROID_ASSETS_DIRECTORY = 'android/app/src/main/assets'
@@ -373,19 +376,35 @@ async function dev() {
     return sourceMap.ok ? { sourceMap: await sourceMap.json(), directory: BUNDLE_DIRECTORY } : null
   }
 
-  // The app posts an error's stack; it gets it back pointing at the app's files.
-  async function handleSymbolicate(request, response) {
-    const text = await readBody(request)
+  /** The text with its stack frames pointing at the app's files. */
+  async function symbolicate(text) {
     const files = [...framedFiles(text)]
+    if (files.length === 0) return text
+
     const sourceMaps = await Promise.all(files.map(sourceMapOf))
-    const symbolicate = createSymbolicator(
+    const symbolicateFrames = createSymbolicator(
       Object.fromEntries(
         files.map((file, index) => [file, sourceMaps[index]]).filter(([, map]) => map),
       ),
     )
 
+    return symbolicateFrames(text)
+  }
+
+  // The app posts an error's stack; it gets it back pointing at the app's files.
+  async function handleSymbolicate(request, response) {
+    const text = await symbolicate(await readBody(request))
+
     response.writeHead(200, { 'Content-Type': 'text/plain' })
-    response.end(symbolicate(text))
+    response.end(text)
+  }
+
+  // What the app's console prints (hot-client.js).
+  async function handleLog(request, response) {
+    const { platform, entries } = JSON.parse(await readBody(request))
+
+    for (const { level, text } of entries) printLog(platform, level, await symbolicate(text))
+    response.writeHead(204).end()
   }
 
   const routes = {
@@ -393,6 +412,7 @@ async function dev() {
     '/bundle.js': handleBundle,
     '/hot': handleHotMessage,
     '/symbolicate': handleSymbolicate,
+    '/log': handleLog,
   }
 
   http
@@ -435,11 +455,21 @@ async function dev() {
   setInterval(() => sendToApps(':\n\n'), KEEPALIVE_INTERVAL_MS)
 }
 
+/** Each line after the first starts under the first's text, past the platform. */
+function printLog(platform, level, text) {
+  const color = LOG_COLORS[level]
+  const aligned = text.replaceAll('\n', `\n${' '.repeat(PLATFORM_WIDTH + 1)}`)
+
+  console.log(
+    `${styleText('dim', platform.padEnd(PLATFORM_WIDTH))} ${color ? styleText(color, aligned) : aligned}`,
+  )
+}
+
 async function readBody(request) {
   let text = ''
   for await (const chunk of request) {
     text += chunk
-    if (text.length > MAX_STACK_LENGTH) throw new Error('body too long')
+    if (text.length > MAX_POST_LENGTH) throw new Error('body too long')
   }
 
   return text

@@ -226,8 +226,15 @@ they update when the window is resized. For layouts, prefer flexbox and percenta
 
 ## Logging
 
-`console.log`, `console.info`, `console.warn` and `console.error` print to Xcode's console on iOS and
-to Logcat on Android.
+`console` works as on the web: `log`, `info` (blue in the terminal), `debug` (gray), `warn` (yellow),
+`error` (red), `trace` (with the stack), `table`, `group`/`groupCollapsed`/`groupEnd` (indented) and
+`assert`. Objects are formatted as in Node, and `%s`, `%d`, `%i`, `%f`, `%o`, `%O` and `%c` work.
+
+While `npm run dev` runs, what the app prints shows in its terminal, each line marked `ios` or
+`android`, with stacks pointing at your files. It also goes to Xcode's console and Logcat, with its
+level, in release builds too.
+
+`time`, `count`, `dir`, `clear` and `profile` (and their pairs) are accepted and do nothing.
 
 ## Native functions
 

@@ -1,5 +1,6 @@
 import UIKit
 import JavaScriptRuntime
+import os
 import yoga
 
 /// Runs the JS bundle off the main thread and applies the operations sent by the Vue renderer
@@ -345,7 +346,7 @@ final class Bridge {
             }
         }
 
-        define("log") { arguments in print("[JS]", arguments[0]) }
+        define("log") { arguments in logFromJavaScript(string(arguments[0]), level: string(arguments[1])) }
 
         define("reportError") { [unowned self] arguments in
             reportError(message: string(arguments[0]), details: string(arguments[1]))
@@ -1106,6 +1107,19 @@ private func int(_ argument: Any) -> Int {
 
 private func double(_ argument: Any) -> Double {
     (argument as? NSNumber)?.doubleValue ?? 0
+}
+
+private let javaScriptLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "nativue", category: "JavaScript")
+
+/// The console's levels as the system log's, which Xcode and Console.app show and filter.
+private func logFromJavaScript(_ message: String, level: String) {
+    switch level {
+    case "debug": javaScriptLogger.debug("\(message, privacy: .public)")
+    case "info": javaScriptLogger.info("\(message, privacy: .public)")
+    case "warn": javaScriptLogger.warning("\(message, privacy: .public)")
+    case "error": javaScriptLogger.error("\(message, privacy: .public)")
+    default: javaScriptLogger.notice("\(message, privacy: .public)")
+    }
 }
 
 private func string(_ argument: Any) -> String {

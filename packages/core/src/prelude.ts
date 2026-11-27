@@ -1,11 +1,9 @@
 // The web APIs JavaScript engines don't have, built on the native bridge: console and timers. Runs
 // first, before any other module. Engines (and Node, in tests) that have them keep theirs.
+import { createConsole } from './console'
+
 const timerCallbacks = new Map<number, () => void>()
 let nextTimerId = 1
-
-function log(...values: unknown[]) {
-  __native.log(values.map(String).join(' '))
-}
 
 function armTimer(timerId: number, callback: () => void, delay: number) {
   timerCallbacks.set(timerId, callback)
@@ -16,7 +14,11 @@ function millisecondsOf(delay: number | undefined) {
   return Math.max(0, Math.round(delay ?? 0))
 }
 
-globalThis.console ??= { log, info: log, warn: log, error: log }
+// In development, the dev server's hot client also prints it in the terminal.
+globalThis.console ??= createConsole((level, text) => {
+  __native.log(text, level)
+  globalThis.__nativueOnLog?.(level, text)
+})
 
 globalThis.setTimeout ??= (callback, delay, ...args) => {
   const timerId = nextTimerId++

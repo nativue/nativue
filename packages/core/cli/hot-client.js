@@ -18,6 +18,31 @@
     }).catch(() => {})
   }
 
+  // What the console prints, also in the dev server's terminal: one request at a time, so it keeps
+  // the order, with what was printed meanwhile.
+  const pendingLogs = []
+  let isSendingLogs = false
+
+  function sendLogs() {
+    if (isSendingLogs || pendingLogs.length === 0) return
+
+    isSendingLogs = true
+    fetch(`${serverURL}/log`, {
+      method: 'POST',
+      body: JSON.stringify({ platform: __native.platform(), entries: pendingLogs.splice(0) }),
+    })
+      .catch(() => {})
+      .finally(() => {
+        isSendingLogs = false
+        sendLogs()
+      })
+  }
+
+  globalThis.__nativueOnLog = (level, text) => {
+    pendingLogs.push({ level, text })
+    sendLogs()
+  }
+
   function requestReload(reason) {
     if (isReloadPending) return
 

@@ -382,7 +382,7 @@ class Bridge(private val activity: ComponentActivity, private val rootView: Root
     }
 
     private fun nativeFunctions(): Map<String, NativeFunction> = buildMap {
-        put("log") { arguments -> Log.i(TAG, "[JS] ${arguments[0]}") }
+        put("log") { arguments -> Log.println(LOG_PRIORITIES[arguments[1]] ?: Log.INFO, TAG, "[JS] ${arguments[0]}") }
         put("reportError") { arguments -> reportError(arguments[0] as String, arguments[1] as String) }
         put("windowSize") { _ -> windowSize }
         put("platform") { _ -> "android" }
@@ -1168,6 +1168,8 @@ class Bridge(private val activity: ComponentActivity, private val rootView: Root
 
     private companion object {
         const val TAG = "nativue"
+        /** The console's levels as logcat's; log and info are INFO. */
+        val LOG_PRIORITIES = mapOf("debug" to Log.DEBUG, "warn" to Log.WARN, "error" to Log.ERROR)
         const val JAVASCRIPT_STACK_SIZE = 8L * 1024 * 1024
         const val SYMBOLICATE_TIMEOUT_MS = 2000
         const val RECONNECT_DELAY_MS = 2000L

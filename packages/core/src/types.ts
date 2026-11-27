@@ -1,5 +1,6 @@
 // Types shared by the framework and apps: styles, native events and the bridge to the native side.
 import type { AnimatedNode } from './animated'
+import type { LogLevel } from './console'
 
 type Dimension = number | 'auto' | `${number}%`
 type Edge = '' | 'Top' | 'Right' | 'Bottom' | 'Left' | 'Horizontal' | 'Vertical' | 'Start' | 'End'
@@ -128,7 +129,7 @@ export interface LayoutAnimationConfig {
 
 /** Functions the native side exposes as globalThis.__native (see Bridge.swift). */
 export interface NativeModule {
-  log(message: string): void
+  log(message: string, level: LogLevel): void
   reportError(message: string, details: string): void
   windowSize(): { width: number; height: number }
   platform(): 'ios' | 'android'
