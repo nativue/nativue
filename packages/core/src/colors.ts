@@ -188,7 +188,7 @@ export function processColor(color: unknown): number | null {
 
   const rgba = parseColor(color)
 
-  if (rgba === null) console.warn(`[Nativue] unsupported color: ${color}`)
+  if (rgba === null) console.warn(`[nativue] unsupported color: ${color}`)
 
   return rgba
 }

@@ -297,7 +297,7 @@ final class Bridge {
 
     @MainActor func reload() async throws {
         let data = try await download(Self.devServerURL.appendingPathComponent("bundle.js"))
-        print("[Nativue] reload")
+        print("[nativue] reload")
         run(data)
     }
 
@@ -461,7 +461,7 @@ final class Bridge {
 
     /// Logged always; shown over the app in development builds.
     private func reportError(message: String, details: String) {
-        print("[Nativue] JS error:", message, "\n" + details)
+        print("[nativue] JS error:", message, "\n" + details)
 
         #if DEBUG
         Task { @MainActor [unowned self] in
@@ -510,7 +510,7 @@ final class Bridge {
         guard let parent = nodesById[parentId], let child = nodesById[childId] else { return }
 
         guard parent.canHaveChildren else {
-            print("[Nativue] <\(type(of: parent.view))> can't have native children; use <View>")
+            print("[nativue] <\(type(of: parent.view))> can't have native children; use <View>")
             return
         }
 

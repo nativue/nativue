@@ -22,7 +22,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Scans receipts</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Connects to the Nativue dev server on your Mac for hot reload.</string>
+	<string>Connects to the nativue dev server on your Mac for hot reload.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Inter-Bold.ttf</string>

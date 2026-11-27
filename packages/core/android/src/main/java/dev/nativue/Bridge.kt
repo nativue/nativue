@@ -1167,7 +1167,7 @@ class Bridge(private val activity: ComponentActivity, private val rootView: Root
     }
 
     private companion object {
-        const val TAG = "Nativue"
+        const val TAG = "nativue"
         const val JAVASCRIPT_STACK_SIZE = 8L * 1024 * 1024
         const val SYMBOLICATE_TIMEOUT_MS = 2000
         const val RECONNECT_DELAY_MS = 2000L

@@ -49,7 +49,7 @@ const styles = computed(() => {
       resize-mode="contain"
       :style="styles.logo"
     />
-    <Text :style="styles.title">Welcome to Nativue</Text>
+    <Text :style="styles.title">Welcome to nativue</Text>
     <Text :style="styles.hint">Edit src/app/index.vue and save to see it here.</Text>
     <Pressable :style="styles.button" :pressed-style="styles.buttonPressed" @press="count++">
       <Text :style="styles.buttonText">Tapped {{ count }} times</Text>
