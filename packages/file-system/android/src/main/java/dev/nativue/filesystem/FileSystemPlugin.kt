@@ -14,6 +14,9 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.nio.ByteBuffer
+import java.nio.charset.CharacterCodingException
+import java.nio.charset.CodingErrorAction
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -25,7 +28,7 @@ import java.util.concurrent.Executors
 class FileSystemPlugin : NativuePlugin {
     private val fileWorker = Executors.newSingleThreadExecutor()
     private val transferWorkers = Executors.newCachedThreadPool()
-    private val runningTransfers = ConcurrentHashMap<Int, Transfer>()
+    private val runningTransfers = ConcurrentHashMap<Long, Transfer>()
 
     private class Transfer {
         @Volatile var isCanceled = false
@@ -48,7 +51,7 @@ class FileSystemPlugin : NativuePlugin {
             )
         }
 
-        addFileFunction(registry, "fileSystem.readText") { arguments -> file(arguments[0]).readText() }
+        addFileFunction(registry, "fileSystem.readText") { arguments -> utf8Text(file(arguments[0]).readBytes()) }
         addFileFunction(registry, "fileSystem.readBase64") { arguments ->
             Base64.encodeToString(file(arguments[0]).readBytes(), Base64.NO_WRAP)
         }
@@ -86,7 +89,7 @@ class FileSystemPlugin : NativuePlugin {
         addFileFunction(registry, "fileSystem.copy") { arguments ->
             val (source, destination) = file(arguments[0]) to file(arguments[1])
 
-            if (!source.exists()) throw FileNotFoundException("${source.path} doesn't exist")
+            if (!checkSource(source, destination)) return@addFileFunction null
             prepare(destination)
             if (!source.copyRecursively(destination)) throw IOException("Couldn't copy ${source.path}")
             null
@@ -94,7 +97,7 @@ class FileSystemPlugin : NativuePlugin {
         addFileFunction(registry, "fileSystem.move") { arguments ->
             val (source, destination) = file(arguments[0]) to file(arguments[1])
 
-            if (!source.exists()) throw FileNotFoundException("${source.path} doesn't exist")
+            if (!checkSource(source, destination)) return@addFileFunction null
             prepare(destination)
             // Across filesystems a rename fails: then it's a copy and a delete.
             if (!source.renameTo(destination)) {
@@ -105,7 +108,7 @@ class FileSystemPlugin : NativuePlugin {
         }
 
         registry.addAsyncFunction("fileSystem.download") { arguments, promise ->
-            val taskId = (arguments[0] as Number).toInt()
+            val taskId = (arguments[0] as Number).toLong()
 
             transfer(taskId, promise) { transfer ->
                 download(registry, taskId, transfer, arguments[1] as String, file(arguments[2]), headers(arguments[3]))
@@ -113,7 +116,7 @@ class FileSystemPlugin : NativuePlugin {
         }
 
         registry.addAsyncFunction("fileSystem.upload") { arguments, promise ->
-            val taskId = (arguments[0] as Number).toInt()
+            val taskId = (arguments[0] as Number).toLong()
 
             transfer(taskId, promise) { transfer ->
                 @Suppress("UNCHECKED_CAST")
@@ -127,7 +130,7 @@ class FileSystemPlugin : NativuePlugin {
         }
 
         registry.addFunction("fileSystem.cancel") { arguments ->
-            runningTransfers[(arguments[0] as Number).toInt()]?.cancel()
+            runningTransfers[(arguments[0] as Number).toLong()]?.cancel()
             null
         }
     }
@@ -187,6 +190,32 @@ class FileSystemPlugin : NativuePlugin {
         "modificationTime" to target.lastModified(),
     )
 
+    /**
+     * false when there's nothing to do: the source is the destination. A source that doesn't exist, or a
+     * directory copied into itself, throws before the destination is touched.
+     */
+    private fun checkSource(source: File, destination: File): Boolean {
+        val (sourcePath, destinationPath) = source.canonicalPath to destination.canonicalPath
+
+        if (!source.exists()) throw FileNotFoundException("$sourcePath doesn't exist")
+        if (destinationPath.startsWith("$sourcePath/")) {
+            throw FileError("ERR_INVALID_ARGUMENT", "A directory can't go inside itself")
+        }
+
+        return sourcePath != destinationPath
+    }
+
+    /** Malformed bytes reject, as on iOS, instead of becoming replacement characters. */
+    private fun utf8Text(bytes: ByteArray): String = try {
+        Charsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+            .decode(ByteBuffer.wrap(bytes))
+            .toString()
+    } catch (error: CharacterCodingException) {
+        throw FileError("ERR_INVALID_ARGUMENT", "The file isn't UTF-8 text: read it as base64")
+    }
+
     /** What's at the destination is replaced, and the directories above it made. */
     private fun prepare(destination: File) {
         destination.parentFile?.mkdirs()
@@ -200,7 +229,7 @@ class FileSystemPlugin : NativuePlugin {
     private fun headers(argument: Any?): Map<String, String> =
         (argument as? Map<*, *>)?.entries?.associate { (name, value) -> name.toString() to value.toString() }.orEmpty()
 
-    private fun transfer(taskId: Int, promise: Promise, work: (Transfer) -> Map<String, Any>) {
+    private fun transfer(taskId: Long, promise: Promise, work: (Transfer) -> Map<String, Any>) {
         val transfer = Transfer()
 
         runningTransfers[taskId] = transfer
@@ -224,6 +253,9 @@ class FileSystemPlugin : NativuePlugin {
 
         transfer.connection = connection
         if (transfer.isCanceled) throw IOException("Canceled")
+        // Without them, a connection that stops sending, without closing, would hang forever; iOS waits as long.
+        connection.connectTimeout = TIMEOUT_MS
+        connection.readTimeout = TIMEOUT_MS
         connection.requestMethod = method
         headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
 
@@ -232,7 +264,7 @@ class FileSystemPlugin : NativuePlugin {
 
     private fun download(
         registry: PluginRegistry,
-        taskId: Int,
+        taskId: Long,
         transfer: Transfer,
         url: String,
         destination: File,
@@ -260,7 +292,7 @@ class FileSystemPlugin : NativuePlugin {
 
     private fun upload(
         registry: PluginRegistry,
-        taskId: Int,
+        taskId: Long,
         transfer: Transfer,
         url: String,
         source: File,
@@ -311,7 +343,7 @@ class FileSystemPlugin : NativuePlugin {
         return head.toString().toByteArray() to "\r\n--$boundary--\r\n".toByteArray()
     }
 
-    private fun quoted(value: String) = value.replace("\"", "%22").replace("\r\n", " ")
+    private fun quoted(value: String) = value.replace("\"", "%22").replace('\r', ' ').replace('\n', ' ')
 
     private fun copy(input: InputStream, output: OutputStream, transfer: Transfer, progress: ProgressReporter, startingAt: Long = 0) {
         val buffer = ByteArray(64 * 1024)
@@ -339,7 +371,7 @@ class FileSystemPlugin : NativuePlugin {
         .mapValues { (_, values) -> values.joinToString(", ") }
 
     /** At most one progress event every PROGRESS_INTERVAL_MS, and the last one always. */
-    private class ProgressReporter(val registry: PluginRegistry, val taskId: Int, val totalBytes: Long) {
+    private class ProgressReporter(val registry: PluginRegistry, val taskId: Long, val totalBytes: Long) {
         private var lastReport = 0L
 
         fun report(bytes: Long, isLast: Boolean = false) {
@@ -354,5 +386,6 @@ class FileSystemPlugin : NativuePlugin {
 
     private companion object {
         const val PROGRESS_INTERVAL_MS = 100L
+        const val TIMEOUT_MS = 60_000
     }
 }

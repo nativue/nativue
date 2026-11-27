@@ -85,6 +85,8 @@ public final class FileSystemPlugin: NativuePlugin {
             try fileOperation {
                 let (source, destination) = (try fileURL(arguments[0]), try fileURL(arguments[1]))
 
+                guard try checkSource(source, destination: destination) else { return nil }
+
                 try prepare(destination)
                 try FileManager.default.copyItem(at: source, to: destination)
 
@@ -95,6 +97,8 @@ public final class FileSystemPlugin: NativuePlugin {
         registry.addAsyncFunction("fileSystem.move") { arguments in
             try fileOperation {
                 let (source, destination) = (try fileURL(arguments[0]), try fileURL(arguments[1]))
+
+                guard try checkSource(source, destination: destination) else { return nil }
 
                 try prepare(destination)
                 try FileManager.default.moveItem(at: source, to: destination)
@@ -108,18 +112,22 @@ public final class FileSystemPlugin: NativuePlugin {
 
             setHeaders(arguments[3], on: &request)
 
-            return try await transfers.download(taskId: arguments[0] as! Int, request: request, to: try fileURL(arguments[2]))
+            return try await transfers.download(taskId: taskId(arguments[0]), request: request, to: try fileURL(arguments[2]))
         }
 
         registry.addAsyncFunction("fileSystem.upload") { [transfers] arguments in
             let source = try fileURL(arguments[2])
             var request = URLRequest(url: try webURL(arguments[1]))
 
+            guard FileManager.default.fileExists(atPath: source.path) else {
+                throw PluginError(code: "ERR_NOT_FOUND", message: "\(source.path) doesn't exist")
+            }
+
             request.httpMethod = arguments[3] as? String
             setHeaders(arguments[4], on: &request)
 
             guard let form = arguments[5] as? [String: Any] else {
-                return try await transfers.upload(taskId: arguments[0] as! Int, request: request, body: source, isTemporary: false)
+                return try await transfers.upload(taskId: taskId(arguments[0]), request: request, body: source, isTemporary: false)
             }
 
             let boundary = "nativue-\(UUID().uuidString)"
@@ -127,11 +135,11 @@ public final class FileSystemPlugin: NativuePlugin {
 
             request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
-            return try await transfers.upload(taskId: arguments[0] as! Int, request: request, body: body, isTemporary: true)
+            return try await transfers.upload(taskId: taskId(arguments[0]), request: request, body: body, isTemporary: true)
         }
 
         registry.addFunction("fileSystem.cancel") { [transfers] arguments in
-            transfers.cancel(taskId: arguments[0] as! Int)
+            transfers.cancel(taskId: taskId(arguments[0]))
 
             return nil
         }
@@ -203,6 +211,21 @@ private func info(of url: URL) -> [String: Any] {
     ]
 }
 
+/// false when there's nothing to do: the source is the destination. A source that doesn't exist, or a directory
+/// copied into itself, throws before the destination is touched.
+private func checkSource(_ source: URL, destination: URL) throws -> Bool {
+    let (sourcePath, destinationPath) = (source.standardizedFileURL.path, destination.standardizedFileURL.path)
+
+    guard FileManager.default.fileExists(atPath: sourcePath) else {
+        throw PluginError(code: "ERR_NOT_FOUND", message: "\(sourcePath) doesn't exist")
+    }
+    guard !destinationPath.hasPrefix(sourcePath + "/") else {
+        throw PluginError(code: "ERR_INVALID_ARGUMENT", message: "A directory can't go inside itself")
+    }
+
+    return sourcePath != destinationPath
+}
+
 /// What's at the destination is replaced, and the directories above it made.
 private func prepare(_ destination: URL) throws {
     let fileManager = FileManager.default
@@ -212,6 +235,11 @@ private func prepare(_ destination: URL) throws {
 }
 
 // MARK: - Transfers
+
+/// JavaScript numbers arrive as Int or Double.
+private func taskId(_ argument: Any) -> Int {
+    (argument as? Int) ?? Int(argument as! Double)
+}
 
 private func setHeaders(_ argument: Any, on request: inout URLRequest) {
     for (name, value) in argument as? [String: Any] ?? [:] {
@@ -235,24 +263,31 @@ private func multipartBody(_ form: [String: Any], file: URL, boundary: String) t
 
     FileManager.default.createFile(atPath: body.path, contents: Data(head.utf8))
 
-    let output = try FileHandle(forWritingTo: body)
-    let input = try FileHandle(forReadingFrom: file)
+    do {
+        let output = try FileHandle(forWritingTo: body)
+        let input = try FileHandle(forReadingFrom: file)
 
-    defer {
-        try? output.close()
-        try? input.close()
+        defer {
+            try? output.close()
+            try? input.close()
+        }
+        try output.seekToEnd()
+        while let chunk = try input.read(upToCount: 1 << 20), !chunk.isEmpty {
+            try output.write(contentsOf: chunk)
+        }
+        try output.write(contentsOf: Data("\r\n--\(boundary)--\r\n".utf8))
+    } catch {
+        try? FileManager.default.removeItem(at: body)
+        throw error
     }
-    try output.seekToEnd()
-    while let chunk = try input.read(upToCount: 1 << 20), !chunk.isEmpty {
-        try output.write(contentsOf: chunk)
-    }
-    try output.write(contentsOf: Data("\r\n--\(boundary)--\r\n".utf8))
 
     return body
 }
 
 private func quoted(_ value: String) -> String {
-    value.replacingOccurrences(of: "\"", with: "%22").replacingOccurrences(of: "\r\n", with: " ")
+    value.replacingOccurrences(of: "\"", with: "%22")
+        .replacingOccurrences(of: "\r", with: " ")
+        .replacingOccurrences(of: "\n", with: " ")
 }
 
 /// Every download and upload, on one session whose delegate reports progress. Its state lives on the session's
@@ -284,6 +319,8 @@ private final class Transfers: NSObject, URLSessionDownloadDelegate, URLSessionD
     private weak var registry: PluginRegistry?
     private var runningByTask: [Int: Running] = [:]
     private var tasksById: [Int: URLSessionTask] = [:]
+    /// Canceled before they started: a cancel can arrive first.
+    private var canceledIds: Set<Int> = []
 
     func attach(to registry: PluginRegistry) {
         queue.addOperation { [self] in
@@ -313,10 +350,25 @@ private final class Transfers: NSObject, URLSessionDownloadDelegate, URLSessionD
     }
 
     func cancel(taskId: Int) {
-        queue.addOperation { [self] in tasksById[taskId]?.cancel() }
+        queue.addOperation { [self] in
+            guard let task = tasksById[taskId] else {
+                canceledIds.insert(taskId)
+
+                return
+            }
+
+            task.cancel()
+        }
     }
 
     private func start(_ task: URLSessionTask, _ running: Running) {
+        guard canceledIds.remove(running.taskId) == nil else {
+            task.cancel()
+            if let body = running.temporaryBody { try? FileManager.default.removeItem(at: body) }
+
+            return running.continuation.resume(throwing: transferError(URLError(.cancelled)))
+        }
+
         runningByTask[task.taskIdentifier] = running
         tasksById[running.taskId] = task
         task.resume()
@@ -373,7 +425,10 @@ private final class Transfers: NSObject, URLSessionDownloadDelegate, URLSessionD
         let response = task.response as? HTTPURLResponse
         var result: [String: Any] = [
             "status": response?.statusCode ?? 0,
-            "headers": Dictionary(uniqueKeysWithValues: (response?.allHeaderFields ?? [:]).map { ("\($0.key)".lowercased(), "\($0.value)") }),
+            "headers": Dictionary(
+                (response?.allHeaderFields ?? [:]).map { ("\($0.key)".lowercased(), "\($0.value)") },
+                uniquingKeysWith: { first, second in "\(first), \(second)" }
+            ),
         ]
 
         if let destination = running.destination {

@@ -20,7 +20,8 @@ const text = await FileSystem.readText(notes)
 ```
 
 Files are named by `file://` URIs: `Paths` gives the app's folders, and other packages hand them over
-(a photo from `@nativue/image-picker` is one). `<Image :source="uri" />` shows an image file.
+(a photo from `@nativue/image-picker` is one). `<Image :source="uri" />` shows an image file. As in
+any URI, `%` starts an escape: a name with a `%` of its own goes through `encodeURIComponent`.
 
 ## Folders
 
@@ -45,7 +46,8 @@ Both end in `/`. Writing to a file makes the folders above it.
 | `list(uri)`                            | the names in a directory, sorted                                 |
 | `copy(from, to)` / `move(from, to)`    | replace what's at `to`                                           |
 
-A replaced file is written beside it first, so a failure halfway leaves the old one whole.
+`writeText`, `writeBase64` and `download` write beside the file first, so a failure halfway leaves the
+old one whole. `copy` and `move` check the source exists before they replace anything.
 
 ## Downloads and uploads
 
@@ -70,7 +72,7 @@ const { status, body } = await FileSystem.upload('https://api.example.com/photos
 - `onProgress` gets `{ bytes, totalBytes }` about ten times a second; `totalBytes` is `null` when the
   server doesn't say.
 - `cancel()` rejects the transfer with `ERR_CANCELED`.
-- Transfers run while the app is open: one that's closed (or, in development, reloaded) stops them.
+- Transfers run while the app is open: closing it stops them.
 
 ## Errors
 

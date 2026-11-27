@@ -116,7 +116,8 @@ const nativeUpload =
   >('fileSystem.upload')
 const nativeCancel = requireNativeFunction<(taskId: number) => void>('fileSystem.cancel')
 
-let nextTaskId = 1
+// Unique across runtimes: a reload's transfers never take the ids of the ones still running.
+let nextTaskId = Date.now()
 
 export const Paths: AppPaths = nativePaths()
 
@@ -152,7 +153,10 @@ export const FileSystem = {
   /** Saves url's body at `to`, replacing what's there, once it has all arrived. */
   download(url: string, to: string, { headers = {}, onProgress }: DownloadOptions = {}) {
     return transfer(onProgress, (taskId) =>
-      nativeDownload(taskId, webURL(url), fileURI(to), headers),
+      nativeDownload(taskId, webURL(url), fileURI(to), headers).then((result) => ({
+        ...result,
+        uri: to,
+      })),
     )
   },
 
