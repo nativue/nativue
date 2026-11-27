@@ -14,6 +14,11 @@ final class ModalController: UIViewController, ContentRoot, UIAdaptivePresentati
     let placeholderView = UIView()
 
     var onEvent: ((String) -> Void)?
+    /// The app's window: the placeholder's is nil while a full-screen modal covers it.
+    var hostWindow: () -> UIWindow? = { nil }
+    /// The placeholder is in the window, or covered by a full-screen modal: not in a screen pushed under
+    /// another, an unselected tab or a deactivated <KeepAlive>.
+    var isPlaceholderOnScreen: () -> Bool = { false }
     var animationType = "none"
     var presentationStyleName = "fullScreen"
     var transparent = false
@@ -39,18 +44,24 @@ final class ModalController: UIViewController, ContentRoot, UIAdaptivePresentati
         contentNode.calculateLayout(width: view.bounds.width, height: view.bounds.height)
     }
 
-    /// Deferred to after the current batch, so the placeholder is already in the window when presenting.
+    /// Deferred to after the current batch, so the placeholder is already on screen when presenting.
     func setVisible(_ visible: Bool) {
         wantsVisible = visible
         DispatchQueue.main.async { [self] in applyVisibility() }
     }
 
     /// The <Modal> left the tree (an ancestor's v-if): its content must go too.
-    func dismissIfDetached() {
-        guard placeholderView.window == nil else { return }
-
+    func detach() {
         wantsVisible = false
         applyVisibility()
+    }
+
+    /// Closed while its placeholder is off screen (a tab switched, a <KeepAlive> deactivated), and shown
+    /// again when it's back, if JS still wants it.
+    func followPlaceholder() {
+        guard !isTransitioning else { return }
+
+        if !isPlaceholderOnScreen() { dismissIfPresented() } else if wantsVisible && !isPresented { present() }
     }
 
     private func applyVisibility() {
@@ -60,7 +71,7 @@ final class ModalController: UIViewController, ContentRoot, UIAdaptivePresentati
     }
 
     private func present() {
-        guard !isPresented, let presenter = topViewController() else { return }
+        guard !isPresented, isPlaceholderOnScreen(), let presenter = topViewController() else { return }
 
         view.backgroundColor = transparent ? .clear : .systemBackground
         modalPresentationStyle = transparent
@@ -89,7 +100,7 @@ final class ModalController: UIViewController, ContentRoot, UIAdaptivePresentati
     }
 
     private func topViewController() -> UIViewController? {
-        var top = placeholderView.window?.rootViewController
+        var top = hostWindow()?.rootViewController
 
         while let presented = top?.presentedViewController, presented !== self {
             top = presented

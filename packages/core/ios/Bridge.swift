@@ -200,7 +200,7 @@ final class Bridge {
         windowSizeDidChange(to: rootView.bounds.size)
 
         for contentRoot in contentRootsByNodeId.values {
-            (contentRoot as? ModalController)?.dismissIfDetached()
+            (contentRoot as? ModalController)?.followPlaceholder()
             contentRoot.layoutContent()
         }
     }
@@ -491,8 +491,7 @@ final class Bridge {
     // MARK: - Main thread
 
     private func resetNodeTree() {
-        // Sheets of the old tree's screen stacks too, which only their stack knows about.
-        rootView.hostWindow?.rootViewController?.dismiss(animated: false)
+        dismissPresentedControllers()
         rootView.subviews.forEach { $0.removeFromSuperview() }
         contentRootsByNodeId.values.forEach { ($0 as? ModalController)?.setVisible(false) }
         contentRootsByNodeId = [:]
@@ -539,7 +538,7 @@ final class Bridge {
     private func forgetNode(id: Int) {
         let node = nodesById.removeValue(forKey: id)
         (node?.view as? ScreenStackView)?.dismissPresentedScreens()
-        modalController(id)?.dismissIfDetached()
+        modalController(id)?.detach()
         contentRootsByNodeId[id] = nil
         gestureReportersByNodeId[id] = nil
         reportedLayoutsByNodeId[id] = nil
@@ -567,6 +566,29 @@ final class Bridge {
         guard !changedLayouts.isEmpty else { return }
 
         evaluate { [unowned self] in runtime?.call("__layoutsChanged", arguments: [changedLayouts]) }
+    }
+
+    /// What's presented over the controller holding the root view: an app's own sheet holding the
+    /// NativueView stays.
+    private func dismissPresentedControllers() {
+        guard let root = rootView.hostWindow?.rootViewController else { return }
+
+        let presentations = Array(sequence(first: root, next: \.presentedViewController))
+        guard let holderIndex = presentations.lastIndex(where: { rootView.isDescendant(of: $0.view) }),
+              holderIndex < presentations.count - 1 else { return }
+
+        presentations[holderIndex].dismiss(animated: false)
+    }
+
+    /// In the window, or under a full-screen modal that the controller holding it presented: UIKit takes
+    /// the views under one out of the window. A screen pushed under another, or an unselected tab, is not.
+    private func isOnScreen(_ view: UIView) -> Bool {
+        if view.window != nil { return true }
+
+        let holder = sequence(first: view, next: { $0.superview }).compactMap { $0.next as? UIViewController }.last
+        guard let holder, let presented = holder.presentedViewController else { return false }
+
+        return presented.presentingViewController === holder
     }
 
     private func modalController(_ id: Int) -> ModalController? {
@@ -682,6 +704,10 @@ final class Bridge {
         case "Modal":
             let modalController = ModalController()
             modalController.onEvent = { [unowned self] eventName in dispatchEvent(eventName, toNodeId: id) }
+            modalController.hostWindow = { [unowned self] in rootView.hostWindow }
+            modalController.isPlaceholderOnScreen = { [unowned self, unowned modalController] in
+                isOnScreen(modalController.placeholderView)
+            }
             contentRootsByNodeId[id] = modalController
 
             let node = NativeNode(view: modalController.placeholderView, measuresContent: false)
