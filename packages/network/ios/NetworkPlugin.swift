@@ -6,28 +6,39 @@ import Network
 /// and each change reaches JavaScript as network.change.
 public final class NetworkPlugin: NativuePlugin {
     private let monitor = NWPathMonitor()
-    /// Owns latestState and waitingForFirstState.
+    /// Owns everything below.
     private let queue = DispatchQueue(label: "nativue.network")
+    private var isWatching = false
+    /// The newest JavaScript runtime's: a reload makes a new one.
+    private weak var registry: PluginRegistry?
     private var latestState: [String: Any]?
     private var waitingForFirstState: [CheckedContinuation<[String: Any], Never>] = []
 
     public init() {}
 
+    /// Called again for each new JavaScript runtime: the monitor starts once, for the whole process.
     public func register(in registry: PluginRegistry) {
-        monitor.pathUpdateHandler = { [unowned self, weak registry] path in
-            let state = Self.state(of: path)
-            let hasChanged = latestState.map { NSDictionary(dictionary: $0) != NSDictionary(dictionary: state) } ?? true
+        queue.async { [unowned self] in
+            self.registry = registry
+            guard !isWatching else { return }
 
-            latestState = state
-            waitingForFirstState.forEach { $0.resume(returning: state) }
-            waitingForFirstState = []
-            if hasChanged { registry?.sendEvent("network.change", state) }
+            isWatching = true
+            monitor.pathUpdateHandler = { [unowned self] path in report(Self.state(of: path)) }
+            monitor.start(queue: queue)
         }
-        monitor.start(queue: queue)
 
         registry.addAsyncFunction("network.getState") { [unowned self] _ in
             await currentState()
         }
+    }
+
+    private func report(_ state: [String: Any]) {
+        let hasChanged = latestState.map { NSDictionary(dictionary: $0) != NSDictionary(dictionary: state) } ?? true
+
+        latestState = state
+        waitingForFirstState.forEach { $0.resume(returning: state) }
+        waitingForFirstState = []
+        if hasChanged { registry?.sendEvent("network.change", state) }
     }
 
     /// The monitor reports the path soon after it starts: a call before that waits for it.

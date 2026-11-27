@@ -37,7 +37,7 @@ subscription.remove() // in a component, it's removed on unmount
 | --------------------- | ---------------------------------------------------------------------------------------- |
 | `isConnected`         | a network is up. It may still not reach the internet: a captive portal, a dead router    |
 | `isInternetReachable` | Android: the system checked that it reaches the internet. iOS: the same as `isConnected` |
-| `type`                | `'wifi'`, `'cellular'`, `'ethernet'`, `'other'` (VPN, Bluetooth...) or `'none'`          |
+| `type`                | `'wifi'`, `'cellular'`, `'ethernet'`, `'other'` (Bluetooth...) or `'none'`               |
 | `isExpensive`         | metered, as cellular or a phone's hotspot: leave big downloads for later                 |
 
 A request can still fail while connected: handle `fetch` errors anyway, and use this to explain them

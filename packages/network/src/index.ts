@@ -1,4 +1,4 @@
-import { onMounted, shallowRef, type ShallowRef } from 'vue'
+import { shallowRef, type ShallowRef } from 'vue'
 import { addNativeListener, requireNativeFunction, type NativeSubscription } from '@nativue/core'
 
 export type ConnectionType = 'wifi' | 'cellular' | 'ethernet' | 'other' | 'none'
@@ -8,7 +8,7 @@ export interface NetworkState {
   isConnected: boolean
   /** Android: the system checked that it reaches the internet. iOS: the same as isConnected. */
   isInternetReachable: boolean
-  /** 'other': VPN, Bluetooth, a network the system doesn't name. 'none': offline. */
+  /** 'other': Bluetooth, or a network the system doesn't name. 'none': offline. */
   type: ConnectionType
   /** Metered, as cellular or a phone's hotspot: leave big downloads for later. */
   isExpensive: boolean
@@ -25,17 +25,17 @@ export const Network = {
   },
 }
 
-/** The network's state, live: null until it's first read. */
+/** The network's state, live: null until it's first read. Also outside components (a store). */
 export function useNetworkState(): ShallowRef<NetworkState | null> {
   const state: ShallowRef<NetworkState | null> = shallowRef(null)
   let hasChanged = false
 
-  onMounted(async () => {
-    const current = await Network.getState()
-
-    // A change that arrived meanwhile is newer than this read.
-    if (!hasChanged) state.value = current
-  })
+  Network.getState()
+    .then((current) => {
+      // A change that arrived meanwhile is newer than this read.
+      if (!hasChanged) state.value = current
+    })
+    .catch((error) => console.error(error))
   Network.addListener((changed) => {
     hasChanged = true
     state.value = changed
