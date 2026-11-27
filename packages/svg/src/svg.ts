@@ -517,18 +517,18 @@ function floodColor(attributes: Record<string, unknown>): number {
 }
 
 /**
- * An <feFlood>'s color, or the one an <feColorMatrix type="matrix"> paints the shadow with (design tools
- * write "0 0 0 0 red 0 0 0 0 green 0 0 0 0 blue 0 0 0 opacity 0"); black at 50% without either.
+ * The color an <feColorMatrix type="matrix"> paints the shadow with (design tools write "0 0 0 0 red 0 0 0
+ * 0 green 0 0 0 0 blue 0 0 0 opacity 0"), or an <feFlood>'s; black at 50% without either. The matrix
+ * comes first: design tools also add a transparent <feFlood> for the background.
  */
 function shadowColor(primitives: Map<string, Record<string, unknown>>): number {
-  const flood = primitives.get('feFlood')
-  if (flood) return floodColor(flood)
-
   const values = String(primitives.get('feColorMatrix')?.values ?? '')
     .trim()
     .split(/[\s,]+/)
     .map(Number)
-  if (values.length !== 20) return 0x00000080
+  const flood = primitives.get('feFlood')
+
+  if (values.length !== 20) return flood ? floodColor(flood) : 0x00000080
 
   const channel = (value: number) => Math.round(Math.min(Math.max(value, 0), 1) * 255)
 

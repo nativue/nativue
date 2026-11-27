@@ -193,8 +193,7 @@ function redraw(node: Node | null) {
 }
 
 function sendDrawings() {
-  const isPressable = (element: DrawnElement) =>
-    Boolean(eventHandlersByNodeId[element.id]?.press)
+  const isPressable = (element: DrawnElement) => Boolean(eventHandlersByNodeId[element.id]?.press)
   // Copied first: a drawing that fails doesn't keep the others from being sent next time.
   const views = [...drawnViewsToRedraw]
 
@@ -221,7 +220,9 @@ function patchDrawnViewProp(element: Node, key: string, value: unknown): boolean
     element.baseStyle = style
     patchStyle(element, previousStyle, combinedStyle(element))
   }
-  const isDrawingOnly = drawnViewsByType.get(element.type)!.setViewProp(element, key, value, setBaseStyle)
+  const isDrawingOnly = drawnViewsByType
+    .get(element.type)!
+    .setViewProp(element, key, value, setBaseStyle)
 
   redraw(element)
 
@@ -510,8 +511,7 @@ const { createApp: createBaseApp } = createRenderer<Node, Node>({
       }
     } else if (drawnViewsByType.has(element.type) && patchDrawnViewProp(element, key, nextValue)) {
       return
-    }
-    else if (key === 'style') updateStyle(element, { style: nextValue })
+    } else if (key === 'style') updateStyle(element, { style: nextValue })
     else if (key === 'class') updateStyle(element, { className: nextValue ?? undefined })
     else if (key === 'pressed') updateStyle(element, { pressed: nextValue })
     else if (isAccessibilityAttribute(key)) updateAccessibility(element, key, nextValue)
@@ -686,7 +686,8 @@ export function createApp(rootComponent: Component) {
   app.component('FlatList', FlatListComponent)
   app.component('Swipeable', Swipeable)
   app.component('ImageBackground', ImageBackground)
-  for (const [name, component] of Object.entries(drawnViewComponents)) app.component(name, component)
+  for (const [name, component] of Object.entries(drawnViewComponents))
+    app.component(name, component)
 
   return Object.assign(app, { mount: () => mountOnContainer(rootNode) })
 }

@@ -1,7 +1,20 @@
-# Svg
+# @nativue/svg
 
-Vector drawings, as on the web: write `<svg>` in a template, with the elements you'd use in a browser.
-Charts, illustrations and Vue components written for the web that draw with SVG work as they are.
+Vector drawings in [nativue](https://github.com/nativue/nativue) apps, as on the web: write `<svg>` in
+a template, with the elements you'd use in a browser. Charts, illustrations, SVGs exported from design
+tools and Vue components written for the web that draw with SVG work as they are.
+
+```sh
+npm install @nativue/svg
+```
+
+Installing it is all: its plugin registers `<svg>` before the app starts. Rebuild the app
+(`npm run ios`, `npm run android`), as for any package with native code. For the components' types
+in templates, add to `src/env.d.ts`:
+
+```ts
+/// <reference types="@nativue/svg" />
+```
 
 ```vue
 <svg viewBox="0 0 200 100" width="300" height="150">
@@ -39,28 +52,35 @@ element: an app's own component with one of these names (a `Line.vue` it imports
 
 | Element                                                            | Attributes                                                                                                                                                                                                                                                                        |
 | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `svg`                                                              | `viewBox`, `width`, `height` (they size it; `style` too), `preserveAspectRatio` (`xMidYMid meet`, the default, or `none`)                                                                                                                                                         |
+| `svg`                                                              | `viewBox`, `width`, `height` (they size it; `style` too), `preserveAspectRatio` (`xMidYMid meet` by default; any alignment, `slice` or `none`)                                                                                                                                    |
 | `path`, `circle`, `ellipse`, `rect`, `line`, `polyline`, `polygon` | their geometry: `d`, `cx`/`cy`/`r`, `x`/`y`/`width`/`height`/`rx`/`ry`, `points`...                                                                                                                                                                                               |
 | `g`                                                                | groups: what it sets is inherited by what's inside                                                                                                                                                                                                                                |
-| `text`, `tspan`                                                    | `x`, `y` (the baseline), `dx`, `dy`, `font-size`, `font-weight`, `font-family`, `text-anchor`, `letter-spacing`; a `tspan` with its own `x`, `y` or `dy` starts a new line or place, with its own style                                                                           |
+| `text`, `tspan`                                                    | `x`, `y` (the baseline), `dx`, `dy`, `font-size`, `font-weight`, `font-family`, `text-anchor`, `dominant-baseline`, `letter-spacing`; a `tspan` with its own `x`, `y` or `dy` starts a new line or place, with its own style                                                      |
+| `textPath`                                                         | inside a `text`: its text along a `path`, `href="#id"`, `startOffset` (a length or a percentage of the path)                                                                                                                                                                      |
+| `image`                                                            | `href` (a url, or an imported image as for `<Image>`), `x`, `y`, `width`, `height`, `preserveAspectRatio`                                                                                                                                                                         |
 | `defs`, `linearGradient`, `radialGradient`, `stop`                 | gradients, as `fill="url(#id)"` or `stroke="url(#id)"`: `x1`/`y1`/`x2`/`y2`, `cx`/`cy`/`r`/`fx`/`fy`, `gradientUnits`, `gradientTransform`, `spreadMethod` (`pad`, `reflect`, `repeat`), `href` (another gradient's stops and attributes), `offset`, `stop-color`, `stop-opacity` |
+| `pattern`                                                          | `fill="url(#id)"`: its content tiled; `x`, `y`, `width`, `height`, `patternUnits`, `patternContentUnits`, `patternTransform`, `viewBox`, `href`                                                                                                                                   |
+| `marker`                                                           | `marker-start`, `marker-mid`, `marker-end` on a `path`, `line`, `polyline` or `polygon`: its content at the vertices; `markerWidth`, `markerHeight`, `markerUnits`, `refX`, `refY`, `orient` (`auto`, `auto-start-reverse`, an angle), `viewBox`                                  |
 | `clipPath`                                                         | `clip-path="url(#id)"`: only what its shapes cover is drawn; `clipPathUnits`, `clip-rule`                                                                                                                                                                                         |
 | `mask`                                                             | `mask="url(#id)"`: drawn where the mask's content is light (its luminance)                                                                                                                                                                                                        |
 | `symbol`, `use`                                                    | `<use href="#id" x y width height>` draws a copy of an element, or of a `symbol` fitted to its `viewBox`; `xlink:href` works too                                                                                                                                                  |
-| `filter`, `feDropShadow`                                           | `filter="url(#id)"`: a shadow, `dx`, `dy`, `stdDeviation`, `flood-color`, `flood-opacity`                                                                                                                                                                                         |
+| `filter`                                                           | `filter="url(#id)"`: an `feDropShadow` (`dx`, `dy`, `stdDeviation`, `flood-color`, `flood-opacity`); the drop shadow design tools export (`feOffset`, `feGaussianBlur` and an `feColorMatrix` or `feFlood` for its color); or an `feGaussianBlur` alone, a blur                   |
+| `title`, `desc`, `metadata`                                        | kept out of the drawing                                                                                                                                                                                                                                                           |
 
 On any element: `fill`, `stroke` (a color, `none`, `currentColor` or `url(#id)`), `stroke-width`,
-`stroke-linecap`, `stroke-linejoin`, `stroke-dasharray`, `stroke-dashoffset`, `opacity`,
-`fill-opacity`, `stroke-opacity`, `fill-rule` and `transform` (`translate`, `scale`, `rotate`, `skewX`,
-`skewY`, `matrix`), also as `style="fill: red; stroke-width: 2"`. Like in SVG, `fill` defaults to
+`stroke-linecap`, `stroke-linejoin`, `stroke-miterlimit`, `stroke-dasharray`, `stroke-dashoffset`,
+`opacity`, `fill-opacity`, `stroke-opacity`, `fill-rule`, `display="none"` and `transform`
+(`translate`, `scale`, `rotate`, `skewX`, `skewY`, `matrix`), also as `style="fill: red; stroke-width: 2"`. Like in SVG, `fill` defaults to
 black, and `stroke` to none. Percentages are of the `viewBox` (`width="100%"`, `x="50%"`), and of the
 shape's box in gradients and stops' `offset`. `width` and `height` on `<svg>` size it under its
 `class` and `style`, as on the web.
 
 Animating `stroke-dashoffset` from the line's length to 0 draws it in, as on the web.
 
-Not drawn yet: `image`, `pattern`, `marker`, `textPath`, `foreignObject`, filters other than
-`feDropShadow`, and a `<style>` element (Vue leaves `<style>` out of templates: use `style=""`).
+Not drawn: `foreignObject`, a nested `<svg>`, filters other than the ones above (their element is
+drawn as it is), and a `<style>` element (Vue leaves `<style>` out of templates: use `style=""`). A
+marker's content isn't clipped to its box, and on an arc a marker turns with the arc's chord. On
+Android before 12, a radial gradient's `fx` and `fy` are ignored.
 
 ## Taps
 
@@ -70,10 +90,23 @@ web, but not to a `<Pressable>` around the `<svg>`: a tap on an element is the d
 no element takes it goes to what contains the `<svg>`. Thin elements, like a line, can be tapped
 within 44 points of them.
 
+## Tab and header icons
+
+`svgIcon` makes your own shapes a tab bar or header icon, tinted by the bar like an icon set's
+(stroked with round caps and joins; a shape whose `fill` isn't `none` is filled too):
+
+```ts
+import { svgIcon } from '@nativue/svg'
+
+const options = {
+  tabBarIcon: svgIcon([0, 0, 24, 24], [['path', { d: 'M3 12h18M12 3v18' }]]),
+}
+```
+
 ## Icons
 
-[`@nativue/icons`](../../packages/icons/README.md) draws with the same view. Its components pass the
-icon's shapes as `elements`, `[tag, attributes]` pairs stroked with `color`:
+[`@nativue/icons`](../icons/README.md) draws with the same view, and brings this package with it. Its
+components pass the icon's shapes as `elements`, `[tag, attributes]` pairs stroked with `color`:
 
 ```vue
 <Svg

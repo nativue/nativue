@@ -1097,7 +1097,7 @@ assert.ok(viewsById[platformCardId].style.backgroundColor) // ios:bg-sky-100, no
 // ---------- SVG: <svg> as on the web, drawn by one native view ----------
 
 const svgScreenId = await open('explore/svg')
-const [chartId, effectsId, illustrationId] = renderedViewIds(svgScreenId).filter(
+const [chartId, effectsId, illustrationId, moreId] = renderedViewIds(svgScreenId).filter(
   (id) => viewsById[id].type === 'Svg',
 )
 const drawingOf = (id) => viewsById[id].props.drawing
@@ -1172,6 +1172,28 @@ assert.equal(Math.round(ring()[1]['stroke-dashoffset']), 47)
 press(pressableContaining('More progress', svgScreenId))
 await settle()
 assert.equal(ring()[1]['stroke-dashoffset'], 0)
+
+// Design tools' shadow (feOffset, feGaussianBlur, feColorMatrix): a shadow in the matrix's color.
+const more = drawingOf(moreId)
+const exportedCard = elementsTagged(more, 'rect').find(([, attributes]) => attributes.shadow)
+assert.deepEqual(exportedCard[1].shadow, [0, 4, 4, 0x0b122040])
+// feGaussianBlur alone: a blur. Filters themselves aren't sent.
+assert.equal(elementsTagged(more, 'circle')[0][1].blur, 4)
+assert.equal(elementsTagged(more, 'filter').length, 0)
+// Markers become groups at the vertices: an arrow at each end of the path, turned with it.
+const markedPath = elementsTagged(more, 'g').find(([, , children]) => children[0]?.[0] === 'path')
+assert.equal(markedPath[2].length, 3)
+assert.ok(elementsTagged(more, 'circle').length >= 3) // the polyline's middle vertices
+// <pattern> goes to native with its transform as a matrix; <image> with its source.
+const [stripes] = elementsTagged(more, 'pattern')
+assert.equal(stripes[1].patternTransform.length, 6)
+assert.equal(typeof elementsTagged(more, 'image')[0][1].href, 'string')
+// <textPath>: its run carries the path it follows.
+const curveRun = elementsTagged(more, 'text').at(-1)[2][0]
+assert.equal(curveRun[0], 'textPath')
+assert.equal(curveRun[1].d, 'M20 215 Q150 150 280 215')
+assert.equal(curveRun[1].startOffset, '50%')
+assert.equal(curveRun[2], 'Text along a curve')
 
 // ---------- Native plugins (@nativue/haptics, @nativue/clipboard) ----------
 

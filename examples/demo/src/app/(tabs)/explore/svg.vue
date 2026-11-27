@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { Stack } from '@nativue/core/router'
 import Page from '@/components/Page.vue'
 import Section from '@/components/Section.vue'
+import logoMark from '@/assets/logo-mark.png'
 import { colors } from '@/lib/theme'
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -193,6 +194,117 @@ function shuffle() {
             <Rect width="24" height="12" rx="6" style="fill: #94a3b8" />
           </G>
         </Svg>
+      </View>
+    </Section>
+
+    <Section
+      title="More of SVG"
+      footer="pattern, marker, textPath, image, blur, and the shadows design tools export."
+    >
+      <View class="items-center rounded-xl bg-white py-4 dark:bg-slate-800">
+        <svg viewBox="0 0 300 230" width="300" height="230">
+          <defs>
+            <pattern
+              id="stripes"
+              width="8"
+              height="8"
+              patternUnits="userSpaceOnUse"
+              patternTransform="rotate(45)"
+            >
+              <rect width="4" height="8" :fill="colors.green" />
+            </pattern>
+            <marker
+              id="arrow"
+              viewBox="0 0 10 10"
+              refX="8"
+              refY="5"
+              markerWidth="5"
+              markerHeight="5"
+              orient="auto-start-reverse"
+            >
+              <path d="M0 0L10 5L0 10z" :fill="colors.green" />
+            </marker>
+            <marker id="dot" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="4" markerHeight="4">
+              <circle cx="5" cy="5" r="4" fill="white" :stroke="colors.green" stroke-width="2" />
+            </marker>
+            <filter id="soft">
+              <feGaussianBlur stdDeviation="4" />
+            </filter>
+            <!-- The drop shadow Figma exports -->
+            <filter id="exported" x="0" y="0" width="120" height="80" filterUnits="userSpaceOnUse">
+              <feFlood flood-opacity="0" result="BackgroundImageFix" />
+              <feColorMatrix
+                in="SourceAlpha"
+                type="matrix"
+                values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
+                result="hardAlpha"
+              />
+              <feOffset dy="4" />
+              <feGaussianBlur stdDeviation="4" />
+              <feComposite in2="hardAlpha" operator="out" />
+              <feColorMatrix
+                type="matrix"
+                values="0 0 0 0 0.043 0 0 0 0 0.071 0 0 0 0 0.125 0 0 0 0.25 0"
+              />
+              <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow" />
+              <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow" result="shape" />
+            </filter>
+            <path id="curve" d="M20 215 Q150 150 280 215" />
+          </defs>
+
+          <rect x="20" y="20" width="80" height="50" rx="10" fill="url(#stripes)" />
+          <circle cx="150" cy="45" r="22" :fill="colors.mint" filter="url(#soft)" />
+          <rect
+            x="200"
+            y="22"
+            width="80"
+            height="46"
+            rx="10"
+            fill="white"
+            filter="url(#exported)"
+          />
+          <text
+            x="240"
+            y="45"
+            text-anchor="middle"
+            dominant-baseline="central"
+            font-size="13"
+            font-weight="600"
+            fill="#0b1220"
+          >
+            Card
+          </text>
+
+          <path
+            d="M24 130 C 60 90, 100 160, 150 120"
+            fill="none"
+            :stroke="colors.green"
+            stroke-width="3"
+            marker-start="url(#arrow)"
+            marker-end="url(#arrow)"
+          />
+          <polyline
+            points="24,170 70,150 110,175 150,155"
+            fill="none"
+            stroke="#94a3b8"
+            stroke-width="2"
+            marker-mid="url(#dot)"
+          />
+          <image
+            :href="logoMark"
+            x="200"
+            y="100"
+            width="80"
+            height="80"
+            preserveAspectRatio="xMidYMid meet"
+          />
+
+          <text font-size="15" font-weight="600" :fill="colors.text">
+            <textPath href="#curve" startOffset="50%" text-anchor="middle">
+              Text along a curve
+            </textPath>
+          </text>
+        </svg>
       </View>
     </Section>
   </Page>

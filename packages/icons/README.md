@@ -7,6 +7,9 @@ Icon sets for [nativue](https://github.com/nativue/nativue) apps, drawn natively
 npm install @nativue/icons
 ```
 
+The icons are drawn by [`@nativue/svg`](../svg/README.md), which comes with it: rebuild the app
+(`npm run ios`, `npm run android`) after installing.
+
 ```vue
 <script setup lang="ts">
 import { HeartIcon } from '@nativue/icons/lucide'

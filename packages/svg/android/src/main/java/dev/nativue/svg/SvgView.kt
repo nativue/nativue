@@ -2,6 +2,7 @@ package dev.nativue.svg
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
 import android.graphics.Color
@@ -12,6 +13,7 @@ import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PathMeasure
 import android.graphics.PointF
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
@@ -25,6 +27,7 @@ import android.os.Build
 import android.view.MotionEvent
 import android.view.View
 import dev.nativue.PluginView
+import dev.nativue.RemoteImageView
 import dev.nativue.androidColor
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -86,6 +89,7 @@ class SvgView(context: Context) : View(context), PluginView {
     /** Pressable shapes as last drawn, in view coordinates, topmost last. */
     private var pressTargets: List<SvgPressTarget> = emptyList()
     private var pressedTarget: SvgPressTarget? = null
+    private val images = SvgImages(context) { invalidate() }
 
     init {
         isClickable = false // a press on an icon presses what contains it
@@ -104,9 +108,10 @@ class SvgView(context: Context) : View(context), PluginView {
     override fun onDraw(canvas: Canvas) {
         val root = root ?: return
         val viewBoxMatrix = root.viewBoxMatrix(width.toFloat(), height.toFloat())
-        val renderer = SvgRenderer(canvas, color, root.definitionsById(), viewBoxMatrix, resources.displayMetrics.density)
+        val renderer = SvgRenderer(canvas, color, root.definitionsById(), viewBoxMatrix, resources.displayMetrics.density, images)
 
         canvas.save()
+        canvas.clipRect(0, 0, width, height)
         canvas.concat(viewBoxMatrix)
         renderer.draw(root, SvgStyle(), emptyList())
         canvas.restore()
@@ -192,46 +197,27 @@ private class SvgElement(
     val hasPressableElements: Boolean
         get() = attributes.values["nodeId"] != null || children.any { it.hasPressableElements }
 
-    /** Gradients, clip paths and masks, which elements refer to by id. */
+    /** Gradients, patterns, clip paths and masks, which elements refer to by id. */
     fun definitionsById(): Map<String, SvgElement> {
         val definitions = mutableMapOf<String, SvgElement>()
         val id = attributes.values["id"] as? String
 
-        if (tag in setOf("linearGradient", "radialGradient", "clipPath", "mask") && id != null) definitions[id] = this
+        if (tag in setOf("linearGradient", "radialGradient", "pattern", "clipPath", "mask") && id != null) definitions[id] = this
         children.forEach { child -> child.definitionsById().forEach { (key, value) -> definitions.putIfAbsent(key, value) } }
 
         return definitions
     }
 
-    /** The root's viewBox fitted into the view: centered and scaled to fit, or stretched with "none". */
+    /** The root's viewBox fitted into the view, as its preserveAspectRatio says. */
     fun viewBoxMatrix(width: Float, height: Float): Matrix {
-        val numbers = (attributes.values["viewBox"] as? List<*>)?.mapNotNull { (it as? Number)?.toFloat() }
-        val matrix = Matrix()
-        if (numbers == null || numbers.size != 4 || numbers[2] <= 0 || numbers[3] <= 0) return matrix
+        val viewBox = SvgView.rect(attributes.values["viewBox"]) ?: return Matrix()
 
-        val (minX, minY, viewWidth, viewHeight) = numbers
-        matrix.setTranslate(-minX, -minY)
-        if (attributes.text("preserveAspectRatio") == "none") {
-            matrix.postScale(width / viewWidth, height / viewHeight)
-
-            return matrix
-        }
-
-        val scale = min(width / viewWidth, height / viewHeight)
-        matrix.postScale(scale, scale)
-        matrix.postTranslate((width - viewWidth * scale) / 2, (height - viewHeight * scale) / 2)
-
-        return matrix
+        return SvgFit.matrix(viewBox, RectF(0f, 0f, width, height), attributes.text("preserveAspectRatio"))
     }
 
-    /** Its own transform attribute, [a, b, c, d, tx, ty]. */
+    /** Its own transform attribute. */
     val transform: Matrix?
-        get() {
-            val numbers = (attributes.values["transform"] as? List<*>)?.mapNotNull { (it as? Number)?.toFloat() }
-            if (numbers == null || numbers.size != 6) return null
-
-            return matrixOf(numbers)
-        }
+        get() = matrixAttribute(attributes.values["transform"])
 
     companion object {
         fun from(value: Any?): SvgElement? {
@@ -249,24 +235,32 @@ private class SvgElement(
     }
 }
 
+/** [a, b, c, d, e, f], as JS sends transforms. */
+private fun matrixAttribute(value: Any?): Matrix? {
+    val numbers = (value as? List<*>)?.mapNotNull { (it as? Number)?.toFloat() }
+    if (numbers == null || numbers.size != 6) return null
+
+    return matrixOf(numbers)
+}
+
 /** SVG's [a, b, c, d, e, f] as an Android matrix. */
 private fun matrixOf(numbers: List<Float>): Matrix = Matrix().apply {
     setValues(floatArrayOf(numbers[0], numbers[2], numbers[4], numbers[1], numbers[3], numbers[5], 0f, 0f, 1f))
 }
 
-/** fill and stroke: none, a color, currentColor, or a gradient (url(#id)). */
+/** fill and stroke: none, a color, currentColor, or a gradient or pattern (url(#id)). */
 private sealed class SvgPaint {
     object None : SvgPaint()
     object CurrentColor : SvgPaint()
     class Color(val color: Int) : SvgPaint()
-    class Gradient(val id: String) : SvgPaint()
+    class Reference(val id: String) : SvgPaint()
 
     companion object {
         fun from(value: Any?): SvgPaint? = when {
             value is Number -> androidColor(value)?.let(::Color)
             value == "none" -> None
             value == "currentColor" -> CurrentColor
-            value is String && value.startsWith("url(#") -> Gradient(value.removePrefix("url(#").removeSuffix(")"))
+            value is String && value.startsWith("url(#") -> Reference(value.removePrefix("url(#").removeSuffix(")"))
             else -> null
         }
     }
@@ -289,6 +283,8 @@ private data class SvgStyle(
     val isBold: Boolean = false,
     val fontFamily: String? = null,
     val textAnchor: String = "start",
+    val baseline: String = "auto",
+    val miterLimit: Float = 4f,
 ) {
     fun inheriting(attributes: SvgAttributes): SvgStyle {
         val values = attributes.values
@@ -320,6 +316,8 @@ private data class SvgStyle(
             isBold = weight?.let { it == "bold" || (it.toIntOrNull() ?: 400) >= 600 } ?: isBold,
             fontFamily = values["font-family"] as? String ?: fontFamily,
             textAnchor = values["text-anchor"] as? String ?: textAnchor,
+            baseline = (values["dominant-baseline"] ?: values["alignment-baseline"]) as? String ?: baseline,
+            miterLimit = attributes.optionalNumber("stroke-miterlimit") ?: miterLimit,
         )
     }
 }
@@ -340,6 +338,7 @@ private class SvgRenderer(
     private val definitions: Map<String, SvgElement>,
     viewBoxMatrix: Matrix,
     private val density: Float,
+    private val images: SvgImages,
 ) {
     val pressTargets = mutableListOf<SvgPressTarget>()
     /** From the element's coordinates to the view's: Canvas.getMatrix is deprecated. */
@@ -354,6 +353,7 @@ private class SvgRenderer(
         val pressable = listOfNotNull(nodeId) + pressableAncestors
         val opacity = element.attributes.optionalNumber("opacity") ?: 1f
         val shadow = (element.attributes.values["shadow"] as? List<*>)?.mapNotNull { it as? Number }
+        val blur = element.attributes.number("blur")
         val savedToView = Matrix(toView)
 
         // Opacity applies to the element as a whole, overlaps included: drawn apart, then blended.
@@ -367,7 +367,11 @@ private class SvgRenderer(
         val mask = definition("mask", element, "mask")
         val contentLayer = if (mask != null) canvas.saveLayer(null, null) else null
 
-        if (shadow != null && shadow.size == 4) drawShadow(element, style, pressable, shadow) else drawContent(element, style, pressable)
+        when {
+            blur > 0 -> drawBlurred(element, style, pressable, blur)
+            shadow != null && shadow.size == 4 -> drawShadow(element, style, pressable, shadow)
+            else -> drawContent(element, style, pressable)
+        }
         if (mask != null && contentLayer != null) applyMask(mask, contentLayer)
 
         canvas.restoreToCount(saveCount)
@@ -387,8 +391,61 @@ private class SvgRenderer(
                 element.children.forEach { draw(it, style, pressable) }
             }
             "text" -> drawText(element, style, pressable)
+            "image" -> drawImage(element, pressable)
             else -> SvgShapes.path(element.tag, element.attributes)?.let { drawShape(it, style, pressable) }
         }
+    }
+
+    /** <image>: its picture fitted into x, y, width and height as preserveAspectRatio says, once loaded. */
+    private fun drawImage(element: SvgElement, pressable: List<Int>) {
+        val attributes = element.attributes
+        val source = (attributes.values["href"] ?: attributes.values["xlink:href"]) as? String ?: return
+        val bitmap = images.bitmap(source) ?: return
+        val imageWidth = bitmap.width / density
+        val imageHeight = bitmap.height / density
+        val left = attributes.number("x")
+        val top = attributes.number("y")
+        val frame = RectF(
+            left,
+            top,
+            left + (attributes.optionalNumber("width") ?: imageWidth),
+            top + (attributes.optionalNumber("height") ?: imageHeight),
+        )
+        val fit = SvgFit.matrix(RectF(0f, 0f, imageWidth, imageHeight), frame, attributes.text("preserveAspectRatio"))
+
+        canvas.save()
+        canvas.clipRect(frame)
+        canvas.concat(fit)
+        canvas.drawBitmap(bitmap, null, RectF(0f, 0f, imageWidth, imageHeight), Paint(Paint.FILTER_BITMAP_FLAG))
+        canvas.restore()
+
+        if (pressable.isEmpty()) return
+
+        val area = Path().apply { addRect(frame, Path.Direction.CW) }
+        area.transform(toView)
+        pressTargets.add(SvgPressTarget(area, pressable))
+    }
+
+    /** blur, an <feGaussianBlur>'s deviation in the drawing's units: the element drawn apart, blurred, then drawn. */
+    private fun drawBlurred(element: SvgElement, style: SvgStyle, pressable: List<Int>, deviation: Float) {
+        val scale = hypot(toViewValue(Matrix.MSCALE_X), toViewValue(Matrix.MSKEW_Y))
+        val radius = deviation * scale
+        val area = shadowArea(element, style, scale, radius)
+        val bitmap = Bitmap.createBitmap(area.width(), area.height(), Bitmap.Config.ARGB_8888)
+        val offscreen = Canvas(bitmap).apply {
+            translate(-area.left.toFloat(), -area.top.toFloat())
+            concat(toView)
+        }
+        val offscreenRenderer = SvgRenderer(offscreen, currentColor, definitions, toView, density, images)
+        offscreenRenderer.drawContent(element, style, pressable)
+        pressTargets.addAll(offscreenRenderer.pressTargets)
+        SvgBlur.blur(bitmap, radius)
+
+        canvas.save()
+        canvas.concat(Matrix().also(toView::invert))
+        canvas.drawBitmap(bitmap, area.left.toFloat(), area.top.toFloat(), null)
+        canvas.restore()
+        bitmap.recycle()
     }
 
     /** The element referred to by an attribute's url(#id). */
@@ -421,7 +478,7 @@ private class SvgRenderer(
             colorFilter = ColorMatrixColorFilter(LUMINANCE_TO_ALPHA)
         }
         canvas.saveLayer(null, maskPaint)
-        val maskRenderer = SvgRenderer(canvas, currentColor, definitions, toView, density)
+        val maskRenderer = SvgRenderer(canvas, currentColor, definitions, toView, density, images)
         mask.children.forEach { maskRenderer.draw(it, SvgStyle(), emptyList()) }
         canvas.restoreToCount(contentLayer)
     }
@@ -439,7 +496,7 @@ private class SvgRenderer(
             translate(-area.left.toFloat(), -area.top.toFloat())
             concat(toView)
         }
-        val offscreenRenderer = SvgRenderer(offscreen, currentColor, definitions, toView, density)
+        val offscreenRenderer = SvgRenderer(offscreen, currentColor, definitions, toView, density, images)
         offscreenRenderer.drawContent(element, style, pressable)
         pressTargets.addAll(offscreenRenderer.pressTargets)
 
@@ -488,6 +545,7 @@ private class SvgRenderer(
             paint.strokeWidth = style.strokeWidth
             paint.strokeCap = style.lineCap
             paint.strokeJoin = style.lineJoin
+            paint.strokeMiter = style.miterLimit
             paint.pathEffect = style.dashes.takeIf { it.isNotEmpty() }?.let {
                 // An odd list repeats, as SVG reads it.
                 val intervals = if (it.size % 2 == 0) it else it + it
@@ -520,7 +578,9 @@ private class SvgRenderer(
 
     /** <text>'s runs: a run with its own x starts a chunk, which text-anchor places. */
     private fun drawText(element: SvgElement, style: SvgStyle, pressable: List<Int>) {
-        val runs = element.children.map { it to style.inheriting(it.attributes) }
+        element.children.filter { it.tag == "textPath" }.forEach { drawTextAlongPath(it, style.inheriting(it.attributes)) }
+
+        val runs = element.children.filter { it.tag != "textPath" }.map { it to style.inheriting(it.attributes) }
         var penX = element.attributes.number("x") + element.attributes.number("dx")
         var penY = element.attributes.number("y") + element.attributes.number("dy")
         val textBox = RectF()
@@ -546,9 +606,10 @@ private class SvgRenderer(
 
                 val textPaint = configureText(runStyle)
                 val width = textPaint.measureText(run.text)
-                // y is the baseline, as drawText takes it.
-                if (textPaint.color != 0) canvas.drawText(run.text, penX, penY, textPaint)
-                textBox.union(penX, penY + textPaint.ascent(), penX + width, penY + textPaint.descent())
+                // y is the baseline, as drawText takes it, unless dominant-baseline moves it.
+                val baselineY = penY + baselineShift(textPaint, runStyle.baseline)
+                if (textPaint.color != 0) canvas.drawText(run.text, penX, baselineY, textPaint)
+                textBox.union(penX, baselineY + textPaint.ascent(), penX + width, baselineY + textPaint.descent())
                 penX += width
             }
             index = end
@@ -559,6 +620,35 @@ private class SvgRenderer(
         val box = Path().apply { addRect(textBox, Path.Direction.CW) }
         box.transform(toView)
         pressTargets.add(SvgPressTarget(box, pressable))
+    }
+
+    /** <textPath>: its text along the path, from startOffset (a length, or a percentage of the path's). */
+    private fun drawTextAlongPath(run: SvgElement, style: SvgStyle) {
+        val path = SvgPathParser(run.attributes.text("d")).parse()
+        matrixAttribute(run.attributes.values["pathTransform"])?.let(path::transform)
+
+        val textPaint = configureText(style)
+        if (textPaint.color == 0) return
+
+        val length = PathMeasure(path, false).length
+        val width = textPaint.measureText(run.text)
+        val startOffset = run.attributes.text("startOffset")
+        val offset = if (startOffset.endsWith("%")) (startOffset.dropLast(1).toFloatOrNull() ?: 0f) / 100 * length else run.attributes.number("startOffset")
+        val anchorOffset = when (style.textAnchor) {
+            "middle" -> width / 2
+            "end" -> width
+            else -> 0f
+        }
+
+        canvas.drawTextOnPath(run.text, path, offset - anchorOffset, baselineShift(textPaint, style.baseline), textPaint)
+    }
+
+    /** dominant-baseline: where y falls on the text, as a shift of the baseline. */
+    private fun baselineShift(textPaint: Paint, baseline: String): Float = when (baseline) {
+        "middle", "central" -> -(textPaint.ascent() + textPaint.descent()) / 2
+        "hanging", "text-before-edge", "text-top" -> -textPaint.ascent()
+        "text-after-edge", "text-bottom", "ideographic" -> -textPaint.descent()
+        else -> 0f
     }
 
     /** The paint for a run: its color (0 for none), font and spacing, left-aligned (runs are placed by hand). */
@@ -592,15 +682,61 @@ private class SvgRenderer(
                 paint.color = withOpacity(resolved.color, opacity)
                 true
             }
-            is SvgPaint.Gradient -> {
-                val gradient = definitions[resolved.id] ?: return false
+            is SvgPaint.Reference -> {
+                val definition = definitions[resolved.id] ?: return false
                 val bounds = RectF().also { shape.computeBounds(it, true) }
-                paint.shader = SvgGradients.shader(gradient, bounds) ?: return false
+                paint.shader = (if (definition.tag == "pattern") patternShader(definition, bounds) else SvgGradients.shader(definition, bounds))
+                    ?: return false
                 paint.alpha = (opacity * 255).roundToInt()
                 true
             }
             else -> false
         }
+    }
+
+    /** A <pattern>'s tile drawn once, at the view's resolution, and repeated by the shader over the shape. */
+    private fun patternShader(pattern: SvgElement, bounds: RectF): Shader? {
+        val attributes = pattern.attributes
+        val isInBox = attributes.text("patternUnits") != "userSpaceOnUse"
+        val tile = RectF(attributes.number("x"), attributes.number("y"), 0f, 0f).apply {
+            right = left + attributes.number("width")
+            bottom = top + attributes.number("height")
+        }
+        if (isInBox) {
+            tile.set(
+                bounds.left + tile.left * bounds.width(),
+                bounds.top + tile.top * bounds.height(),
+                bounds.left + tile.right * bounds.width(),
+                bounds.top + tile.bottom * bounds.height(),
+            )
+        }
+        if (tile.width() <= 0f || tile.height() <= 0f) return null
+
+        val patternTransform = matrixAttribute(attributes.values["patternTransform"])
+        val scale = hypot(toViewValue(Matrix.MSCALE_X), toViewValue(Matrix.MSKEW_Y)) *
+            (patternTransform?.let { FloatArray(9).also(it::getValues).let { values -> hypot(values[0], values[3]) } } ?: 1f)
+        val tileWidth = (tile.width() * scale).roundToInt().coerceIn(1, 2048)
+        val tileHeight = (tile.height() * scale).roundToInt().coerceIn(1, 2048)
+        val bitmap = Bitmap.createBitmap(tileWidth, tileHeight, Bitmap.Config.ARGB_8888)
+        val content = SvgView.rect(attributes.values["viewBox"])?.let {
+            SvgFit.matrix(it, RectF(0f, 0f, tile.width(), tile.height()), attributes.text("preserveAspectRatio"))
+        } ?: Matrix().apply {
+            if (attributes.text("patternContentUnits") == "objectBoundingBox") setScale(bounds.width(), bounds.height())
+        }
+        val tileCanvas = Canvas(bitmap).apply {
+            scale(tileWidth / tile.width(), tileHeight / tile.height())
+            concat(content)
+        }
+        val tileRenderer = SvgRenderer(tileCanvas, currentColor, definitions, Matrix(), density, images)
+        pattern.children.forEach { tileRenderer.draw(it, SvgStyle(), emptyList()) }
+
+        val shaderMatrix = Matrix().apply {
+            setScale(tile.width() / tileWidth, tile.height() / tileHeight)
+            postTranslate(tile.left, tile.top)
+            patternTransform?.let(::postConcat)
+        }
+
+        return BitmapShader(bitmap, Shader.TileMode.REPEAT, Shader.TileMode.REPEAT).apply { setLocalMatrix(shaderMatrix) }
     }
 
     private fun withOpacity(color: Int, opacity: Float): Int {
@@ -612,7 +748,7 @@ private class SvgRenderer(
     companion object {
         /** Referred to by id (url(#id), href), not drawn where they are. */
         val DEFINITION_TAGS = setOf(
-            "defs", "linearGradient", "radialGradient", "stop", "symbol", "clipPath", "mask", "filter", "feDropShadow",
+            "defs", "linearGradient", "radialGradient", "stop", "pattern", "symbol", "clipPath", "mask",
         )
 
         /** A mask's luminance as alpha, as SVG's luminance masks read it. */
@@ -675,6 +811,120 @@ private object SvgGradients {
         shader.setLocalMatrix(matrix)
 
         return shader
+    }
+}
+
+/** A viewBox fitted into a frame as preserveAspectRatio says, like src/svg.ts's viewBoxFit. */
+private object SvgFit {
+    fun matrix(viewBox: RectF, frame: RectF, preserveAspectRatio: String): Matrix {
+        val matrix = Matrix()
+        if (viewBox.width() <= 0f || viewBox.height() <= 0f) return matrix
+
+        val parts = preserveAspectRatio.trim().split(Regex("\\s+"))
+        val align = parts.first().ifEmpty { "xMidYMid" }
+        var scaleX = frame.width() / viewBox.width()
+        var scaleY = frame.height() / viewBox.height()
+
+        if (align != "none") {
+            val scale = if (parts.getOrNull(1) == "slice") max(scaleX, scaleY) else min(scaleX, scaleY)
+            scaleX = scale
+            scaleY = scale
+        }
+
+        matrix.setTranslate(-viewBox.left, -viewBox.top)
+        matrix.postScale(scaleX, scaleY)
+        matrix.postTranslate(
+            frame.left + alignment(align, 1) * (frame.width() - viewBox.width() * scaleX),
+            frame.top + alignment(align, 5) * (frame.height() - viewBox.height() * scaleY),
+        )
+
+        return matrix
+    }
+
+    /** "xMinYMax": Min at 1 (x), Max at 5 (y). */
+    private fun alignment(align: String, offset: Int): Float = when (align.substring(offset.coerceAtMost(align.length), (offset + 3).coerceAtMost(align.length))) {
+        "Min" -> 0f
+        "Max" -> 1f
+        else -> 0.5f
+    }
+}
+
+/** <image>s' pictures, loaded as <Image> loads them; [onLoad] redraws the view as each arrives. */
+private class SvgImages(private val context: Context, private val onLoad: () -> Unit) {
+    private val bitmapsBySource = mutableMapOf<String, Bitmap>()
+    private val loadingSources = mutableSetOf<String>()
+
+    fun bitmap(source: String): Bitmap? {
+        bitmapsBySource[source]?.let { return it }
+        if (!loadingSources.add(source)) return null
+
+        RemoteImageView.loadBitmap(context, source) { bitmap ->
+            bitmapsBySource[source] = bitmap
+            onLoad()
+        }
+
+        return null
+    }
+}
+
+/**
+ * Three box blurs in a row, close to a Gaussian of deviation [radius] pixels: Android has no blur for a
+ * bitmap's colors before RenderEffect, which draws only on views.
+ */
+private object SvgBlur {
+    fun blur(bitmap: Bitmap, radius: Float) {
+        val width = bitmap.width
+        val height = bitmap.height
+        // Three passes of a box this wide have the Gaussian's variance: r(r + 1) = deviation².
+        val boxRadius = max(1, ((sqrt(4 * radius * radius + 1) - 1) / 2).roundToInt())
+        val pixels = IntArray(width * height).also { bitmap.getPixels(it, 0, width, 0, 0, width, height) }
+        val buffer = IntArray(pixels.size)
+
+        repeat(3) {
+            boxBlur(pixels, buffer, width, height, boxRadius, horizontal = true)
+            boxBlur(buffer, pixels, width, height, boxRadius, horizontal = false)
+        }
+        bitmap.setPixels(pixels, 0, width, 0, 0, width, height)
+    }
+
+    /** One pass along rows (or columns), each channel averaged over 2 × radius + 1 pixels, edges transparent. */
+    private fun boxBlur(source: IntArray, target: IntArray, width: Int, height: Int, radius: Int, horizontal: Boolean) {
+        val lines = if (horizontal) height else width
+        val length = if (horizontal) width else height
+        val window = 2 * radius + 1
+        val sums = IntArray(4)
+
+        for (line in 0 until lines) {
+            val indexOf = { position: Int -> if (horizontal) line * width + position else position * width + line }
+            sums.fill(0)
+            for (position in 0 until min(radius, length)) addPixel(sums, source[indexOf(position)], 1)
+
+            for (position in 0 until length) {
+                val entering = position + radius
+                val leaving = position - radius - 1
+                if (entering < length) addPixel(sums, source[indexOf(entering)], 1)
+                if (leaving >= 0) addPixel(sums, source[indexOf(leaving)], -1)
+                target[indexOf(position)] = averagePixel(sums, window)
+            }
+        }
+    }
+
+    // Colors weighed by their alpha (premultiplied), or transparent pixels would darken the edges.
+    private fun addPixel(sums: IntArray, pixel: Int, sign: Int) {
+        val alpha = pixel ushr 24
+
+        sums[0] += sign * alpha
+        sums[1] += sign * (pixel shr 16 and 0xFF) * alpha
+        sums[2] += sign * (pixel shr 8 and 0xFF) * alpha
+        sums[3] += sign * (pixel and 0xFF) * alpha
+    }
+
+    private fun averagePixel(sums: IntArray, window: Int): Int {
+        if (sums[0] <= 0) return 0
+
+        val channel = { sum: Int -> (sum / sums[0]).coerceIn(0, 255) }
+
+        return (sums[0] / window shl 24) or (channel(sums[1]) shl 16) or (channel(sums[2]) shl 8) or channel(sums[3])
     }
 }
 
