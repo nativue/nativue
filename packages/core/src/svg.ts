@@ -9,6 +9,8 @@ export interface SvgNode {
   children: SvgNode[]
   text: string
   svgAttributes?: Record<string, unknown>
+  /** Its style attribute (style="fill: red"), over the attributes, as CSS is. */
+  svgStyleAttributes?: Record<string, unknown>
 }
 
 export type DrawingElement = [
@@ -35,6 +37,12 @@ const PART_TAGS = [
   'linearGradient',
   'radialGradient',
   'stop',
+  'use',
+  'symbol',
+  'clipPath',
+  'mask',
+  'filter',
+  'feDropShadow',
 ]
 const PART_TAG_SET = new Set(PART_TAGS)
 
@@ -53,8 +61,12 @@ const CAMEL_CASE_ATTRIBUTES = new Set([
   'gradientUnits',
   'gradientTransform',
   'spreadMethod',
+  'clipPathUnits',
+  'maskUnits',
+  'maskContentUnits',
+  'stdDeviation',
 ])
-const COLOR_ATTRIBUTES = new Set(['fill', 'stroke', 'stop-color', 'color'])
+const COLOR_ATTRIBUTES = new Set(['fill', 'stroke', 'stop-color', 'color', 'flood-color'])
 const STRING_ATTRIBUTES = new Set([
   'd',
   'points',
@@ -68,12 +80,31 @@ const STRING_ATTRIBUTES = new Set([
   'gradientUnits',
   'spreadMethod',
   'preserveAspectRatio',
+  'href',
+  'xlink:href',
+  'clip-path',
+  'clip-rule',
+  'mask',
+  'filter',
+  'clipPathUnits',
+  'maskUnits',
+  'maskContentUnits',
 ])
+// Nested <use>s stop here, so one that refers to itself can't loop.
+const MAXIMUM_USE_DEPTH = 8
 // Gradients and their stops use fractions (objectBoundingBox): "50%" is 0.5 there.
 const FRACTION_TAGS = new Set(['linearGradient', 'radialGradient', 'stop'])
 // Elsewhere a percentage is of the viewBox: of its width, its height, or its normalized diagonal.
-const WIDTH_ATTRIBUTES = new Set(['x', 'cx', 'rx', 'width', 'x1', 'x2', 'dx'])
-const HEIGHT_ATTRIBUTES = new Set(['y', 'cy', 'ry', 'height', 'y1', 'y2', 'dy'])
+const WIDTH_ATTRIBUTES = new Set(['x', 'cx', 'rx', 'width', 'x1', 'x2', 'dx', 'fx'])
+const HEIGHT_ATTRIBUTES = new Set(['y', 'cy', 'ry', 'height', 'y1', 'y2', 'dy', 'fy'])
+// Opacities are fractions anywhere: "50%" is 0.5.
+const OPACITY_ATTRIBUTES = new Set([
+  'opacity',
+  'fill-opacity',
+  'stroke-opacity',
+  'stop-opacity',
+  'flood-opacity',
+])
 
 type Viewport = { width: number; height: number }
 
@@ -205,33 +236,70 @@ export function drawingAttribute(key: string, value: unknown): [string, unknown]
             .map(Number),
         ]
   }
-  if (COLOR_ATTRIBUTES.has(name)) return [name, colorValue(value)]
+  if (COLOR_ATTRIBUTES.has(name)) {
+    const color = colorValue(value)
+
+    return color === undefined ? null : [name, color]
+  }
   if (STRING_ATTRIBUTES.has(name)) return [name, String(value)]
 
   return [name, numberValue(value)]
 }
 
-/** none, currentColor and url(#id) as they are; any other color as 0xRRGGBBAA. */
+/**
+ * none, currentColor and url(#id) as they are; any other color as 0xRRGGBBAA. undefined for inherit and
+ * colors it can't read: left out, the parent's paint applies, as in SVG.
+ */
 function colorValue(value: unknown): unknown {
   const text = String(value).trim()
 
   if (text === 'none' || text === 'currentColor' || text.startsWith('url(')) return text
+  if (text === 'inherit') return undefined
 
-  return processColor(text) ?? 'none'
+  return processColor(text) ?? undefined
+}
+
+/** style="fill: red; stroke-width: 2" (or Vue's object for it) as drawing attributes. */
+export function styleAttributes(style: unknown): Record<string, unknown> {
+  const declarations =
+    typeof style === 'string'
+      ? style.split(';').map((declaration) => declaration.split(':').map((part) => part.trim()))
+      : Object.entries((style ?? {}) as Record<string, unknown>)
+  const attributes: Record<string, unknown> = {}
+
+  for (const [property, value] of declarations) {
+    const attribute = property ? drawingAttribute(String(property), value) : null
+    if (attribute) attributes[attribute[0]] = attribute[1]
+  }
+
+  return attributes
+}
+
+type DrawingContext = {
+  isPressable: (node: SvgNode) => boolean
+  viewport: Viewport
+  nodesById: Map<string, SvgNode>
+  useDepth: number
 }
 
 /** The drawing the native view gets: the root's attributes, then its children. */
 export function drawingOf(root: SvgNode, isPressable: (node: SvgNode) => boolean): DrawingElement {
   const attributes: Record<string, unknown> = { ...root.svgAttributes }
-  const viewport = viewportOf(attributes)
+  const nodesById = new Map<string, SvgNode>()
+  const context = { isPressable, viewport: viewportOf(attributes), nodesById, useDepth: 0 }
 
+  indexById(root, nodesById)
+  applyFilter(attributes, context)
   if (isPressable(root)) attributes.nodeId = root.id
 
-  return [
-    'svg',
-    attributes,
-    root.children.flatMap((child) => elementsOf(child, isPressable, viewport)),
-  ]
+  return ['svg', attributes, root.children.flatMap((child) => elementsOf(child, context))]
+}
+
+function indexById(node: SvgNode, nodesById: Map<string, SvgNode>) {
+  const id = node.svgAttributes?.id
+
+  if (typeof id === 'string' && !nodesById.has(id)) nodesById.set(id, node)
+  node.children.forEach((child) => indexById(child, nodesById))
 }
 
 /** What percentages are of: the viewBox, or the size the width and height attributes give. */
@@ -242,23 +310,154 @@ function viewportOf(attributes: Record<string, unknown>): Viewport {
   return { width: Number(attributes.width) || 0, height: Number(attributes.height) || 0 }
 }
 
-function elementsOf(
-  node: SvgNode,
-  isPressable: (node: SvgNode) => boolean,
-  viewport: Viewport,
-): DrawingElement[] {
+function attributesOf(node: SvgNode): Record<string, unknown> {
+  return { ...node.svgAttributes, ...node.svgStyleAttributes }
+}
+
+/** The element an href ("#id") or url(#id) refers to. */
+function referenced(reference: unknown, context: DrawingContext): SvgNode | undefined {
+  const id = String(reference ?? '').match(/#([^)\s]+)/)?.[1]
+
+  return id === undefined ? undefined : context.nodesById.get(id)
+}
+
+function elementsOf(node: SvgNode, context: DrawingContext): DrawingElement[] {
   const tag = svgPartTag(node.type)
   if (!tag) return []
+  if (tag === 'use') return useElements(node, context)
 
-  const attributes = resolvedPercentages(tag, { ...node.svgAttributes }, viewport)
-  if (isPressable(node)) attributes.nodeId = node.id
+  const attributes = resolvedPercentages(tag, attributesOf(node), context.viewport)
+  let children = node.children.flatMap((child) => elementsOf(child, context))
 
-  // <text>'s content is its text, <tspan>s included, with whitespace collapsed as in SVG.
-  if (tag === 'text') return [[tag, attributes, textOf(node).replace(/\s+/g, ' ').trim()]]
+  if (context.isPressable(node)) attributes.nodeId = node.id
+  applyFilter(attributes, context)
+  // A gradient's href lends it the attributes it doesn't set, and its stops when it has none.
+  if (tag === 'linearGradient' || tag === 'radialGradient') {
+    const inherited = referenced(attributes.href ?? attributes['xlink:href'], context)
 
-  const children = node.children.flatMap((child) => elementsOf(child, isPressable, viewport))
+    if (inherited) {
+      const inheritedAttributes = resolvedPercentages(
+        tag,
+        attributesOf(inherited),
+        context.viewport,
+      )
+
+      Object.assign(attributes, { ...inheritedAttributes, ...attributes })
+      if (!children.some(([childTag]) => childTag === 'stop')) {
+        children = inherited.children.flatMap((child) => elementsOf(child, context))
+      }
+    }
+  }
+  if (tag === 'text') return [[tag, attributes, textRuns(node, context)]]
 
   return [[tag, attributes, children]]
+}
+
+/**
+ * <use href="#id" x y>: a copy of the element, moved by x and y. A <symbol> is fitted into its width
+ * and height, as its viewBox says.
+ */
+function useElements(node: SvgNode, context: DrawingContext): DrawingElement[] {
+  const attributes = resolvedPercentages('use', attributesOf(node), context.viewport)
+  const target = referenced(attributes.href ?? attributes['xlink:href'], context)
+  if (!target || context.useDepth >= MAXIMUM_USE_DEPTH) return []
+
+  const nested = { ...context, useDepth: context.useDepth + 1 }
+  const placement = [1, 0, 0, 1, Number(attributes.x) || 0, Number(attributes.y) || 0]
+  const transform = multiply((attributes.transform as number[]) ?? [1, 0, 0, 1, 0, 0], placement)
+  const content =
+    target.type === 'symbol'
+      ? [
+          [
+            'g',
+            { transform: symbolFit(target, attributes) },
+            target.children.flatMap((child) => elementsOf(child, nested)),
+          ] as DrawingElement,
+        ]
+      : elementsOf(target, nested)
+
+  for (const name of ['href', 'xlink:href', 'x', 'y', 'width', 'height']) delete attributes[name]
+  applyFilter(attributes, context)
+  if (context.isPressable(node)) attributes.nodeId = node.id
+
+  return [['g', { ...attributes, transform }, content]]
+}
+
+/** A <symbol>'s viewBox fitted into the <use>'s width and height, centered (xMidYMid meet). */
+function symbolFit(symbol: SvgNode, useAttributes: Record<string, unknown>): number[] {
+  const viewBox = symbol.svgAttributes?.viewBox as number[] | undefined
+  if (viewBox?.length !== 4 || !viewBox[2] || !viewBox[3]) return [1, 0, 0, 1, 0, 0]
+
+  const width = Number(useAttributes.width ?? symbol.svgAttributes?.width) || viewBox[2]
+  const height = Number(useAttributes.height ?? symbol.svgAttributes?.height) || viewBox[3]
+  const scale = Math.min(width / viewBox[2], height / viewBox[3])
+
+  return [
+    scale,
+    0,
+    0,
+    scale,
+    (width - viewBox[2] * scale) / 2 - viewBox[0] * scale,
+    (height - viewBox[3] * scale) / 2 - viewBox[1] * scale,
+  ]
+}
+
+/** filter="url(#id)" in place: what native draws, a shadow. */
+function applyFilter(attributes: Record<string, unknown>, context: DrawingContext) {
+  if (!attributes.filter) return
+
+  Object.assign(attributes, shadowOf(referenced(attributes.filter, context)))
+  delete attributes.filter
+}
+
+/** filter="url(#id)" with an <feDropShadow>: a shadow, [dx, dy, blur, color]. Other filters draw nothing. */
+function shadowOf(filter: SvgNode | undefined): Record<string, unknown> {
+  const dropShadow = filter?.children.find((child) => child.type === 'feDropShadow')
+  if (!dropShadow) return {}
+
+  const attributes = attributesOf(dropShadow)
+  const color =
+    typeof attributes['flood-color'] === 'number' ? attributes['flood-color'] : 0x000000ff
+  const opacity = Number(attributes['flood-opacity'] ?? 1)
+  const alpha = Math.round((color & 0xff) * opacity)
+
+  return {
+    shadow: [
+      Number(attributes.dx ?? 2),
+      Number(attributes.dy ?? 2),
+      Number(attributes.stdDeviation ?? 2),
+      ((color & 0xffffff00) | alpha) >>> 0,
+    ],
+  }
+}
+
+/**
+ * <text>'s runs: its text and its <tspan>s, each with its own position (x, y, dx, dy) and style, whitespace
+ * collapsed as in SVG.
+ */
+function textRuns(node: SvgNode, context: DrawingContext): DrawingElement[] {
+  const runs: DrawingElement[] = node.children.flatMap((child): DrawingElement[] => {
+    if (child.type === '#text') return [['tspan', {}, child.text]]
+    if (child.type !== 'tspan') return []
+
+    const attributes = resolvedPercentages('tspan', attributesOf(child), context.viewport)
+
+    return [['tspan', attributes, textOf(child)]]
+  })
+  let endsWithSpace = true
+
+  for (const run of runs) {
+    let text = (run[2] as string).replace(/\s+/g, ' ')
+
+    if (endsWithSpace) text = text.trimStart()
+    endsWithSpace = text.endsWith(' ') || (endsWithSpace && text === '')
+    run[2] = text
+  }
+
+  const last = runs.findLast((run) => run[2] !== '')
+  if (last) last[2] = (last[2] as string).trimEnd()
+
+  return runs.filter((run) => run[2] !== '')
 }
 
 function resolvedPercentages(tag: string, attributes: Record<string, unknown>, viewport: Viewport) {
@@ -268,8 +467,13 @@ function resolvedPercentages(tag: string, attributes: Record<string, unknown>, v
     if (typeof value !== 'string' || !value.endsWith('%')) continue
 
     const fraction = Number.parseFloat(value) / 100
+    // A gradient in the drawing's units (userSpaceOnUse) takes percentages of the viewport, as shapes do.
+    const isFraction =
+      OPACITY_ATTRIBUTES.has(name) ||
+      tag === 'stop' ||
+      (FRACTION_TAGS.has(tag) && attributes.gradientUnits !== 'userSpaceOnUse')
 
-    if (FRACTION_TAGS.has(tag)) attributes[name] = fraction
+    if (isFraction) attributes[name] = fraction
     else if (WIDTH_ATTRIBUTES.has(name)) attributes[name] = fraction * viewport.width
     else if (HEIGHT_ATTRIBUTES.has(name)) attributes[name] = fraction * viewport.height
     else attributes[name] = fraction * diagonal

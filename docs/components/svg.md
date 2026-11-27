@@ -37,23 +37,30 @@ element: an app's own component with one of these names (a `Line.vue` it imports
 
 ## What it draws
 
-| Element                                                            | Attributes                                                                                                                                                                              |
-| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `svg`                                                              | `viewBox`, `width`, `height` (they size it; `style` too), `preserveAspectRatio` (`xMidYMid meet`, the default, or `none`)                                                               |
-| `path`, `circle`, `ellipse`, `rect`, `line`, `polyline`, `polygon` | their geometry: `d`, `cx`/`cy`/`r`, `x`/`y`/`width`/`height`/`rx`/`ry`, `points`...                                                                                                     |
-| `g`                                                                | groups: what it sets is inherited by what's inside                                                                                                                                      |
-| `text` (`tspan` inside joins its text)                             | `x`, `y` (the baseline), `dx`, `dy`, `font-size`, `font-weight`, `font-family`, `text-anchor`                                                                                           |
-| `defs`, `linearGradient`, `radialGradient`, `stop`                 | gradients, used as `fill="url(#id)"` or `stroke="url(#id)"`: `x1`/`y1`/`x2`/`y2`, `cx`/`cy`/`r`/`fx`/`fy`, `gradientUnits`, `gradientTransform`, `offset`, `stop-color`, `stop-opacity` |
+| Element                                                            | Attributes                                                                                                                                                                                                                                                                        |
+| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `svg`                                                              | `viewBox`, `width`, `height` (they size it; `style` too), `preserveAspectRatio` (`xMidYMid meet`, the default, or `none`)                                                                                                                                                         |
+| `path`, `circle`, `ellipse`, `rect`, `line`, `polyline`, `polygon` | their geometry: `d`, `cx`/`cy`/`r`, `x`/`y`/`width`/`height`/`rx`/`ry`, `points`...                                                                                                                                                                                               |
+| `g`                                                                | groups: what it sets is inherited by what's inside                                                                                                                                                                                                                                |
+| `text`, `tspan`                                                    | `x`, `y` (the baseline), `dx`, `dy`, `font-size`, `font-weight`, `font-family`, `text-anchor`, `letter-spacing`; a `tspan` with its own `x`, `y` or `dy` starts a new line or place, with its own style                                                                           |
+| `defs`, `linearGradient`, `radialGradient`, `stop`                 | gradients, as `fill="url(#id)"` or `stroke="url(#id)"`: `x1`/`y1`/`x2`/`y2`, `cx`/`cy`/`r`/`fx`/`fy`, `gradientUnits`, `gradientTransform`, `spreadMethod` (`pad`, `reflect`, `repeat`), `href` (another gradient's stops and attributes), `offset`, `stop-color`, `stop-opacity` |
+| `clipPath`                                                         | `clip-path="url(#id)"`: only what its shapes cover is drawn; `clipPathUnits`, `clip-rule`                                                                                                                                                                                         |
+| `mask`                                                             | `mask="url(#id)"`: drawn where the mask's content is light (its luminance)                                                                                                                                                                                                        |
+| `symbol`, `use`                                                    | `<use href="#id" x y width height>` draws a copy of an element, or of a `symbol` fitted to its `viewBox`; `xlink:href` works too                                                                                                                                                  |
+| `filter`, `feDropShadow`                                           | `filter="url(#id)"`: a shadow, `dx`, `dy`, `stdDeviation`, `flood-color`, `flood-opacity`                                                                                                                                                                                         |
 
 On any element: `fill`, `stroke` (a color, `none`, `currentColor` or `url(#id)`), `stroke-width`,
-`stroke-linecap`, `stroke-linejoin`, `stroke-dasharray`, `opacity`, `fill-opacity`, `stroke-opacity`,
-`fill-rule` and `transform` (`translate`, `scale`, `rotate`, `skewX`, `skewY`, `matrix`). Like in
-SVG, `fill` defaults to black, and `stroke` to none. Percentages are of the `viewBox` (`width="100%"`,
-`x="50%"`), and of the shape's box in gradients and stops' `offset`. `width` and `height` on `<svg>`
-size it under its `class` and `style`, as on the web.
+`stroke-linecap`, `stroke-linejoin`, `stroke-dasharray`, `stroke-dashoffset`, `opacity`,
+`fill-opacity`, `stroke-opacity`, `fill-rule` and `transform` (`translate`, `scale`, `rotate`, `skewX`,
+`skewY`, `matrix`), also as `style="fill: red; stroke-width: 2"`. Like in SVG, `fill` defaults to
+black, and `stroke` to none. Percentages are of the `viewBox` (`width="100%"`, `x="50%"`), and of the
+shape's box in gradients and stops' `offset`. `width` and `height` on `<svg>` size it under its
+`class` and `style`, as on the web.
 
-Not drawn yet: `clipPath`, `mask`, `filter`, `pattern`, `image`, `use`, `foreignObject`, and text on
-more than one line.
+Animating `stroke-dashoffset` from the line's length to 0 draws it in, as on the web.
+
+Not drawn yet: `image`, `pattern`, `marker`, `textPath`, `foreignObject`, filters other than
+`feDropShadow`, and a `<style>` element (Vue leaves `<style>` out of templates: use `style=""`).
 
 ## Taps
 

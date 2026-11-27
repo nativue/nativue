@@ -1096,7 +1096,7 @@ assert.ok(viewsById[platformCardId].style.backgroundColor) // ios:bg-sky-100, no
 // ---------- SVG: <svg> as on the web, drawn by one native view ----------
 
 const svgScreenId = await open('explore/svg')
-const [chartId, illustrationId] = renderedViewIds(svgScreenId).filter(
+const [chartId, effectsId, illustrationId] = renderedViewIds(svgScreenId).filter(
   (id) => viewsById[id].type === 'Svg',
 )
 const drawingOf = (id) => viewsById[id].props.drawing
@@ -1104,7 +1104,12 @@ const elementsTagged = (element, tag) => [
   ...(element[0] === tag ? [element] : []),
   ...(Array.isArray(element[2]) ? element[2].flatMap((child) => elementsTagged(child, tag)) : []),
 ]
-const chartTitle = () => elementsTagged(drawingOf(chartId), 'text').at(-1)[2].trim()
+// <text>'s content is its runs: its text and its <tspan>s.
+const chartTitle = () =>
+  elementsTagged(drawingOf(chartId), 'text')
+    .at(-1)[2]
+    .map((run) => run[2])
+    .join('')
 
 // What's inside the <svg> never becomes a native view: the root gets it all as one drawing.
 assert.equal(renderedViewIds(chartId).length, 1)
@@ -1132,6 +1137,40 @@ assert.deepEqual(
   [0.966, 0.259, -0.259, 0.966, 80, 14],
 )
 assert.equal(elementsTagged(drawingOf(illustrationId), 'radialGradient')[0][1].id, 'sun')
+// style="fill: ..." is a drawing attribute too.
+assert.equal(elementsTagged(drawingOf(illustrationId), 'rect')[0][1].fill, 0x94a3b8ff)
+
+// <use href="#star">: a copy of the symbol, moved and fitted, inheriting the <use>'s fill.
+const effects = drawingOf(effectsId)
+const stars = effects[2].filter(([tag, attributes]) => tag === 'g' && attributes.fill !== undefined)
+assert.equal(stars.length, 3)
+assert.deepEqual(stars[1][1].transform, [1, 0, 0, 1, 30, 84])
+assert.equal(stars[1][2][0][0], 'g') // the symbol's viewBox, fitted into 22 by 22
+assert.equal(elementsTagged(stars[1][2][0], 'path').length, 1)
+// A gradient's href lends it the stops and attributes it doesn't set.
+const across = elementsTagged(effects, 'linearGradient').find(
+  ([, attributes]) => attributes.id === 'brandAcross',
+)
+assert.equal(elementsTagged(across, 'stop').length, 2)
+assert.deepEqual([across[1].x2, across[1].y2], [1, 0])
+// filter="url(#id)" with an feDropShadow: a shadow, [dx, dy, blur, color].
+const card = elementsTagged(effects, 'rect').find(([, attributes]) => attributes.shadow)
+assert.deepEqual(card[1].shadow.slice(0, 3), [0, 3, 3])
+assert.equal(card[1].filter, undefined)
+// <text> and its <tspan>: runs, whitespace collapsed to single spaces and trimmed at the ends.
+const [doneText] = elementsTagged(effects, 'text')
+assert.deepEqual(
+  doneText[2].map(([, , text]) => text),
+  ['75% done ', "of today's goal"], // the space between them is one, as in SVG
+)
+const ring = () =>
+  elementsTagged(drawingOf(effectsId), 'circle').find(
+    ([, attributes]) => attributes['stroke-dashoffset'] !== undefined,
+  )
+assert.equal(Math.round(ring()[1]['stroke-dashoffset']), 47)
+press(pressableContaining('More progress', svgScreenId))
+await settle()
+assert.equal(ring()[1]['stroke-dashoffset'], 0)
 
 // ---------- Native plugins (@nativue/haptics, @nativue/clipboard) ----------
 

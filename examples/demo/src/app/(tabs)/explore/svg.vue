@@ -10,6 +10,10 @@ const WIDTH = 300
 const HEIGHT = 150
 const PADDING = 20
 
+// The ring's circumference: dash offset 0 draws all of it.
+const RING = 2 * Math.PI * 30
+
+const progress = ref(0.75)
 const steps = ref([4200, 7600, 5100, 9800, 6400, 11200, 8300])
 const selected = ref(steps.value.length - 1)
 
@@ -99,6 +103,73 @@ function shuffle() {
     </Section>
 
     <Section
+      title="Effects"
+      footer="clipPath, mask, use, symbol, feDropShadow, tspan and dash offset."
+    >
+      <View class="items-center rounded-xl bg-white py-4 dark:bg-slate-800">
+        <svg viewBox="0 0 300 120" width="320" height="128">
+          <defs>
+            <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#4AF2AE" />
+              <stop offset="1" stop-color="#10B39B" />
+            </linearGradient>
+            <linearGradient id="brandAcross" href="#brand" y2="0" />
+            <clipPath id="avatar"><circle cx="40" cy="40" r="32" /></clipPath>
+            <symbol id="star" viewBox="0 0 24 24">
+              <path d="M12 2l3 7h7l-6 4 2 7-6-4-6 4 2-7-6-4h7z" />
+            </symbol>
+            <filter id="lift">
+              <feDropShadow
+                dx="0"
+                dy="3"
+                stdDeviation="3"
+                flood-color="#0B1220"
+                flood-opacity="0.3"
+              />
+            </filter>
+          </defs>
+          <rect x="8" y="8" width="64" height="64" fill="url(#brand)" clip-path="url(#avatar)" />
+          <use
+            v-for="index in 3"
+            :key="index"
+            href="#star"
+            :x="(index - 1) * 26 + 4"
+            y="84"
+            width="22"
+            height="22"
+            fill="#ffd60a"
+          />
+          <circle cx="130" cy="44" r="30" fill="none" stroke="#e2e8f0" stroke-width="8" />
+          <circle
+            cx="130"
+            cy="44"
+            r="30"
+            fill="none"
+            stroke="#0E9F84"
+            stroke-width="8"
+            stroke-linecap="round"
+            :stroke-dasharray="RING"
+            :stroke-dashoffset="RING * (1 - progress)"
+            transform="rotate(-90 130 44)"
+          />
+          <rect x="185" y="14" width="105" height="60" rx="10" fill="white" filter="url(#lift)" />
+          <text x="196" y="38" font-size="13" font-weight="bold" fill="#0f172a">
+            {{ Math.round(progress * 100) }}% done
+            <tspan x="196" dy="18" font-size="11" font-weight="normal" fill="#64748b">
+              of today's goal
+            </tspan>
+          </text>
+        </svg>
+      </View>
+      <Pressable
+        class="items-center rounded-xl bg-white py-3 active:bg-slate-200 dark:bg-slate-800 dark:active:bg-slate-700"
+        @press="progress = progress >= 1 ? 0.25 : progress + 0.25"
+      >
+        <Text class="font-semibold text-slate-900 dark:text-white">More progress</Text>
+      </Pressable>
+    </Section>
+
+    <Section
       title="Components"
       footer="<Svg>, <Circle>, <Path>... draw the same as the lowercase tags."
     >
@@ -119,7 +190,7 @@ function shuffle() {
             stroke-linecap="round"
           />
           <G transform="translate(80 14) rotate(15)" opacity="0.85">
-            <Rect width="24" height="12" rx="6" fill="#94a3b8" />
+            <Rect width="24" height="12" rx="6" style="fill: #94a3b8" />
           </G>
         </Svg>
       </View>

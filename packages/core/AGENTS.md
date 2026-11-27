@@ -22,8 +22,9 @@ Global, with no import: `View`, `Text`, `Image`, `ImageBackground`, `Pressable`,
 
 - Charts and drawings: `<svg>` with `path`, `circle`, `rect`, `line`, `polyline`, `polygon`, `ellipse`,
   `g`, `text`, and gradients in `defs` (`fill="url(#id)"`), as on the web; `@press` on an element.
-  Also as components: `<Svg>`, `<Path>`, `<Circle>`... and `<SvgText>` for text. No `clipPath`,
-  `mask`, `filter` or `image` yet.
+  Also `clipPath`, `mask`, `use`/`symbol`, `tspan` lines, `stroke-dashoffset` and `feDropShadow`
+  filters. As components too: `<Svg>`, `<Path>`, `<Circle>`... and `<SvgText>` for text. No `image`,
+  `pattern` or `marker` yet.
 
 - Text must be inside a `<Text>`, never directly in a `<View>`.
 - Taps: `<Pressable @press="save">` (also `@long-press`, and `v-slot="{ pressed }"`), or

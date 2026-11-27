@@ -2,18 +2,26 @@ package dev.nativue
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BlurMaskFilter
 import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.DashPathEffect
 import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PointF
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.RadialGradient
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Region
 import android.graphics.Shader
 import android.graphics.Typeface
+import android.os.Build
 import android.view.MotionEvent
 import android.view.View
 import kotlin.math.abs
@@ -33,7 +41,7 @@ import kotlin.math.tan
  * scaled from the root's viewBox like preserveAspectRatio="xMidYMid meet" (or "none"). Icons send
  * `elements` instead, Lucide's [tag, attributes] pairs, stroked with `color`. Mirrors ios/SvgView.swift.
  */
-// Limitation: no clipPath, mask, filter, pattern or image; text is a single line, filled with a color.
+// Limitation: no pattern, marker, image or textPath, and of the filters only a drop shadow.
 class SvgView(context: Context) : View(context) {
     var viewBox = RectF(0f, 0f, 24f, 24f)
         set(value) {
@@ -76,6 +84,7 @@ class SvgView(context: Context) : View(context) {
     private val root: SvgElement? get() = if (elements.isEmpty()) drawingRoot else iconRoot
     /** Pressable shapes as last drawn, in view coordinates, topmost last. */
     private var pressTargets: List<SvgPressTarget> = emptyList()
+    private var pressedTarget: SvgPressTarget? = null
 
     init {
         isClickable = false // a press on an icon presses what contains it
@@ -84,7 +93,7 @@ class SvgView(context: Context) : View(context) {
     override fun onDraw(canvas: Canvas) {
         val root = root ?: return
         val viewBoxMatrix = root.viewBoxMatrix(width.toFloat(), height.toFloat())
-        val renderer = SvgRenderer(canvas, color, root.gradientsById(), viewBoxMatrix, resources.displayMetrics.density)
+        val renderer = SvgRenderer(canvas, color, root.definitionsById(), viewBoxMatrix, resources.displayMetrics.density)
 
         canvas.save()
         canvas.concat(viewBoxMatrix)
@@ -95,11 +104,15 @@ class SvgView(context: Context) : View(context) {
 
     /** Only a press on a pressable element is this view's: elsewhere it goes to what contains it. */
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        val target = pressTargets.lastOrNull { it.contains(event.x, event.y) } ?: return false
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> pressedTarget = pressTargets.lastOrNull { it.contains(event.x, event.y) }
+            MotionEvent.ACTION_UP -> pressedTarget?.takeIf { it.contains(event.x, event.y) }?.let {
+                onElementPress?.invoke(it.nodeIds, event.x, event.y)
+            }
+            MotionEvent.ACTION_CANCEL -> pressedTarget = null
+        }
 
-        if (event.actionMasked == MotionEvent.ACTION_UP) onElementPress?.invoke(target.nodeIds, event.x, event.y)
-
-        return true
+        return pressedTarget != null
     }
 
     private fun rootDidChange() {
@@ -168,14 +181,15 @@ private class SvgElement(
     val hasPressableElements: Boolean
         get() = attributes.values["nodeId"] != null || children.any { it.hasPressableElements }
 
-    fun gradientsById(): Map<String, SvgElement> {
-        val gradients = mutableMapOf<String, SvgElement>()
+    /** Gradients, clip paths and masks, which elements refer to by id. */
+    fun definitionsById(): Map<String, SvgElement> {
+        val definitions = mutableMapOf<String, SvgElement>()
         val id = attributes.values["id"] as? String
 
-        if ((tag == "linearGradient" || tag == "radialGradient") && id != null) gradients[id] = this
-        children.forEach { child -> child.gradientsById().forEach { (key, value) -> gradients.putIfAbsent(key, value) } }
+        if (tag in setOf("linearGradient", "radialGradient", "clipPath", "mask") && id != null) definitions[id] = this
+        children.forEach { child -> child.definitionsById().forEach { (key, value) -> definitions.putIfAbsent(key, value) } }
 
-        return gradients
+        return definitions
     }
 
     /** The root's viewBox fitted into the view: centered and scaled to fit, or stretched with "none". */
@@ -257,7 +271,9 @@ private data class SvgStyle(
     val lineCap: Paint.Cap = Paint.Cap.BUTT,
     val lineJoin: Paint.Join = Paint.Join.MITER,
     val dashes: List<Float> = emptyList(),
+    val dashOffset: Float = 0f,
     val isEvenOdd: Boolean = false,
+    val letterSpacing: Float = 0f,
     val fontSize: Float = 16f,
     val isBold: Boolean = false,
     val fontFamily: String? = null,
@@ -287,6 +303,8 @@ private data class SvgStyle(
             },
             dashes = (values["stroke-dasharray"] as? List<*>)?.mapNotNull { (it as? Number)?.toFloat() } ?: dashes,
             isEvenOdd = (values["fill-rule"] as? String)?.let { it == "evenodd" } ?: isEvenOdd,
+            dashOffset = attributes.optionalNumber("stroke-dashoffset") ?: dashOffset,
+            letterSpacing = attributes.optionalNumber("letter-spacing") ?: letterSpacing,
             fontSize = attributes.optionalNumber("font-size") ?: fontSize,
             isBold = weight?.let { it == "bold" || (it.toIntOrNull() ?: 400) >= 600 } ?: isBold,
             fontFamily = values["font-family"] as? String ?: fontFamily,
@@ -308,7 +326,7 @@ private class SvgPressTarget(path: Path, val nodeIds: List<Int>) {
 private class SvgRenderer(
     private val canvas: Canvas,
     private val currentColor: Int,
-    private val gradients: Map<String, SvgElement>,
+    private val definitions: Map<String, SvgElement>,
     viewBoxMatrix: Matrix,
     private val density: Float,
 ) {
@@ -318,12 +336,13 @@ private class SvgRenderer(
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
     fun draw(element: SvgElement, inherited: SvgStyle, pressableAncestors: List<Int>) {
-        if (element.tag in setOf("defs", "linearGradient", "radialGradient", "stop")) return
+        if (element.tag in DEFINITION_TAGS) return
 
         val style = inherited.inheriting(element.attributes)
         val nodeId = (element.attributes.values["nodeId"] as? Number)?.toInt()
         val pressable = listOfNotNull(nodeId) + pressableAncestors
         val opacity = element.attributes.optionalNumber("opacity") ?: 1f
+        val shadow = (element.attributes.values["shadow"] as? List<*>)?.mapNotNull { it as? Number }
         val savedToView = Matrix(toView)
 
         // Opacity applies to the element as a whole, overlaps included: drawn apart, then blended.
@@ -332,10 +351,23 @@ private class SvgRenderer(
             canvas.concat(transform)
             toView.preConcat(transform)
         }
+        applyClipPath(element)
 
+        val mask = definition("mask", element, "mask")
+        val contentLayer = if (mask != null) canvas.saveLayer(null, null) else null
+
+        if (shadow != null && shadow.size == 4) drawShadow(element, style, pressable, shadow) else drawContent(element, style, pressable)
+        if (mask != null && contentLayer != null) applyMask(mask, contentLayer)
+
+        canvas.restoreToCount(saveCount)
+        toView = savedToView
+    }
+
+    private fun drawContent(element: SvgElement, style: SvgStyle, pressable: List<Int>) {
         when (element.tag) {
             "svg", "g" -> {
                 // An <svg @press>: anywhere in it, under its elements.
+                val nodeId = (element.attributes.values["nodeId"] as? Number)?.toInt()
                 if (element.tag == "svg" && nodeId != null) {
                     val viewport = Path().apply { addRect(RectF(canvas.clipBounds), Path.Direction.CW) }
                     viewport.transform(toView)
@@ -346,9 +378,92 @@ private class SvgRenderer(
             "text" -> drawText(element, style, pressable)
             else -> SvgShapes.path(element.tag, element.attributes)?.let { drawShape(it, style, pressable) }
         }
+    }
 
-        canvas.restoreToCount(saveCount)
-        toView = savedToView
+    /** The element referred to by an attribute's url(#id). */
+    private fun definition(attribute: String, element: SvgElement, tag: String): SvgElement? {
+        val reference = element.attributes.text(attribute)
+        if (!reference.startsWith("url(#")) return null
+
+        return definitions[reference.removePrefix("url(#").removeSuffix(")")]?.takeIf { it.tag == tag }
+    }
+
+    /** clip-path="url(#id)": only what its shapes cover is drawn. */
+    private fun applyClipPath(element: SvgElement) {
+        val clipPath = definition("clip-path", element, "clipPath") ?: return
+        val shapes = SvgShapes.combinedPath(clipPath.children)
+        val transform = clipPath.transform ?: Matrix()
+
+        if (clipPath.attributes.text("clipPathUnits") == "objectBoundingBox") {
+            val box = SvgShapes.boundingBox(element)
+            transform.postConcat(Matrix().apply { setScale(box.width(), box.height()); postTranslate(box.left, box.top) })
+        }
+        shapes.transform(transform)
+        if (clipPath.children.firstOrNull()?.attributes?.text("clip-rule") == "evenodd") shapes.fillType = Path.FillType.EVEN_ODD
+        canvas.clipPath(shapes)
+    }
+
+    /** mask="url(#id)": the content drawn so far stays where the mask's content is light (its luminance). */
+    private fun applyMask(mask: SvgElement, contentLayer: Int) {
+        val maskPaint = Paint().apply {
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
+            colorFilter = ColorMatrixColorFilter(LUMINANCE_TO_ALPHA)
+        }
+        canvas.saveLayer(null, maskPaint)
+        val maskRenderer = SvgRenderer(canvas, currentColor, definitions, toView, density)
+        mask.children.forEach { maskRenderer.draw(it, SvgStyle(), emptyList()) }
+        canvas.restoreToCount(contentLayer)
+    }
+
+    /**
+     * shadow, [dx, dy, blur, color] (from an <feDropShadow>), in the drawing's units: the element is drawn
+     * apart, its shape blurred into the shadow, then both drawn.
+     */
+    private fun drawShadow(element: SvgElement, style: SvgStyle, pressable: List<Int>, shadow: List<Number>) {
+        val scale = hypot(toViewValue(Matrix.MSCALE_X), toViewValue(Matrix.MSKEW_Y))
+        val blur = shadow[2].toFloat() * scale
+        val area = shadowArea(element, style, scale, blur)
+        val bitmap = Bitmap.createBitmap(area.width(), area.height(), Bitmap.Config.ARGB_8888)
+        val offscreen = Canvas(bitmap).apply {
+            translate(-area.left.toFloat(), -area.top.toFloat())
+            concat(toView)
+        }
+        val offscreenRenderer = SvgRenderer(offscreen, currentColor, definitions, toView, density)
+        offscreenRenderer.drawContent(element, style, pressable)
+        pressTargets.addAll(offscreenRenderer.pressTargets)
+
+        val offset = IntArray(2)
+        val shape = bitmap.extractAlpha(Paint().apply { if (blur > 0) maskFilter = BlurMaskFilter(blur, BlurMaskFilter.Blur.NORMAL) }, offset)
+        val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = androidColor(shadow[3]) ?: 0xFF000000.toInt() }
+        val toCanvas = Matrix().also(toView::invert)
+
+        canvas.save()
+        canvas.concat(toCanvas)
+        canvas.drawBitmap(
+            shape,
+            area.left + offset[0] + shadow[0].toFloat() * scale,
+            area.top + offset[1] + shadow[1].toFloat() * scale,
+            shadowPaint,
+        )
+        canvas.drawBitmap(bitmap, area.left.toFloat(), area.top.toFloat(), null)
+        canvas.restore()
+        shape.recycle()
+        bitmap.recycle()
+    }
+
+    /** The element's box in the view, with room for its stroke and blur; the whole view when it has none (text). */
+    private fun shadowArea(element: SvgElement, style: SvgStyle, scale: Float, blur: Float): Rect {
+        val view = Rect(0, 0, canvas.width.coerceAtLeast(1), canvas.height.coerceAtLeast(1))
+        val bounds = SvgShapes.boundingBox(element).also(toView::mapRect)
+        if (bounds.isEmpty) return view
+
+        val margin = style.strokeWidth * scale + blur * 3
+        val area = Rect()
+
+        bounds.inset(-margin, -margin)
+        bounds.roundOut(area)
+
+        return if (area.intersect(view)) area else view
     }
 
     private fun drawShape(shape: Path, style: SvgStyle, pressable: List<Int>) {
@@ -362,7 +477,11 @@ private class SvgRenderer(
             paint.strokeWidth = style.strokeWidth
             paint.strokeCap = style.lineCap
             paint.strokeJoin = style.lineJoin
-            paint.pathEffect = style.dashes.takeIf { it.isNotEmpty() }?.let { DashPathEffect(it.toFloatArray(), 0f) }
+            paint.pathEffect = style.dashes.takeIf { it.isNotEmpty() }?.let {
+                // An odd list repeats, as SVG reads it.
+                val intervals = if (it.size % 2 == 0) it else it + it
+                DashPathEffect(intervals.toFloatArray(), style.dashOffset)
+            }
             canvas.drawPath(shape, paint)
             paint.pathEffect = null
         }
@@ -388,36 +507,63 @@ private class SvgRenderer(
         pressTargets.add(SvgPressTarget(area, pressable))
     }
 
+    /** <text>'s runs: a run with its own x starts a chunk, which text-anchor places. */
     private fun drawText(element: SvgElement, style: SvgStyle, pressable: List<Int>) {
-        val color = resolved(style.fill) as? SvgPaint.Color ?: return
+        val runs = element.children.map { it to style.inheriting(it.attributes) }
+        var penX = element.attributes.number("x") + element.attributes.number("dx")
+        var penY = element.attributes.number("y") + element.attributes.number("dy")
+        val textBox = RectF()
+        var index = 0
+
+        while (index < runs.size) {
+            var end = index + 1
+            while (end < runs.size && runs[end].first.attributes.optionalNumber("x") == null) end++
+
+            val chunk = runs.subList(index, end)
+            val chunkWidth = chunk.sumOf { (run, runStyle) -> configureText(runStyle).measureText(run.text).toDouble() }.toFloat()
+            val anchorOffset = when (chunk.first().second.textAnchor) {
+                "middle" -> chunkWidth / 2
+                "end" -> chunkWidth
+                else -> 0f
+            }
+
+            chunk.forEachIndexed { position, (run, runStyle) ->
+                run.attributes.optionalNumber("x")?.let { penX = it }
+                run.attributes.optionalNumber("y")?.let { penY = it }
+                penX += run.attributes.number("dx") - if (position == 0) anchorOffset else 0f
+                penY += run.attributes.number("dy")
+
+                val textPaint = configureText(runStyle)
+                val width = textPaint.measureText(run.text)
+                // y is the baseline, as drawText takes it.
+                if (textPaint.color != 0) canvas.drawText(run.text, penX, penY, textPaint)
+                textBox.union(penX, penY + textPaint.ascent(), penX + width, penY + textPaint.descent())
+                penX += width
+            }
+            index = end
+        }
+
+        if (pressable.isEmpty() || textBox.isEmpty) return
+
+        val box = Path().apply { addRect(textBox, Path.Direction.CW) }
+        box.transform(toView)
+        pressTargets.add(SvgPressTarget(box, pressable))
+    }
+
+    /** The paint for a run: its color (0 for none), font and spacing, left-aligned (runs are placed by hand). */
+    private fun configureText(style: SvgStyle): Paint {
+        val color = resolved(style.fill) as? SvgPaint.Color
 
         paint.reset()
         paint.isAntiAlias = true
         paint.style = Paint.Style.FILL
-        paint.color = withOpacity(color.color, style.fillOpacity)
+        paint.color = color?.let { withOpacity(it.color, style.fillOpacity) } ?: 0
         paint.textSize = style.fontSize
         paint.typeface = Typeface.create(style.fontFamily, if (style.isBold) Typeface.BOLD else Typeface.NORMAL)
-        paint.textAlign = when (style.textAnchor) {
-            "middle" -> Paint.Align.CENTER
-            "end" -> Paint.Align.RIGHT
-            else -> Paint.Align.LEFT
-        }
-        // y is the baseline, as drawText takes it.
-        val x = element.attributes.number("x") + element.attributes.number("dx")
-        val y = element.attributes.number("y") + element.attributes.number("dy")
-        canvas.drawText(element.text, x, y, paint)
+        paint.letterSpacing = if (style.fontSize > 0) style.letterSpacing / style.fontSize else 0f
+        paint.textAlign = Paint.Align.LEFT
 
-        if (pressable.isEmpty()) return
-
-        val width = paint.measureText(element.text)
-        val left = when (paint.textAlign) {
-            Paint.Align.CENTER -> x - width / 2
-            Paint.Align.RIGHT -> x - width
-            else -> x
-        }
-        val box = Path().apply { addRect(left, y + paint.ascent(), left + width, y + paint.descent(), Path.Direction.CW) }
-        box.transform(toView)
-        pressTargets.add(SvgPressTarget(box, pressable))
+        return paint
     }
 
     private fun toViewValue(index: Int): Float = FloatArray(9).also(toView::getValues)[index]
@@ -436,7 +582,7 @@ private class SvgRenderer(
                 true
             }
             is SvgPaint.Gradient -> {
-                val gradient = gradients[resolved.id] ?: return false
+                val gradient = definitions[resolved.id] ?: return false
                 val bounds = RectF().also { shape.computeBounds(it, true) }
                 paint.shader = SvgGradients.shader(gradient, bounds) ?: return false
                 paint.alpha = (opacity * 255).roundToInt()
@@ -450,6 +596,23 @@ private class SvgRenderer(
         val alpha = ((color ushr 24) * opacity).roundToInt().coerceIn(0, 255)
 
         return (color and 0xFFFFFF) or (alpha shl 24)
+    }
+
+    companion object {
+        /** Referred to by id (url(#id), href), not drawn where they are. */
+        val DEFINITION_TAGS = setOf(
+            "defs", "linearGradient", "radialGradient", "stop", "symbol", "clipPath", "mask", "filter", "feDropShadow",
+        )
+
+        /** A mask's luminance as alpha, as SVG's luminance masks read it. */
+        private val LUMINANCE_TO_ALPHA = ColorMatrix(
+            floatArrayOf(
+                0f, 0f, 0f, 0f, 0f,
+                0f, 0f, 0f, 0f, 0f,
+                0f, 0f, 0f, 0f, 0f,
+                0.2125f, 0.7154f, 0.0721f, 0f, 0f,
+            ),
+        )
     }
 }
 
@@ -469,8 +632,13 @@ private object SvgGradients {
 
             (color and 0xFFFFFF) or (alpha shl 24)
         }.toIntArray()
-        val positions = stops.map { it.attributes.optionalNumber("offset") ?: 0f }.toFloatArray()
+        val positions = stops.map { (it.attributes.optionalNumber("offset") ?: 0f).coerceIn(0f, 1f) }.toFloatArray()
         val attributes = element.attributes
+        val tileMode = when (attributes.text("spreadMethod")) {
+            "reflect" -> Shader.TileMode.MIRROR
+            "repeat" -> Shader.TileMode.REPEAT
+            else -> Shader.TileMode.CLAMP
+        }
         val shader = if (element.tag == "linearGradient") {
             LinearGradient(
                 attributes.optionalNumber("x1") ?: 0f,
@@ -479,23 +647,16 @@ private object SvgGradients {
                 attributes.optionalNumber("y2") ?: 0f,
                 colors,
                 positions,
-                Shader.TileMode.CLAMP,
+                tileMode,
             )
         } else {
-            RadialGradient(
-                attributes.optionalNumber("cx") ?: 0.5f,
-                attributes.optionalNumber("cy") ?: 0.5f,
-                max(attributes.optionalNumber("r") ?: 0.5f, 0.0001f),
-                colors,
-                positions,
-                Shader.TileMode.CLAMP,
-            )
+            radialGradient(attributes, colors, positions, tileMode)
         }
         val matrix = Matrix()
 
         (attributes.values["gradientTransform"] as? List<*>)?.mapNotNull { (it as? Number)?.toFloat() }
             ?.takeIf { it.size == 6 }
-            ?.let { matrix.setConcat(matrixOf(it), Matrix()) }
+            ?.let { matrix.set(matrixOf(it)) }
         if (attributes.text("gradientUnits") != "userSpaceOnUse") {
             matrix.postScale(bounds.width(), bounds.height())
             matrix.postTranslate(bounds.left, bounds.top)
@@ -506,7 +667,50 @@ private object SvgGradients {
     }
 }
 
+/** fx and fy move the focus off the center, which takes the two-point constructor of Android 12. */
+private fun radialGradient(attributes: SvgAttributes, colors: IntArray, positions: FloatArray, tileMode: Shader.TileMode): Shader {
+    val centerX = attributes.optionalNumber("cx") ?: 0.5f
+    val centerY = attributes.optionalNumber("cy") ?: 0.5f
+    val radius = max(attributes.optionalNumber("r") ?: 0.5f, 0.0001f)
+    val focusX = attributes.optionalNumber("fx") ?: centerX
+    val focusY = attributes.optionalNumber("fy") ?: centerY
+    val hasFocus = focusX != centerX || focusY != centerY
+
+    if (!hasFocus || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+        return RadialGradient(centerX, centerY, radius, colors, positions, tileMode)
+    }
+
+    val packedColors = LongArray(colors.size) { Color.pack(colors[it]) }
+
+    return RadialGradient(focusX, focusY, 0f, centerX, centerY, radius, packedColors, positions, tileMode)
+}
+
 private object SvgShapes {
+    /** A <clipPath>'s shapes as one path, each in its place (its transform). */
+    fun combinedPath(elements: List<SvgElement>): Path {
+        val combined = Path()
+
+        for (element in elements) {
+            val shape = if (element.tag == "g") combinedPath(element.children) else path(element.tag, element.attributes)
+            shape ?: continue
+            element.transform?.let(shape::transform)
+            combined.addPath(shape)
+        }
+
+        return combined
+    }
+
+    /** For objectBoundingBox units: the box of what the element draws, in its own coordinates. */
+    fun boundingBox(element: SvgElement): RectF {
+        val shape = if (element.tag == "g" || element.tag == "svg") {
+            combinedPath(element.children)
+        } else {
+            path(element.tag, element.attributes)
+        }
+
+        return RectF().also { shape?.computeBounds(it, true) }
+    }
+
     fun path(tag: String, attributes: SvgAttributes): Path? = when (tag) {
         "path" -> SvgPathParser(attributes.text("d")).parse()
 

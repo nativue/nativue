@@ -30,6 +30,7 @@ import {
   drawingOf,
   isSvgRoot,
   SVG_COMPONENTS,
+  styleAttributes,
   SVG_ROOT,
   svgPartTag,
   svgRootOf,
@@ -80,6 +81,8 @@ interface Node {
   svgAttributes?: Record<string, unknown>
   /** An <svg>'s width and height attributes: under its class and style, as on the web. */
   svgSize?: Style
+  /** Inside an <svg>: its style attribute, over its attributes. */
+  svgStyleAttributes?: Record<string, unknown>
   /** An icon (@nativue/icons): its native view draws `elements`, not a drawing. */
   drawsElements?: boolean
 }
@@ -138,12 +141,13 @@ function redrawSvg(node: Node | null) {
 
 function sendSvgDrawings() {
   const isPressable = (node: Node) => Boolean(eventHandlersByNodeId[node.id]?.press)
+  const roots = [...svgRootsToRedraw]
 
-  for (const root of svgRootsToRedraw) {
+  svgRootsToRedraw.clear()
+  for (const root of roots) {
     if (!root.drawsElements)
       native.setProp(root.id, 'drawing', drawingOf(root, isPressable as never))
   }
-  svgRootsToRedraw.clear()
 }
 
 function patchSvgAttribute(element: Node, key: string, value: unknown) {
@@ -181,10 +185,12 @@ function patchSvgRootProp(element: Node, key: string, value: unknown): boolean {
 
   if (key === 'width' || key === 'height') {
     patchSvgSize(element, key, value)
+    patchSvgAttribute(element, key, value)
 
     return true
   }
   if (name === 'elements') element.drawsElements = value != null
+  if (isEventProp(name)) redrawSvg(element)
   if (SVG_ICON_PROPS.has(name)) return false
   if (SVG_SHARED_PROPS.has(name)) {
     patchSvgAttribute(element, key, value)
@@ -363,8 +369,6 @@ function reportsToJavaScript(eventName: string, handler: unknown): boolean {
   return eventName !== 'scroll' || handler.listener != null
 }
 
-// An Animated.event handler writes into values natively; JS keeps only its listener. Handlers run
-// through Vue's error handling, like on the web, so an error names the component it came from.
 /** Inside an <svg> there's no native view to tell: the drawing says which elements take presses. */
 function patchSvgEventHandler(
   element: Node,
@@ -382,6 +386,8 @@ function patchSvgEventHandler(
   redrawSvg(element)
 }
 
+// An Animated.event handler writes into values natively; JS keeps only its listener. Handlers run
+// through Vue's error handling, like on the web, so an error names the component it came from.
 function patchEventHandler(
   element: Node,
   key: string,
@@ -477,7 +483,10 @@ const { createApp: createBaseApp } = createRenderer<Node, Node>({
     if (svgPartTag(element.type)) {
       if (isEventProp(camelize(key)))
         patchSvgEventHandler(element, camelize(key), nextValue, component ?? null)
-      else patchSvgAttribute(element, key, nextValue)
+      else if (key === 'style') {
+        element.svgStyleAttributes = styleAttributes(nextValue)
+        redrawSvg(element)
+      } else if (key !== 'class') patchSvgAttribute(element, key, nextValue)
     } else if (element.type === SVG_ROOT && patchSvgRootProp(element, key, nextValue)) return
     else if (key === 'style') updateStyle(element, { style: nextValue })
     else if (key === 'class') updateStyle(element, { className: nextValue ?? undefined })

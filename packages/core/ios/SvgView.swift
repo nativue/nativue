@@ -3,7 +3,7 @@ import UIKit
 /// View behind <svg>: draws what JS sends as `drawing`, [tag, attributes, children or text] (src/svg.ts),
 /// scaled from the root's viewBox like preserveAspectRatio="xMidYMid meet" (or "none"). Icons send
 /// `elements` instead, Lucide's [tag, attributes] pairs, stroked with `color`.
-/// Limitation: no clipPath, mask, filter, pattern or image; text is a single line, filled with a color.
+/// Limitation: no pattern, marker, image or textPath, and of the filters only a drop shadow.
 final class SvgView: UIView {
     var viewBox = CGRect(x: 0, y: 0, width: 24, height: 24) {
         didSet { updateIconDrawing() }
@@ -93,7 +93,7 @@ final class SvgView: UIView {
     private func draw(in context: CGContext) {
         guard let root else { return }
 
-        var renderer = SvgRenderer(context: context, currentColor: color.cgColor, gradients: root.gradientsById())
+        var renderer = SvgRenderer(context: context, currentColor: color.cgColor, definitions: root.definitionsById())
         context.concatenate(root.viewBoxTransform(in: bounds))
         renderer.draw(root, style: SvgStyle(), pressableAncestors: [])
         pressTargets = renderer.pressTargets
@@ -182,15 +182,16 @@ private struct SvgElement {
         attributes.values["nodeId"] != nil || children.contains { $0.hasPressableElements }
     }
 
-    func gradientsById() -> [String: SvgElement] {
-        var gradients: [String: SvgElement] = [:]
+    /// Gradients, clip paths and masks, which elements refer to by id.
+    func definitionsById() -> [String: SvgElement] {
+        var definitions: [String: SvgElement] = [:]
 
-        if tag == "linearGradient" || tag == "radialGradient", let id = attributes.values["id"] as? String {
-            gradients[id] = self
+        if ["linearGradient", "radialGradient", "clipPath", "mask"].contains(tag), let id = attributes.values["id"] as? String {
+            definitions[id] = self
         }
-        for child in children { gradients.merge(child.gradientsById()) { first, _ in first } }
+        for child in children { definitions.merge(child.definitionsById()) { first, _ in first } }
 
-        return gradients
+        return definitions
     }
 
     /// The root's viewBox fitted into the view: centered and scaled to fit, or stretched with "none".
@@ -260,7 +261,9 @@ private struct SvgStyle {
     var lineCap: CGLineCap = .butt
     var lineJoin: CGLineJoin = .miter
     var dashes: [CGFloat] = []
+    var dashOffset: CGFloat = 0
     var isEvenOdd = false
+    var letterSpacing: CGFloat = 0
     var fontSize: CGFloat = 16
     var fontWeight: UIFont.Weight = .regular
     var fontFamily: String?
@@ -277,6 +280,8 @@ private struct SvgStyle {
         if let dashes = attributes.values["stroke-dasharray"] as? [NSNumber] {
             style.dashes = dashes.map { CGFloat($0.doubleValue) }
         }
+        if let offset = attributes.optionalNumber("stroke-dashoffset") { style.dashOffset = offset }
+        if let spacing = attributes.optionalNumber("letter-spacing") { style.letterSpacing = spacing }
         if let fontSize = attributes.optionalNumber("font-size") { style.fontSize = fontSize }
         if let family = attributes.values["font-family"] as? String { style.fontFamily = family }
         if let anchor = attributes.values["text-anchor"] as? String { style.textAnchor = anchor }
@@ -322,17 +327,22 @@ private struct SvgPressTarget {
 
 /// Draws elements into a context already scaled to the viewBox, and notes what can be pressed.
 private struct SvgRenderer {
+    /// Referred to by id (url(#id), href), not drawn where they are.
+    static let definitionTags: Set<String> = [
+        "defs", "linearGradient", "radialGradient", "stop", "symbol", "clipPath", "mask", "filter", "feDropShadow",
+    ]
+
     let context: CGContext
     let currentColor: CGColor
-    let gradients: [String: SvgElement]
+    let definitions: [String: SvgElement]
     /// The view's coordinates, before the viewBox scales them: where press targets are kept.
     let viewTransform: CGAffineTransform
     var pressTargets: [SvgPressTarget] = []
 
-    init(context: CGContext, currentColor: CGColor, gradients: [String: SvgElement]) {
+    init(context: CGContext, currentColor: CGColor, definitions: [String: SvgElement]) {
         self.context = context
         self.currentColor = currentColor
-        self.gradients = gradients
+        self.definitions = definitions
         viewTransform = context.ctm
     }
 
@@ -342,20 +352,23 @@ private struct SvgRenderer {
     }
 
     mutating func draw(_ element: SvgElement, style inherited: SvgStyle, pressableAncestors: [Int]) {
-        guard !["defs", "linearGradient", "radialGradient", "stop"].contains(element.tag) else { return }
+        guard !Self.definitionTags.contains(element.tag) else { return }
 
         let style = inherited.inheriting(element.attributes)
         let nodeIds = (element.attributes.values["nodeId"] as? NSNumber).map { [$0.intValue] } ?? []
         let pressable = nodeIds + pressableAncestors
         let opacity = element.attributes.optionalNumber("opacity") ?? 1
+        let shadow = element.attributes.values["shadow"] as? [NSNumber]
+        // Opacity and a shadow apply to the element as a whole, overlaps included: drawn apart, then blended.
+        let isLayered = opacity < 1 || shadow != nil
 
         context.saveGState()
         if let transform = element.transform { context.concatenate(transform) }
-        // Opacity applies to the element as a whole, overlaps included: drawn apart, then blended.
-        if opacity < 1 {
-            context.setAlpha(opacity)
-            context.beginTransparencyLayer(auxiliaryInfo: nil)
-        }
+        applyClipPath(of: element)
+        applyMask(of: element, style: style)
+        if let shadow, shadow.count == 4 { applyShadow(shadow) }
+        if opacity < 1 { context.setAlpha(opacity) }
+        if isLayered { context.beginTransparencyLayer(auxiliaryInfo: nil) }
 
         switch element.tag {
         case "svg", "g":
@@ -374,12 +387,76 @@ private struct SvgRenderer {
             }
         }
 
-        if opacity < 1 { context.endTransparencyLayer() }
+        if isLayered { context.endTransparencyLayer() }
         context.restoreGState()
     }
 
+    /// The element referred to by an attribute's url(#id).
+    private func definition(_ attribute: String, of element: SvgElement, tag: String) -> SvgElement? {
+        let reference = element.attributes.text(attribute)
+        guard reference.hasPrefix("url(#") else { return nil }
+
+        let found = definitions[String(reference.dropFirst(5).dropLast())]
+
+        return found?.tag == tag ? found : nil
+    }
+
+    /// clip-path="url(#id)": only what its shapes cover is drawn.
+    private func applyClipPath(of element: SvgElement) {
+        guard let clipPath = definition("clip-path", of: element, tag: "clipPath") else { return }
+
+        var transform = clipPath.transform ?? .identity
+        if clipPath.attributes.text("clipPathUnits") == "objectBoundingBox" {
+            let box = SvgShapes.boundingBox(of: element)
+            transform = transform.concatenating(CGAffineTransform(a: box.width, b: 0, c: 0, d: box.height, tx: box.minX, ty: box.minY))
+        }
+
+        let shapes = SvgShapes.combinedPath(of: clipPath.children)
+        let isEvenOdd = clipPath.children.first?.attributes.text("clip-rule") == "evenodd"
+        context.addPath(shapes.copy(using: &transform) ?? shapes)
+        context.clip(using: isEvenOdd ? .evenOdd : .winding)
+    }
+
+    /// mask="url(#id)": drawn where the mask's content is light, as its luminance says.
+    private func applyMask(of element: SvgElement, style: SvgStyle) {
+        guard let mask = definition("mask", of: element, tag: "mask") else { return }
+
+        let region = context.boundingBoxOfClipPath
+        let pixelsPerUnit = hypot(context.ctm.a, context.ctm.b)
+        let width = Int(ceil(region.width * pixelsPerUnit))
+        let height = Int(ceil(region.height * pixelsPerUnit))
+        guard
+            width > 0, height > 0, width * height <= 4096 * 4096,
+            let maskContext = CGContext(
+                data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue
+            )
+        else { return }
+
+        // Unflipped, as clip(to:mask:) lays the image out in this flipped space.
+        maskContext.scaleBy(x: pixelsPerUnit, y: pixelsPerUnit)
+        maskContext.translateBy(x: -region.minX, y: -region.minY)
+        var maskRenderer = SvgRenderer(context: maskContext, currentColor: currentColor, definitions: definitions)
+        for child in mask.children { maskRenderer.draw(child, style: SvgStyle(), pressableAncestors: []) }
+
+        guard let image = maskContext.makeImage() else { return }
+
+        context.clip(to: region, mask: image)
+    }
+
+    /// shadow, [dx, dy, blur, color] (from an <feDropShadow>), in the drawing's units.
+    private func applyShadow(_ shadow: [NSNumber]) {
+        let scale = hypot(toView.a, toView.b)
+        let values = shadow.prefix(3).map { CGFloat($0.doubleValue) * scale }
+        let color = UIColor(rgba: shadow[3])?.cgColor ?? UIColor.black.cgColor
+
+        context.setShadow(offset: CGSize(width: values[0], height: values[1]), blur: values[2] * 2, color: color)
+    }
+
     private mutating func drawShape(_ shape: CGPath, style: SvgStyle, pressable: [Int]) {
-        paint(style.fill, opacity: style.fillOpacity, path: shape) { context in
+        let bounds = shape.boundingBoxOfPath
+
+        paint(style.fill, opacity: style.fillOpacity, path: shape, bounds: bounds) { context in
             context.fillPath(using: style.isEvenOdd ? .evenOdd : .winding)
         }
 
@@ -389,9 +466,9 @@ private struct SvgRenderer {
             lineJoin: style.lineJoin,
             miterLimit: 4
         )
-        let outline = style.dashes.isEmpty ? stroked : shape.copy(dashingWithPhase: 0, lengths: style.dashes)
+        let outline = style.dashes.isEmpty ? stroked : shape.copy(dashingWithPhase: style.dashOffset, lengths: style.dashes)
             .copy(strokingWithWidth: style.strokeWidth, lineCap: style.lineCap, lineJoin: style.lineJoin, miterLimit: 4)
-        paint(style.stroke, opacity: style.strokeOpacity, path: outline) { context in context.fillPath() }
+        paint(style.stroke, opacity: style.strokeOpacity, path: outline, bounds: bounds) { context in context.fillPath() }
 
         guard !pressable.isEmpty else { return }
 
@@ -406,32 +483,62 @@ private struct SvgRenderer {
         pressTargets.append(SvgPressTarget(path: area.copy(using: &toView) ?? area, nodeIds: pressable))
     }
 
+    /// <text>'s runs: a run with its own x starts a chunk, which text-anchor places.
     private mutating func drawText(_ element: SvgElement, style: SvgStyle, pressable: [Int]) {
-        guard case let .color(color) = resolved(style.fill) else { return }
-
-        let font = style.fontFamily.flatMap { UIFont(name: $0, size: style.fontSize) }
-            ?? UIFont.systemFont(ofSize: style.fontSize, weight: style.fontWeight)
-        let text = NSAttributedString(string: element.text, attributes: [
-            .font: font,
-            .foregroundColor: UIColor(cgColor: color.copy(alpha: color.alpha * style.fillOpacity) ?? color),
-        ])
-        let width = text.size().width
-        let anchorOffset = style.textAnchor == "middle" ? width / 2 : style.textAnchor == "end" ? width : 0
-        // y is the baseline.
-        let origin = CGPoint(
-            x: element.attributes.number("x") + element.attributes.number("dx") - anchorOffset,
-            y: element.attributes.number("y") + element.attributes.number("dy") - font.ascender
+        let runs = element.children.map { run in (run, style.inheriting(run.attributes)) }
+        var pen = CGPoint(
+            x: element.attributes.number("x") + element.attributes.number("dx"),
+            y: element.attributes.number("y") + element.attributes.number("dy")
         )
+        var textBox = CGRect.null
+        var index = 0
 
-        UIGraphicsPushContext(context)
-        text.draw(at: origin)
-        UIGraphicsPopContext()
+        while index < runs.count {
+            var end = index + 1
+            while end < runs.count, runs[end].0.attributes.optionalNumber("x") == nil { end += 1 }
 
-        guard !pressable.isEmpty else { return }
+            let chunk = runs[index..<end].map { run, runStyle in (run, runStyle, attributedText(run.text, style: runStyle)) }
+            let chunkWidth = chunk.reduce(CGFloat(0)) { $0 + $1.2.size().width }
+            let anchor = chunk[0].1.textAnchor
+            let anchorOffset = anchor == "middle" ? chunkWidth / 2 : anchor == "end" ? chunkWidth : 0
+
+            for (position, (run, runStyle, text)) in chunk.enumerated() {
+                if let x = run.attributes.optionalNumber("x") { pen.x = x }
+                if let y = run.attributes.optionalNumber("y") { pen.y = y }
+                pen.x += run.attributes.number("dx") - (position == 0 ? anchorOffset : 0)
+                pen.y += run.attributes.number("dy")
+
+                // y is the baseline.
+                let font = Self.font(runStyle)
+                let origin = CGPoint(x: pen.x, y: pen.y - font.ascender)
+                UIGraphicsPushContext(context)
+                text.draw(at: origin)
+                UIGraphicsPopContext()
+                textBox = textBox.union(CGRect(origin: origin, size: text.size()))
+                pen.x += text.size().width
+            }
+            index = end
+        }
+
+        guard !pressable.isEmpty, !textBox.isNull else { return }
 
         var toView = toView
-        let box = CGPath(rect: CGRect(origin: origin, size: text.size()), transform: &toView)
-        pressTargets.append(SvgPressTarget(path: box, nodeIds: pressable))
+        pressTargets.append(SvgPressTarget(path: CGPath(rect: textBox, transform: &toView), nodeIds: pressable))
+    }
+
+    private func attributedText(_ text: String, style: SvgStyle) -> NSAttributedString {
+        guard case let .color(color) = resolved(style.fill) else { return NSAttributedString() }
+
+        return NSAttributedString(string: text, attributes: [
+            .font: Self.font(style),
+            .foregroundColor: UIColor(cgColor: color.copy(alpha: color.alpha * style.fillOpacity) ?? color),
+            .kern: style.letterSpacing,
+        ])
+    }
+
+    private static func font(_ style: SvgStyle) -> UIFont {
+        style.fontFamily.flatMap { UIFont(name: $0, size: style.fontSize) }
+            ?? UIFont.systemFont(ofSize: style.fontSize, weight: style.fontWeight)
     }
 
     private func resolved(_ paint: SvgPaint) -> SvgPaint {
@@ -440,8 +547,8 @@ private struct SvgRenderer {
         return paint
     }
 
-    /// Fills `path` (already outlined, for a stroke) with a color or a gradient.
-    private func paint(_ paint: SvgPaint, opacity: CGFloat, path: CGPath, fill: (CGContext) -> Void) {
+    /// Fills `path` (already outlined, for a stroke) with a color or a gradient laid over `bounds`, the shape's own box.
+    private func paint(_ paint: SvgPaint, opacity: CGFloat, path: CGPath, bounds: CGRect, fill: (CGContext) -> Void) {
         switch resolved(paint) {
         case .none, .currentColor:
             return
@@ -450,13 +557,13 @@ private struct SvgRenderer {
             context.addPath(path)
             fill(context)
         case let .gradient(id):
-            guard let gradient = gradients[id] else { return }
+            guard let gradient = definitions[id] else { return }
 
             context.saveGState()
             context.addPath(path)
             context.clip()
             context.setAlpha(opacity)
-            SvgGradients.draw(gradient, in: context, bounds: path.boundingBoxOfPath)
+            SvgGradients.draw(gradient, in: context, bounds: bounds)
             context.restoreGState()
         }
     }
@@ -465,6 +572,9 @@ private struct SvgRenderer {
 /// <linearGradient> and <radialGradient>: coordinates in the shape's box (objectBoundingBox, the default) or
 /// in the drawing's (userSpaceOnUse).
 private enum SvgGradients {
+    /// reflect and repeat: Core Graphics only pads, so the stops are laid out again this many times.
+    private static let repeatCount = 8
+
     static func draw(_ element: SvgElement, in context: CGContext, bounds: CGRect) {
         let stops = element.children.filter { $0.tag == "stop" }
         let colors = stops.map { stop -> CGColor in
@@ -476,12 +586,19 @@ private enum SvgGradients {
             return color.copy(alpha: color.alpha * (stop.attributes.optionalNumber("stop-opacity") ?? 1)) ?? color
         }
         let locations = stops.map { $0.attributes.optionalNumber("offset") ?? 0 }
-        guard
-            !colors.isEmpty,
-            let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors as CFArray, locations: locations)
-        else { return }
+        guard !colors.isEmpty else { return }
 
         let attributes = element.attributes
+        let spread = attributes.text("spreadMethod")
+        let isRepeated = spread == "reflect" || spread == "repeat"
+        let isLinear = element.tag == "linearGradient"
+        // Linear gradients repeat both ways; radial ones outwards.
+        let copies = isRepeated ? (isLinear ? (-repeatCount...repeatCount) : (0...repeatCount)) : (0...0)
+        let (allColors, allLocations) = repeated(colors, locations, copies: copies, reflects: spread == "reflect")
+        guard
+            let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: allColors as CFArray, locations: allLocations)
+        else { return }
+
         if attributes.text("gradientUnits") != "userSpaceOnUse" {
             context.translateBy(x: bounds.minX, y: bounds.minY)
             context.scaleBy(x: bounds.width, y: bounds.height)
@@ -492,20 +609,72 @@ private enum SvgGradients {
         }
 
         let extend: CGGradientDrawingOptions = [.drawsBeforeStartLocation, .drawsAfterEndLocation]
-        if element.tag == "linearGradient" {
+        let span = CGFloat(copies.count)
+        if isLinear {
             let start = CGPoint(x: attributes.optionalNumber("x1") ?? 0, y: attributes.optionalNumber("y1") ?? 0)
             let end = CGPoint(x: attributes.optionalNumber("x2") ?? 1, y: attributes.optionalNumber("y2") ?? 0)
-            context.drawLinearGradient(gradient, start: start, end: end, options: extend)
+            let vector = CGPoint(x: end.x - start.x, y: end.y - start.y)
+            let first = CGFloat(copies.lowerBound)
+            context.drawLinearGradient(
+                gradient,
+                start: CGPoint(x: start.x + vector.x * first, y: start.y + vector.y * first),
+                end: CGPoint(x: start.x + vector.x * (first + span), y: start.y + vector.y * (first + span)),
+                options: extend
+            )
         } else {
             let center = CGPoint(x: attributes.optionalNumber("cx") ?? 0.5, y: attributes.optionalNumber("cy") ?? 0.5)
             let focus = CGPoint(x: attributes.optionalNumber("fx") ?? center.x, y: attributes.optionalNumber("fy") ?? center.y)
             let radius = attributes.optionalNumber("r") ?? 0.5
-            context.drawRadialGradient(gradient, startCenter: focus, startRadius: 0, endCenter: center, endRadius: radius, options: extend)
+            context.drawRadialGradient(
+                gradient, startCenter: focus, startRadius: 0, endCenter: center, endRadius: radius * span, options: extend
+            )
         }
+    }
+
+    /// The stops laid out once per copy, each copy over its own stretch; reflect mirrors every other one.
+    private static func repeated(
+        _ colors: [CGColor], _ locations: [CGFloat], copies: ClosedRange<Int>, reflects: Bool
+    ) -> ([CGColor], [CGFloat]) {
+        let span = CGFloat(copies.count)
+        var allColors: [CGColor] = []
+        var allLocations: [CGFloat] = []
+
+        for (index, copy) in copies.enumerated() {
+            let isMirrored = reflects && copy % 2 != 0
+            let pairs = isMirrored ? Array(zip(colors, locations.map { 1 - $0 }).reversed()) : Array(zip(colors, locations))
+
+            for (color, location) in pairs {
+                allColors.append(color)
+                allLocations.append((CGFloat(index) + min(max(location, 0), 1)) / span)
+            }
+        }
+
+        return (allColors, allLocations)
     }
 }
 
 private enum SvgShapes {
+    /// A <clipPath>'s shapes as one path, each in its place (its transform).
+    static func combinedPath(of elements: [SvgElement]) -> CGPath {
+        let combined = CGMutablePath()
+
+        for element in elements {
+            let shape = element.tag == "g" ? combinedPath(of: element.children) : path(element.tag, element.attributes)
+            guard let shape else { continue }
+
+            combined.addPath(shape, transform: element.transform ?? .identity)
+        }
+
+        return combined
+    }
+
+    /// For objectBoundingBox units: the box of what the element draws, in its own coordinates.
+    static func boundingBox(of element: SvgElement) -> CGRect {
+        if element.tag == "g" || element.tag == "svg" { return combinedPath(of: element.children).boundingBoxOfPath }
+
+        return path(element.tag, element.attributes)?.boundingBoxOfPath ?? .zero
+    }
+
     static func path(_ tag: String, _ attributes: SvgAttributes) -> CGPath? {
         switch tag {
         case "path":
