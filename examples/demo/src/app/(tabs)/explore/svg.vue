@@ -233,7 +233,7 @@ function shuffle() {
             <filter id="soft">
               <feGaussianBlur stdDeviation="4" />
             </filter>
-            <!-- The drop shadow Figma exports -->
+            <!-- A drop shadow and an inner shadow, as Figma exports them -->
             <filter id="exported" x="0" y="0" width="120" height="80" filterUnits="userSpaceOnUse">
               <feFlood flood-opacity="0" result="BackgroundImageFix" />
               <feColorMatrix
@@ -251,7 +251,28 @@ function shuffle() {
               />
               <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow" />
               <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow" result="shape" />
+              <feColorMatrix
+                in="SourceAlpha"
+                type="matrix"
+                values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
+                result="hardAlpha"
+              />
+              <feOffset dy="-3" />
+              <feGaussianBlur stdDeviation="2" />
+              <feComposite in2="hardAlpha" operator="arithmetic" k2="-1" k3="1" />
+              <feColorMatrix
+                type="matrix"
+                values="0 0 0 0 0.29 0 0 0 0 0.949 0 0 0 0 0.682 0 0 0 1 0"
+              />
+              <feBlend mode="normal" in2="shape" result="effect2_innerShadow" />
             </filter>
+            <filter id="gray">
+              <feColorMatrix type="saturate" values="0" />
+            </filter>
+            <linearGradient id="brandText" x1="0" x2="1">
+              <stop offset="0" :stop-color="colors.green" />
+              <stop offset="1" :stop-color="colors.mint" />
+            </linearGradient>
             <path id="curve" d="M20 215 Q150 150 280 215" />
           </defs>
 
@@ -300,9 +321,10 @@ function shuffle() {
             width="80"
             height="80"
             preserveAspectRatio="xMidYMid meet"
+            filter="url(#gray)"
           />
 
-          <text font-size="15" font-weight="600" :fill="colors.text">
+          <text font-size="17" font-weight="700" fill="url(#brandText)">
             <textPath href="#curve" startOffset="50%" text-anchor="middle">
               Text along a curve
             </textPath>

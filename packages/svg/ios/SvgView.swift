@@ -269,6 +269,10 @@ private struct SvgStyle {
     var textAnchor = "start"
     var baseline = "auto"
     var miterLimit: CGFloat = 4
+    var isItalic = false
+    var textDecoration = "none"
+    var paintsStrokeFirst = false
+    var hasNonScalingStroke = false
 
     func inheriting(_ attributes: SvgAttributes) -> SvgStyle {
         var style = self
@@ -290,6 +294,10 @@ private struct SvgStyle {
             style.baseline = baseline
         }
         if let limit = attributes.optionalNumber("stroke-miterlimit") { style.miterLimit = limit }
+        if let fontStyle = attributes.values["font-style"] as? String { style.isItalic = fontStyle != "normal" }
+        if let decoration = attributes.values["text-decoration"] as? String { style.textDecoration = decoration }
+        if let order = attributes.values["paint-order"] as? String { style.paintsStrokeFirst = order.hasPrefix("stroke") }
+        if let effect = attributes.values["vector-effect"] as? String { style.hasNonScalingStroke = effect == "non-scaling-stroke" }
         if let weight = attributes.values["font-weight"] { style.fontWeight = Self.fontWeight("\(weight)") }
         switch attributes.values["stroke-linecap"] as? String {
         case "round": style.lineCap = .round
@@ -370,23 +378,23 @@ private struct SvgRenderer {
         let nodeIds = (element.attributes.values["nodeId"] as? NSNumber).map { [$0.intValue] } ?? []
         let pressable = nodeIds + pressableAncestors
         let opacity = element.attributes.optionalNumber("opacity") ?? 1
-        let shadow = element.attributes.values["shadow"] as? [NSNumber]
-        let blur = element.attributes.number("blur")
-        // Opacity and a shadow apply to the element as a whole, overlaps included: drawn apart, then blended.
-        let isLayered = opacity < 1 || shadow != nil
+        let effects = SvgEffects(element.attributes)
+        // Opacity applies to the element as a whole, overlaps included: drawn apart, then blended.
+        let isLayered = opacity < 1
 
         context.saveGState()
         if let transform = element.transform { context.concatenate(transform) }
         applyClipPath(of: element)
         applyMask(of: element, style: style)
-        if let shadow, shadow.count == 4 { applyShadow(shadow) }
-        if opacity < 1 { context.setAlpha(opacity) }
-        if isLayered { context.beginTransparencyLayer(auxiliaryInfo: nil) }
+        if isLayered {
+            context.setAlpha(opacity)
+            context.beginTransparencyLayer(auxiliaryInfo: nil)
+        }
 
-        if blur > 0 {
-            drawBlurred(element, style: style, pressable: pressable, deviation: blur)
-        } else {
+        if effects.isEmpty {
             drawContent(element, style: style, pressable: pressable)
+        } else {
+            drawWithEffects(element, style: style, pressable: pressable, effects: effects)
         }
 
         if isLayered { context.endTransparencyLayer() }
@@ -414,11 +422,12 @@ private struct SvgRenderer {
         }
     }
 
-    /// blur, an <feGaussianBlur>'s deviation in the drawing's units: the element drawn apart, blurred, then drawn.
-    private mutating func drawBlurred(_ element: SvgElement, style: SvgStyle, pressable: [Int], deviation: CGFloat) {
+    /// A filter's effects: the element drawn apart, its color matrix, blur and shadows applied with Core
+    /// Image, and the result drawn in its place.
+    private mutating func drawWithEffects(_ element: SvgElement, style: SvgStyle, pressable: [Int], effects: SvgEffects) {
         let visible = context.boundingBoxOfClipPath
         let box = SvgShapes.boundingBox(of: element)
-        let margin = deviation * 3 + style.strokeWidth
+        let margin = effects.margin + style.strokeWidth
         let region = box.isEmpty ? visible : box.insetBy(dx: -margin, dy: -margin).intersection(visible)
         let pixelsPerUnit = hypot(context.ctm.a, context.ctm.b)
         guard !region.isNull, region.width * region.height * pixelsPerUnit * pixelsPerUnit <= 4096 * 4096 else {
@@ -440,21 +449,19 @@ private struct SvgRenderer {
         }
         pressTargets += offscreenRenderer?.pressTargets ?? []
 
+        guard
+            let content = image.cgImage.map(CIImage.init(cgImage:)),
+            let output = Self.imageContext.createCGImage(
+                effects.applied(to: content, pixelsPerUnit: pixelsPerUnit), from: content.extent
+            )
+        else { return }
+
         UIGraphicsPushContext(context)
-        (Self.blurred(image, sigma: deviation * pixelsPerUnit) ?? image).draw(in: region)
+        UIImage(cgImage: output, scale: image.scale, orientation: .up).draw(in: region)
         UIGraphicsPopContext()
     }
 
     private static let imageContext = CIContext()
-
-    private static func blurred(_ image: UIImage, sigma: CGFloat) -> UIImage? {
-        guard let input = image.cgImage.map(CIImage.init(cgImage:)) else { return nil }
-
-        let output = input.clampedToExtent().applyingGaussianBlur(sigma: sigma).cropped(to: input.extent)
-        guard let cgImage = imageContext.createCGImage(output, from: input.extent) else { return nil }
-
-        return UIImage(cgImage: cgImage, scale: image.scale, orientation: .up)
-    }
 
     /// <image>: its picture fitted into x, y, width and height as preserveAspectRatio says, once loaded.
     private mutating func drawImage(_ element: SvgElement, pressable: [Int]) {
@@ -520,11 +527,14 @@ private struct SvgRenderer {
         let pixelsPerUnit = hypot(context.ctm.a, context.ctm.b)
         let width = Int(ceil(region.width * pixelsPerUnit))
         let height = Int(ceil(region.height * pixelsPerUnit))
+        // mask-type="alpha": where the mask's content is opaque, whatever its colors.
+        let isAlpha = mask.attributes.text("mask-type") == "alpha"
         guard
             width > 0, height > 0, width * height <= 4096 * 4096,
             let maskContext = CGContext(
                 data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
-                space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue
+                space: isAlpha ? CGColorSpaceCreateDeviceRGB() : CGColorSpaceCreateDeviceGray(),
+                bitmapInfo: isAlpha ? CGImageAlphaInfo.premultipliedLast.rawValue : CGImageAlphaInfo.none.rawValue
             )
         else { return }
 
@@ -534,41 +544,54 @@ private struct SvgRenderer {
         var maskRenderer = SvgRenderer(context: maskContext, currentColor: currentColor, definitions: definitions, images: images)
         for child in mask.children { maskRenderer.draw(child, style: SvgStyle(), pressableAncestors: []) }
 
-        guard let image = maskContext.makeImage() else { return }
+        guard let image = isAlpha ? Self.grayImage(ofAlpha: maskContext) : maskContext.makeImage() else { return }
 
         context.clip(to: region, mask: image)
     }
 
-    /// shadow, [dx, dy, blur, color] (from an <feDropShadow>), in the drawing's units.
-    private func applyShadow(_ shadow: [NSNumber]) {
-        let scale = hypot(toView.a, toView.b)
-        let values = shadow.prefix(3).map { CGFloat($0.doubleValue) * scale }
-        let color = UIColor(rgba: shadow[3])?.cgColor ?? UIColor.black.cgColor
+    /// An RGBA bitmap's alpha as a gray image, which clip(to:mask:) takes.
+    private static func grayImage(ofAlpha bitmap: CGContext) -> CGImage? {
+        guard let bytes = bitmap.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
 
-        context.setShadow(offset: CGSize(width: values[0], height: values[1]), blur: values[2] * 2, color: color)
+        let alphas = (0..<bitmap.height).flatMap { row in
+            (0..<bitmap.width).map { column in bytes[row * bitmap.bytesPerRow + column * 4 + 3] }
+        }
+        guard let provider = CGDataProvider(data: Data(alphas) as CFData) else { return nil }
+
+        return CGImage(
+            width: bitmap.width, height: bitmap.height, bitsPerComponent: 8, bitsPerPixel: 8, bytesPerRow: bitmap.width,
+            space: CGColorSpaceCreateDeviceGray(), bitmapInfo: [], provider: provider, decode: nil, shouldInterpolate: false,
+            intent: .defaultIntent
+        )
     }
 
     private mutating func drawShape(_ shape: CGPath, style: SvgStyle, pressable: [Int]) {
         let bounds = shape.boundingBoxOfPath
-
-        paint(style.fill, opacity: style.fillOpacity, path: shape, bounds: bounds) { context in
-            context.fillPath(using: style.isEvenOdd ? .evenOdd : .winding)
-        }
-
+        var toView = toView
+        let scale = max(hypot(toView.a, toView.b), 0.01)
+        // vector-effect="non-scaling-stroke": as wide on screen whatever the drawing's scale.
+        let strokeWidth = style.hasNonScalingStroke ? style.strokeWidth / scale : style.strokeWidth
         let stroked = shape.copy(
-            strokingWithWidth: style.strokeWidth,
+            strokingWithWidth: strokeWidth,
             lineCap: style.lineCap,
             lineJoin: style.lineJoin,
             miterLimit: style.miterLimit
         )
         let outline = style.dashes.isEmpty ? stroked : shape.copy(dashingWithPhase: style.dashOffset, lengths: style.dashes)
-            .copy(strokingWithWidth: style.strokeWidth, lineCap: style.lineCap, lineJoin: style.lineJoin, miterLimit: style.miterLimit)
-        paint(style.stroke, opacity: style.strokeOpacity, path: outline, bounds: bounds) { context in context.fillPath() }
+            .copy(strokingWithWidth: strokeWidth, lineCap: style.lineCap, lineJoin: style.lineJoin, miterLimit: style.miterLimit)
+        // paint-order="stroke": the fill over the stroke.
+        for paintsStroke in style.paintsStrokeFirst ? [true, false] : [false, true] {
+            if paintsStroke {
+                paint(style.stroke, opacity: style.strokeOpacity, path: outline, bounds: bounds) { context in context.fillPath() }
+            } else {
+                paint(style.fill, opacity: style.fillOpacity, path: shape, bounds: bounds) { context in
+                    context.fillPath(using: style.isEvenOdd ? .evenOdd : .winding)
+                }
+            }
+        }
 
         guard !pressable.isEmpty else { return }
 
-        var toView = toView
-        let scale = max(hypot(toView.a, toView.b), 0.01)
         let area = CGMutablePath()
 
         if case .none = style.fill {} else { area.addPath(shape) }
@@ -609,11 +632,9 @@ private struct SvgRenderer {
 
                 // y is the baseline, unless dominant-baseline moves it.
                 let font = Self.font(runStyle)
-                let origin = CGPoint(x: pen.x, y: pen.y + Self.baselineShift(font, runStyle.baseline) - font.ascender)
-                UIGraphicsPushContext(context)
-                text.draw(at: origin)
-                UIGraphicsPopContext()
-                textBox = textBox.union(CGRect(origin: origin, size: text.size()))
+                let baseline = CGPoint(x: pen.x, y: pen.y + Self.baselineShift(font, runStyle.baseline))
+                drawRun(text, at: baseline, style: runStyle)
+                textBox = textBox.union(CGRect(origin: CGPoint(x: baseline.x, y: baseline.y - font.ascender), size: text.size()))
                 pen.x += text.size().width
             }
             index = end
@@ -639,7 +660,8 @@ private struct SvgRenderer {
             ? (Double(startOffset.dropLast()).map { CGFloat($0) } ?? 0) / 100 * walker.length
             : run.attributes.number("startOffset")
         distance -= style.textAnchor == "middle" ? width / 2 : style.textAnchor == "end" ? width : 0
-        let baselineY = Self.baselineShift(font, style.baseline) - font.ascender
+        let baselineY = Self.baselineShift(font, style.baseline)
+        let outline = CGMutablePath()
 
         for character in run.text {
             let glyph = attributedText(String(character), style: style)
@@ -647,14 +669,23 @@ private struct SvgRenderer {
             defer { distance += advance }
             guard let (point, angle) = walker.position(at: distance + advance / 2) else { continue }
 
+            let placement = CGAffineTransform(translationX: point.x, y: point.y).rotated(by: angle)
+            let glyphBaseline = CGPoint(x: -advance / 2, y: baselineY)
+
+            if drawsOutline(style) {
+                outline.addPath(Self.outline(of: glyph, baselineAt: glyphBaseline), transform: placement)
+            }
+            guard case .color = resolved(style.fill) else { continue }
+
             context.saveGState()
-            context.translateBy(x: point.x, y: point.y)
-            context.rotate(by: angle)
+            context.concatenate(placement)
             UIGraphicsPushContext(context)
-            glyph.draw(at: CGPoint(x: -advance / 2, y: baselineY))
+            glyph.draw(at: CGPoint(x: glyphBaseline.x, y: glyphBaseline.y - font.ascender))
             UIGraphicsPopContext()
             context.restoreGState()
         }
+
+        paintTextOutline(outline, style: style)
     }
 
     /// dominant-baseline: where y falls on the text, as a shift of the baseline.
@@ -667,19 +698,85 @@ private struct SvgRenderer {
         }
     }
 
-    private func attributedText(_ text: String, style: SvgStyle) -> NSAttributedString {
-        guard case let .color(color) = resolved(style.fill) else { return NSAttributedString() }
+    /// A run with its baseline at `baseline`: drawn as text in a color, and as its glyphs' outline when it's
+    /// painted with a gradient or pattern, or stroked.
+    private func drawRun(_ text: NSAttributedString, at baseline: CGPoint, style: SvgStyle) {
+        if case .color = resolved(style.fill) {
+            UIGraphicsPushContext(context)
+            text.draw(at: CGPoint(x: baseline.x, y: baseline.y - Self.font(style).ascender))
+            UIGraphicsPopContext()
+        }
+        if drawsOutline(style) { paintTextOutline(Self.outline(of: text, baselineAt: baseline), style: style) }
+    }
 
-        return NSAttributedString(string: text, attributes: [
-            .font: Self.font(style),
-            .foregroundColor: UIColor(cgColor: color.copy(alpha: color.alpha * style.fillOpacity) ?? color),
-            .kern: style.letterSpacing,
-        ])
+    private func drawsOutline(_ style: SvgStyle) -> Bool {
+        if case .reference = style.fill { return true }
+        if case .none = style.stroke { return false }
+
+        return true
+    }
+
+    /// Text's glyphs, filled when the fill is a gradient or pattern laid over all of them, and stroked.
+    private func paintTextOutline(_ outline: CGPath, style: SvgStyle) {
+        let bounds = outline.boundingBoxOfPath
+
+        if case .reference = style.fill {
+            paint(style.fill, opacity: style.fillOpacity, path: outline, bounds: bounds) { $0.fillPath() }
+        }
+        if case .none = style.stroke { return }
+
+        let stroked = outline.copy(
+            strokingWithWidth: style.strokeWidth, lineCap: style.lineCap, lineJoin: style.lineJoin, miterLimit: style.miterLimit
+        )
+        paint(style.stroke, opacity: style.strokeOpacity, path: stroked, bounds: bounds) { $0.fillPath() }
+    }
+
+    /// The text's glyphs as a path, laid out by Core Text from `baseline`.
+    private static func outline(of text: NSAttributedString, baselineAt baseline: CGPoint) -> CGPath {
+        let path = CGMutablePath()
+        let runs = CTLineGetGlyphRuns(CTLineCreateWithAttributedString(text)) as? [CTRun] ?? []
+
+        for run in runs {
+            let attributes = CTRunGetAttributes(run) as NSDictionary
+            guard let fontValue = attributes[kCTFontAttributeName] else { continue }
+
+            let font = fontValue as! CTFont
+            let count = CTRunGetGlyphCount(run)
+            var glyphs = [CGGlyph](repeating: 0, count: count)
+            var positions = [CGPoint](repeating: .zero, count: count)
+            CTRunGetGlyphs(run, CFRange(location: 0, length: 0), &glyphs)
+            CTRunGetPositions(run, CFRange(location: 0, length: 0), &positions)
+
+            for (glyph, position) in zip(glyphs, positions) {
+                guard let glyphPath = CTFontCreatePathForGlyph(font, glyph, nil) else { continue }
+
+                // Core Text's y goes up; the drawing's goes down.
+                path.addPath(glyphPath, transform: CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: baseline.x + position.x, ty: baseline.y))
+            }
+        }
+
+        return path
+    }
+
+    private func attributedText(_ text: String, style: SvgStyle) -> NSAttributedString {
+        var attributes: [NSAttributedString.Key: Any] = [.font: Self.font(style), .kern: style.letterSpacing]
+
+        if case let .color(color) = resolved(style.fill) {
+            attributes[.foregroundColor] = UIColor(cgColor: color.copy(alpha: color.alpha * style.fillOpacity) ?? color)
+        }
+        if style.textDecoration.contains("underline") { attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue }
+        if style.textDecoration.contains("line-through") { attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
+
+        return NSAttributedString(string: text, attributes: attributes)
     }
 
     private static func font(_ style: SvgStyle) -> UIFont {
-        style.fontFamily.flatMap { UIFont(name: $0, size: style.fontSize) }
+        let font = style.fontFamily.flatMap { UIFont(name: $0, size: style.fontSize) }
             ?? UIFont.systemFont(ofSize: style.fontSize, weight: style.fontWeight)
+        let traits = font.fontDescriptor.symbolicTraits.union(.traitItalic)
+        guard style.isItalic, let italic = font.fontDescriptor.withSymbolicTraits(traits) else { return font }
+
+        return UIFont(descriptor: italic, size: style.fontSize)
     }
 
     private func resolved(_ paint: SvgPaint) -> SvgPaint {
@@ -761,6 +858,100 @@ private struct SvgRenderer {
                 context.restoreGState()
             }
         }
+    }
+}
+
+/// filter="url(#id)" as src/svg.ts sends it: `shadows`, [dx, dy, blur, color, inner] each, a `blur` and a
+/// `colorMatrix` (4×5, row by row) of the element itself.
+private struct SvgEffects {
+    struct Shadow {
+        let offset: CGPoint
+        let blur: CGFloat
+        let color: CIColor
+        let isInner: Bool
+    }
+
+    let shadows: [Shadow]
+    let blur: CGFloat
+    let colorMatrix: [CGFloat]?
+
+    init(_ attributes: SvgAttributes) {
+        shadows = (attributes.values["shadows"] as? [[NSNumber]] ?? []).compactMap { values in
+            guard values.count == 5 else { return nil }
+
+            return Shadow(
+                offset: CGPoint(x: values[0].doubleValue, y: values[1].doubleValue),
+                blur: CGFloat(values[2].doubleValue),
+                color: UIColor(rgba: values[3]).map { CIColor(color: $0) } ?? CIColor(red: 0, green: 0, blue: 0),
+                isInner: values[4].boolValue
+            )
+        }
+        blur = attributes.number("blur")
+        colorMatrix = (attributes.values["colorMatrix"] as? [NSNumber]).flatMap { values in
+            values.count == 20 ? values.map { CGFloat($0.doubleValue) } : nil
+        }
+    }
+
+    var isEmpty: Bool { shadows.isEmpty && blur <= 0 && colorMatrix == nil }
+
+    /// How far past the element the effects reach, in the drawing's units.
+    var margin: CGFloat {
+        shadows.map { max(abs($0.offset.x), abs($0.offset.y)) + $0.blur * 3 }.reduce(blur * 3, max)
+    }
+
+    /// The element's image (`content`) with the effects, in the same extent.
+    func applied(to content: CIImage, pixelsPerUnit: CGFloat) -> CIImage {
+        var element = content
+
+        if let colorMatrix { element = element.applyingFilter("CIColorMatrix", parameters: Self.parameters(colorMatrix)) }
+        if blur > 0 {
+            element = element.clampedToExtent().applyingGaussianBlur(sigma: blur * pixelsPerUnit).cropped(to: content.extent)
+        }
+
+        var result = element
+        for shadow in shadows {
+            // Core Image's y goes up.
+            let move = CGAffineTransform(translationX: shadow.offset.x * pixelsPerUnit, y: -shadow.offset.y * pixelsPerUnit)
+            let tint = Self.tint(shadow.color, invertsAlpha: shadow.isInner)
+            let shade = element.applyingFilter("CIColorMatrix", parameters: tint)
+                .applyingGaussianBlur(sigma: shadow.blur * pixelsPerUnit)
+                .transformed(by: move)
+
+            if shadow.isInner {
+                // What's around the element, shifted in, kept only where the element is.
+                let inner = shade.applyingFilter("CISourceInCompositing", parameters: [kCIInputBackgroundImageKey: element])
+                result = inner.composited(over: result)
+            } else {
+                result = result.composited(over: shade)
+            }
+        }
+
+        return result.cropped(to: content.extent)
+    }
+
+    /// Every pixel in `color`, as opaque as the element is there; or, `invertsAlpha`, as it isn't.
+    private static func tint(_ color: CIColor, invertsAlpha: Bool) -> [String: Any] {
+        [
+            "inputRVector": CIVector(x: 0, y: 0, z: 0, w: 0),
+            "inputGVector": CIVector(x: 0, y: 0, z: 0, w: 0),
+            "inputBVector": CIVector(x: 0, y: 0, z: 0, w: 0),
+            "inputAVector": CIVector(x: 0, y: 0, z: 0, w: invertsAlpha ? -color.alpha : color.alpha),
+            "inputBiasVector": CIVector(x: color.red, y: color.green, z: color.blue, w: invertsAlpha ? color.alpha : 0),
+        ]
+    }
+
+    private static func parameters(_ matrix: [CGFloat]) -> [String: Any] {
+        let row = { (index: Int) in
+            CIVector(x: matrix[index * 5], y: matrix[index * 5 + 1], z: matrix[index * 5 + 2], w: matrix[index * 5 + 3])
+        }
+
+        return [
+            "inputRVector": row(0),
+            "inputGVector": row(1),
+            "inputBVector": row(2),
+            "inputAVector": row(3),
+            "inputBiasVector": CIVector(x: matrix[4], y: matrix[9], z: matrix[14], w: matrix[19]),
+        ]
     }
 }
 

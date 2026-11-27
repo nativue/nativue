@@ -25,7 +25,9 @@ Global, with no import: `View`, `Text`, `Image`, `ImageBackground`, `Pressable`,
   `clipPath`, `mask`, `use`/`symbol`, `marker`, `image`, drop shadows and blur filters, and `@press`
   on an element. Also as components to import: `import { Svg, Path, Text as SvgText } from
   '@nativue/svg'` (rename `Text` and `Image`, which are nativue's). Without the package, `<svg>`
-  shows nothing.
+  shows nothing. An imported `.svg` file is a component (`import Logo from '@/assets/logo.svg'`, with
+  `/// <reference types="@nativue/svg/client" />` in `src/env.d.ts`), and a `<style>` inside an `<svg>`
+  styles its elements by tag, class and id.
 
 - Text must be inside a `<Text>`, never directly in a `<View>`.
 - Taps: `<Pressable @press="save">` (also `@long-press`, and `v-slot="{ pressed }"`), or

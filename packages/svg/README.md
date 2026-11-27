@@ -51,32 +51,55 @@ import { Circle, Path, Svg, Text as SvgText } from '@nativue/svg'
 
 ## What it draws
 
-| Element                                                            | Attributes                                                                                                                                                                                                                                                                        |
-| ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `svg`                                                              | `viewBox`, `width`, `height` (they size it; `style` too), `preserveAspectRatio` (`xMidYMid meet` by default; any alignment, `slice` or `none`)                                                                                                                                    |
-| `path`, `circle`, `ellipse`, `rect`, `line`, `polyline`, `polygon` | their geometry: `d`, `cx`/`cy`/`r`, `x`/`y`/`width`/`height`/`rx`/`ry`, `points`...                                                                                                                                                                                               |
-| `g`                                                                | groups: what it sets is inherited by what's inside                                                                                                                                                                                                                                |
-| `text`, `tspan`                                                    | `x`, `y` (the baseline), `dx`, `dy`, `font-size`, `font-weight`, `font-family`, `text-anchor`, `dominant-baseline`, `letter-spacing`; a `tspan` with its own `x`, `y` or `dy` starts a new line or place, with its own style                                                      |
-| `textPath`                                                         | inside a `text`: its text along a `path`, `href="#id"`, `startOffset` (a length or a percentage of the path)                                                                                                                                                                      |
-| `image`                                                            | `href` (a url, or an imported image as for `<Image>`), `x`, `y`, `width`, `height`, `preserveAspectRatio`                                                                                                                                                                         |
-| `defs`, `linearGradient`, `radialGradient`, `stop`                 | gradients, as `fill="url(#id)"` or `stroke="url(#id)"`: `x1`/`y1`/`x2`/`y2`, `cx`/`cy`/`r`/`fx`/`fy`, `gradientUnits`, `gradientTransform`, `spreadMethod` (`pad`, `reflect`, `repeat`), `href` (another gradient's stops and attributes), `offset`, `stop-color`, `stop-opacity` |
-| `pattern`                                                          | `fill="url(#id)"`: its content tiled; `x`, `y`, `width`, `height`, `patternUnits`, `patternContentUnits`, `patternTransform`, `viewBox`, `href`                                                                                                                                   |
-| `marker`                                                           | `marker-start`, `marker-mid`, `marker-end` on a `path`, `line`, `polyline` or `polygon`: its content at the vertices; `markerWidth`, `markerHeight`, `markerUnits`, `refX`, `refY`, `orient` (`auto`, `auto-start-reverse`, an angle), `viewBox`                                  |
-| `clipPath`                                                         | `clip-path="url(#id)"`: only what its shapes cover is drawn; `clipPathUnits`, `clip-rule`                                                                                                                                                                                         |
-| `mask`                                                             | `mask="url(#id)"`: drawn where the mask's content is light (its luminance)                                                                                                                                                                                                        |
-| `symbol`, `use`                                                    | `<use href="#id" x y width height>` draws a copy of an element, or of a `symbol` fitted to its `viewBox`; `xlink:href` works too                                                                                                                                                  |
-| `filter`                                                           | `filter="url(#id)"`: an `feDropShadow` (`dx`, `dy`, `stdDeviation`, `flood-color`, `flood-opacity`); the drop shadow design tools export (`feOffset`, `feGaussianBlur` and an `feColorMatrix` or `feFlood` for its color); or an `feGaussianBlur` alone, a blur                   |
-| `title`, `desc`, `metadata`                                        | kept out of the drawing                                                                                                                                                                                                                                                           |
+| Element                                                            | Attributes                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `svg`                                                              | `viewBox`, `width`, `height` (they size it; `style` too), `preserveAspectRatio` (`xMidYMid meet` by default; any alignment, `slice` or `none`)                                                                                                                                                                                                                                                                                     |
+| `path`, `circle`, `ellipse`, `rect`, `line`, `polyline`, `polygon` | their geometry: `d`, `cx`/`cy`/`r`, `x`/`y`/`width`/`height`/`rx`/`ry`, `points`...                                                                                                                                                                                                                                                                                                                                                |
+| `g`                                                                | groups: what it sets is inherited by what's inside                                                                                                                                                                                                                                                                                                                                                                                 |
+| `text`, `tspan`                                                    | `x`, `y` (the baseline), `dx`, `dy`, `font-size`, `font-weight`, `font-family`, `text-anchor`, `dominant-baseline`, `letter-spacing`, `font-style`, `text-decoration`; a `tspan` with its own `x`, `y` or `dy` starts a new line or place, with its own style; filled with a color, gradient or pattern, and stroked                                                                                                               |
+| `textPath`                                                         | inside a `text`: its text along a `path`, `href="#id"`, `startOffset` (a length or a percentage of the path)                                                                                                                                                                                                                                                                                                                       |
+| `image`                                                            | `href` (a url, or an imported image as for `<Image>`), `x`, `y`, `width`, `height`, `preserveAspectRatio`                                                                                                                                                                                                                                                                                                                          |
+| `defs`, `linearGradient`, `radialGradient`, `stop`                 | gradients, as `fill="url(#id)"` or `stroke="url(#id)"`: `x1`/`y1`/`x2`/`y2`, `cx`/`cy`/`r`/`fx`/`fy`, `gradientUnits`, `gradientTransform`, `spreadMethod` (`pad`, `reflect`, `repeat`), `href` (another gradient's stops and attributes), `offset`, `stop-color`, `stop-opacity`                                                                                                                                                  |
+| `pattern`                                                          | `fill="url(#id)"`: its content tiled; `x`, `y`, `width`, `height`, `patternUnits`, `patternContentUnits`, `patternTransform`, `viewBox`, `href`                                                                                                                                                                                                                                                                                    |
+| `marker`                                                           | `marker-start`, `marker-mid`, `marker-end` on a `path`, `line`, `polyline` or `polygon`: its content at the vertices; `markerWidth`, `markerHeight`, `markerUnits`, `refX`, `refY`, `orient` (`auto`, `auto-start-reverse`, an angle), `viewBox`                                                                                                                                                                                   |
+| `clipPath`                                                         | `clip-path="url(#id)"`: only what its shapes cover is drawn; `clipPathUnits`, `clip-rule`                                                                                                                                                                                                                                                                                                                                          |
+| `mask`                                                             | `mask="url(#id)"`: drawn where the mask's content is light (its luminance), or opaque with `mask-type="alpha"`                                                                                                                                                                                                                                                                                                                     |
+| `symbol`, `use`                                                    | `<use href="#id" x y width height>` draws a copy of an element, or of a `symbol` fitted to its `viewBox`; `xlink:href` works too                                                                                                                                                                                                                                                                                                   |
+| `filter`                                                           | `filter="url(#id)"`: `feDropShadow` (`dx`, `dy`, `stdDeviation`, `flood-color`, `flood-opacity`); the drop and inner shadows design tools export, any number of them (`feOffset`, `feGaussianBlur`, an `feColorMatrix` or `feFlood` for the color, `feComposite operator="arithmetic"` for an inner one); and, on the element itself, `feGaussianBlur` and `feColorMatrix` (`matrix`, `saturate`, `hueRotate`, `luminanceToAlpha`) |
+| `style`                                                            | its rules apply to the elements they select: tags, `.classes` and `#ids`, combined and nested, as design tools export them (static `class` and `id` only)                                                                                                                                                                                                                                                                          |
+| `a`                                                                | drawn as a `g`                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `title`, `desc`, `metadata`                                        | kept out of the drawing                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 On any element: `fill`, `stroke` (a color, `none`, `currentColor` or `url(#id)`), `stroke-width`,
 `stroke-linecap`, `stroke-linejoin`, `stroke-miterlimit`, `stroke-dasharray`, `stroke-dashoffset`,
-`opacity`, `fill-opacity`, `stroke-opacity`, `fill-rule`, `display="none"` and `transform`
-(`translate`, `scale`, `rotate`, `skewX`, `skewY`, `matrix`), also as `style="fill: red; stroke-width: 2"`. Like in SVG, `fill` defaults to
-black, and `stroke` to none. Percentages are of the `viewBox` (`width="100%"`, `x="50%"`), and of the
-shape's box in gradients and stops' `offset`. `width` and `height` on `<svg>` size it under its
+`opacity`, `fill-opacity`, `stroke-opacity`, `fill-rule`, `paint-order`, `vector-effect="non-scaling-stroke"`,
+`display="none"`, `visibility` and `transform` (`translate`, `scale`, `rotate`, `skewX`, `skewY`,
+`matrix`), also as `style="fill: red; stroke-width: 2"`. Like in SVG, `fill` defaults to black, and
+`stroke` to none. Lengths take `px`, `pt`, `pc`, `in`, `cm`, `mm`, `em` and `ex`. Percentages are of
+the `viewBox` (`width="100%"`, `x="50%"`), and of the shape's box in gradients and stops' `offset`. `width` and `height` on `<svg>` size it under its
 `class` and `style`, as on the web.
 
 Animating `stroke-dashoffset` from the line's length to 0 draws it in, as on the web.
+
+## .svg files
+
+An imported `.svg` file is a component, its props passed to its `<svg>`:
+
+```vue
+<script setup lang="ts">
+import Logo from '@/assets/logo.svg'
+</script>
+
+<template>
+  <Logo width="120" height="40" />
+</template>
+```
+
+For its type, add to `src/env.d.ts`:
+
+```ts
+/// <reference types="@nativue/svg/client" />
+```
 
 ## What it doesn't do
 
@@ -91,6 +114,7 @@ Animating `stroke-dashoffset` from the line's length to 0 draws it in, as on the
 - `textLength` and `lengthAdjust`, vertical text, `rotate` per character, and a `tspan` inside a
   `textPath`.
 - `<switch>`, which picks what to draw by the browser's features.
+- An `<svg>` inside another: draw its content in a `g` with a `transform` instead.
 - `<title>` and `<desc>` as what screen readers say: give the `<svg>` an `aria-label` and `role="img"`.
 
 And its limits:

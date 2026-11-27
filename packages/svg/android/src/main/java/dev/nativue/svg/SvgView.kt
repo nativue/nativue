@@ -285,6 +285,10 @@ private data class SvgStyle(
     val textAnchor: String = "start",
     val baseline: String = "auto",
     val miterLimit: Float = 4f,
+    val isItalic: Boolean = false,
+    val textDecoration: String = "none",
+    val paintsStrokeFirst: Boolean = false,
+    val hasNonScalingStroke: Boolean = false,
 ) {
     fun inheriting(attributes: SvgAttributes): SvgStyle {
         val values = attributes.values
@@ -318,6 +322,10 @@ private data class SvgStyle(
             textAnchor = values["text-anchor"] as? String ?: textAnchor,
             baseline = (values["dominant-baseline"] ?: values["alignment-baseline"]) as? String ?: baseline,
             miterLimit = attributes.optionalNumber("stroke-miterlimit") ?: miterLimit,
+            isItalic = (values["font-style"] as? String)?.let { it != "normal" } ?: isItalic,
+            textDecoration = values["text-decoration"] as? String ?: textDecoration,
+            paintsStrokeFirst = (values["paint-order"] as? String)?.startsWith("stroke") ?: paintsStrokeFirst,
+            hasNonScalingStroke = (values["vector-effect"] as? String)?.let { it == "non-scaling-stroke" } ?: hasNonScalingStroke,
         )
     }
 }
@@ -352,8 +360,7 @@ private class SvgRenderer(
         val nodeId = (element.attributes.values["nodeId"] as? Number)?.toInt()
         val pressable = listOfNotNull(nodeId) + pressableAncestors
         val opacity = element.attributes.optionalNumber("opacity") ?: 1f
-        val shadow = (element.attributes.values["shadow"] as? List<*>)?.mapNotNull { it as? Number }
-        val blur = element.attributes.number("blur")
+        val effects = SvgEffects(element.attributes)
         val savedToView = Matrix(toView)
 
         // Opacity applies to the element as a whole, overlaps included: drawn apart, then blended.
@@ -367,11 +374,7 @@ private class SvgRenderer(
         val mask = definition("mask", element, "mask")
         val contentLayer = if (mask != null) canvas.saveLayer(null, null) else null
 
-        when {
-            blur > 0 -> drawBlurred(element, style, pressable, blur)
-            shadow != null && shadow.size == 4 -> drawShadow(element, style, pressable, shadow)
-            else -> drawContent(element, style, pressable)
-        }
+        if (effects.isEmpty) drawContent(element, style, pressable) else drawWithEffects(element, style, pressable, effects)
         if (mask != null && contentLayer != null) applyMask(mask, contentLayer)
 
         canvas.restoreToCount(saveCount)
@@ -427,12 +430,14 @@ private class SvgRenderer(
         pressTargets.add(SvgPressTarget(area, pressable))
     }
 
-    /** blur, an <feGaussianBlur>'s deviation in the drawing's units: the element drawn apart, blurred, then drawn. */
-    private fun drawBlurred(element: SvgElement, style: SvgStyle, pressable: List<Int>, deviation: Float) {
+    /**
+     * A filter's effects: the element drawn apart, its color matrix and blur applied, its inner shadows drawn
+     * on it, then its outer shadows and it drawn in its place.
+     */
+    private fun drawWithEffects(element: SvgElement, style: SvgStyle, pressable: List<Int>, effects: SvgEffects) {
         val scale = hypot(toViewValue(Matrix.MSCALE_X), toViewValue(Matrix.MSKEW_Y))
-        val radius = deviation * scale
-        val area = shadowArea(element, style, scale, radius)
-        val bitmap = Bitmap.createBitmap(area.width(), area.height(), Bitmap.Config.ARGB_8888)
+        val area = effectsArea(element, style, scale, effects.margin * scale)
+        var bitmap = Bitmap.createBitmap(area.width(), area.height(), Bitmap.Config.ARGB_8888)
         val offscreen = Canvas(bitmap).apply {
             translate(-area.left.toFloat(), -area.top.toFloat())
             concat(toView)
@@ -440,13 +445,57 @@ private class SvgRenderer(
         val offscreenRenderer = SvgRenderer(offscreen, currentColor, definitions, toView, density, images)
         offscreenRenderer.drawContent(element, style, pressable)
         pressTargets.addAll(offscreenRenderer.pressTargets)
-        SvgBlur.blur(bitmap, radius)
+
+        effects.colorMatrix?.let { matrix ->
+            val filtered = Bitmap.createBitmap(area.width(), area.height(), Bitmap.Config.ARGB_8888)
+            Canvas(filtered).drawBitmap(bitmap, 0f, 0f, Paint().apply { colorFilter = ColorMatrixColorFilter(matrix) })
+            bitmap.recycle()
+            bitmap = filtered
+        }
+        if (effects.blur > 0) SvgBlur.blur(bitmap, effects.blur * scale)
+        effects.shadows.filter { it.isInner }.forEach { drawInnerShadow(bitmap, it, scale) }
 
         canvas.save()
         canvas.concat(Matrix().also(toView::invert))
+        effects.shadows.filterNot { it.isInner }.forEach { shadow ->
+            val offset = IntArray(2)
+            val shape = bitmap.extractAlpha(blurPaint(shadow.blur * scale), offset)
+
+            canvas.drawBitmap(
+                shape,
+                area.left + offset[0] + shadow.dx * scale,
+                area.top + offset[1] + shadow.dy * scale,
+                Paint(Paint.ANTI_ALIAS_FLAG).apply { color = shadow.color },
+            )
+            shape.recycle()
+        }
         canvas.drawBitmap(bitmap, area.left.toFloat(), area.top.toFloat(), null)
         canvas.restore()
         bitmap.recycle()
+    }
+
+    /** What's around the element, blurred and shifted in, drawn over it where it is. */
+    private fun drawInnerShadow(bitmap: Bitmap, shadow: SvgEffects.Shadow, scale: Float) {
+        val outside = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
+        Canvas(outside).apply {
+            drawColor(0xFF000000.toInt())
+            drawBitmap(bitmap, 0f, 0f, Paint().apply { xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_OUT) })
+        }
+
+        val offset = IntArray(2)
+        val shape = outside.extractAlpha(blurPaint(shadow.blur * scale), offset)
+        val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = shadow.color
+            xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC_ATOP)
+        }
+
+        Canvas(bitmap).drawBitmap(shape, offset[0] + shadow.dx * scale, offset[1] + shadow.dy * scale, shadowPaint)
+        shape.recycle()
+        outside.recycle()
+    }
+
+    private fun blurPaint(radius: Float) = Paint().apply {
+        if (radius > 0) maskFilter = BlurMaskFilter(radius, BlurMaskFilter.Blur.NORMAL)
     }
 
     /** The element referred to by an attribute's url(#id). */
@@ -472,11 +521,14 @@ private class SvgRenderer(
         canvas.clipPath(shapes)
     }
 
-    /** mask="url(#id)": the content drawn so far stays where the mask's content is light (its luminance). */
+    /**
+     * mask="url(#id)": the content drawn so far stays where the mask's content is light (its luminance), or
+     * opaque with mask-type="alpha".
+     */
     private fun applyMask(mask: SvgElement, contentLayer: Int) {
         val maskPaint = Paint().apply {
             xfermode = PorterDuffXfermode(PorterDuff.Mode.DST_IN)
-            colorFilter = ColorMatrixColorFilter(LUMINANCE_TO_ALPHA)
+            if (mask.attributes.text("mask-type") != "alpha") colorFilter = ColorMatrixColorFilter(LUMINANCE_TO_ALPHA)
         }
         canvas.saveLayer(null, maskPaint)
         val maskRenderer = SvgRenderer(canvas, currentColor, definitions, toView, density, images)
@@ -484,49 +536,13 @@ private class SvgRenderer(
         canvas.restoreToCount(contentLayer)
     }
 
-    /**
-     * shadow, [dx, dy, blur, color] (from an <feDropShadow>), in the drawing's units: the element is drawn
-     * apart, its shape blurred into the shadow, then both drawn.
-     */
-    private fun drawShadow(element: SvgElement, style: SvgStyle, pressable: List<Int>, shadow: List<Number>) {
-        val scale = hypot(toViewValue(Matrix.MSCALE_X), toViewValue(Matrix.MSKEW_Y))
-        val blur = shadow[2].toFloat() * scale
-        val area = shadowArea(element, style, scale, blur)
-        val bitmap = Bitmap.createBitmap(area.width(), area.height(), Bitmap.Config.ARGB_8888)
-        val offscreen = Canvas(bitmap).apply {
-            translate(-area.left.toFloat(), -area.top.toFloat())
-            concat(toView)
-        }
-        val offscreenRenderer = SvgRenderer(offscreen, currentColor, definitions, toView, density, images)
-        offscreenRenderer.drawContent(element, style, pressable)
-        pressTargets.addAll(offscreenRenderer.pressTargets)
-
-        val offset = IntArray(2)
-        val shape = bitmap.extractAlpha(Paint().apply { if (blur > 0) maskFilter = BlurMaskFilter(blur, BlurMaskFilter.Blur.NORMAL) }, offset)
-        val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = androidColor(shadow[3]) ?: 0xFF000000.toInt() }
-        val toCanvas = Matrix().also(toView::invert)
-
-        canvas.save()
-        canvas.concat(toCanvas)
-        canvas.drawBitmap(
-            shape,
-            area.left + offset[0] + shadow[0].toFloat() * scale,
-            area.top + offset[1] + shadow[1].toFloat() * scale,
-            shadowPaint,
-        )
-        canvas.drawBitmap(bitmap, area.left.toFloat(), area.top.toFloat(), null)
-        canvas.restore()
-        shape.recycle()
-        bitmap.recycle()
-    }
-
-    /** The element's box in the view, with room for its stroke and blur; the whole view when it has none (text). */
-    private fun shadowArea(element: SvgElement, style: SvgStyle, scale: Float, blur: Float): Rect {
+    /** The element's box in the view, with room for its stroke and effects; the whole view when it has none (text). */
+    private fun effectsArea(element: SvgElement, style: SvgStyle, scale: Float, effectsMargin: Float): Rect {
         val view = Rect(0, 0, canvas.width.coerceAtLeast(1), canvas.height.coerceAtLeast(1))
         val bounds = SvgShapes.boundingBox(element).also(toView::mapRect)
         if (bounds.isEmpty) return view
 
-        val margin = style.strokeWidth * scale + blur * 3
+        val margin = style.strokeWidth * scale + effectsMargin
         val area = Rect()
 
         bounds.inset(-margin, -margin)
@@ -536,30 +552,31 @@ private class SvgRenderer(
     }
 
     private fun drawShape(shape: Path, style: SvgStyle, pressable: List<Int>) {
+        val bounds = RectF().also { shape.computeBounds(it, true) }
+        val scale = max(hypot(toViewValue(Matrix.MSCALE_X), toViewValue(Matrix.MSKEW_Y)), 0.01f)
+
         shape.fillType = if (style.isEvenOdd) Path.FillType.EVEN_ODD else Path.FillType.WINDING
-        if (configure(style.fill, style.fillOpacity, shape)) {
-            paint.style = Paint.Style.FILL
-            canvas.drawPath(shape, paint)
-        }
-        if (configure(style.stroke, style.strokeOpacity, shape)) {
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = style.strokeWidth
-            paint.strokeCap = style.lineCap
-            paint.strokeJoin = style.lineJoin
-            paint.strokeMiter = style.miterLimit
-            paint.pathEffect = style.dashes.takeIf { it.isNotEmpty() }?.let {
-                // An odd list repeats, as SVG reads it.
-                val intervals = if (it.size % 2 == 0) it else it + it
-                DashPathEffect(intervals.toFloatArray(), style.dashOffset)
+        // paint-order="stroke": the fill over the stroke.
+        for (paintsStroke in if (style.paintsStrokeFirst) listOf(true, false) else listOf(false, true)) {
+            if (!paintsStroke && configure(style.fill, style.fillOpacity, bounds)) {
+                paint.style = Paint.Style.FILL
+                canvas.drawPath(shape, paint)
             }
-            canvas.drawPath(shape, paint)
-            paint.pathEffect = null
+            if (paintsStroke && configure(style.stroke, style.strokeOpacity, bounds)) {
+                configureStroke(style, scale)
+                paint.pathEffect = style.dashes.takeIf { it.isNotEmpty() }?.let {
+                    // An odd list repeats, as SVG reads it.
+                    val intervals = if (it.size % 2 == 0) it else it + it
+                    DashPathEffect(intervals.toFloatArray(), style.dashOffset)
+                }
+                canvas.drawPath(shape, paint)
+                paint.pathEffect = null
+            }
         }
 
         if (pressable.isEmpty()) return
 
         // A thin line is hard to hit: at least 44dp wide, like the targets of iOS's guidelines.
-        val scale = max(hypot(toViewValue(Matrix.MSCALE_X), toViewValue(Matrix.MSKEW_Y)), 0.01f)
         val area = Path()
         val touchWidth = max(style.strokeWidth, 44 * density / scale)
         val outline = Paint().apply {
@@ -577,6 +594,15 @@ private class SvgRenderer(
         pressTargets.add(SvgPressTarget(area, pressable))
     }
 
+    /** vector-effect="non-scaling-stroke": as wide on screen whatever the drawing's scale. */
+    private fun configureStroke(style: SvgStyle, scale: Float) {
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = if (style.hasNonScalingStroke) style.strokeWidth / scale else style.strokeWidth
+        paint.strokeCap = style.lineCap
+        paint.strokeJoin = style.lineJoin
+        paint.strokeMiter = style.miterLimit
+    }
+
     /** <text>'s runs: a run with its own x starts a chunk, which text-anchor places. */
     private fun drawText(element: SvgElement, style: SvgStyle, pressable: List<Int>) {
         element.children.filter { it.tag == "textPath" }.forEach { drawTextAlongPath(it, style.inheriting(it.attributes)) }
@@ -592,7 +618,7 @@ private class SvgRenderer(
             while (end < runs.size && runs[end].first.attributes.optionalNumber("x") == null) end++
 
             val chunk = runs.subList(index, end)
-            val chunkWidth = chunk.sumOf { (run, runStyle) -> configureText(runStyle).measureText(run.text).toDouble() }.toFloat()
+            val chunkWidth = chunk.sumOf { (run, runStyle) -> textPaint(runStyle).measureText(run.text).toDouble() }.toFloat()
             val anchorOffset = when (chunk.first().second.textAnchor) {
                 "middle" -> chunkWidth / 2
                 "end" -> chunkWidth
@@ -605,12 +631,15 @@ private class SvgRenderer(
                 penX += run.attributes.number("dx") - if (position == 0) anchorOffset else 0f
                 penY += run.attributes.number("dy")
 
-                val textPaint = configureText(runStyle)
-                val width = textPaint.measureText(run.text)
+                val metrics = textPaint(runStyle)
+                val width = metrics.measureText(run.text)
                 // y is the baseline, as drawText takes it, unless dominant-baseline moves it.
-                val baselineY = penY + baselineShift(textPaint, runStyle.baseline)
-                if (textPaint.color != 0) canvas.drawText(run.text, penX, baselineY, textPaint)
-                textBox.union(penX, baselineY + textPaint.ascent(), penX + width, baselineY + textPaint.descent())
+                val baselineY = penY + baselineShift(metrics, runStyle.baseline)
+                val runBox = RectF(penX, baselineY + metrics.ascent(), penX + width, baselineY + metrics.descent())
+                val x = penX
+
+                paintText(runStyle, runBox) { canvas.drawText(run.text, x, baselineY, it) }
+                textBox.union(runBox)
                 penX += width
             }
             index = end
@@ -628,11 +657,9 @@ private class SvgRenderer(
         val path = SvgPathParser(run.attributes.text("d")).parse()
         matrixAttribute(run.attributes.values["pathTransform"])?.let(path::transform)
 
-        val textPaint = configureText(style)
-        if (textPaint.color == 0) return
-
+        val metrics = textPaint(style)
         val length = PathMeasure(path, false).length
-        val width = textPaint.measureText(run.text)
+        val width = metrics.measureText(run.text)
         val startOffset = run.attributes.text("startOffset")
         val offset = if (startOffset.endsWith("%")) (startOffset.dropLast(1).toFloatOrNull() ?: 0f) / 100 * length else run.attributes.number("startOffset")
         val anchorOffset = when (style.textAnchor) {
@@ -641,7 +668,11 @@ private class SvgRenderer(
             else -> 0f
         }
 
-        canvas.drawTextOnPath(run.text, path, offset - anchorOffset, baselineShift(textPaint, style.baseline), textPaint)
+        val pathBox = RectF().also { path.computeBounds(it, true) }.apply { inset(0f, metrics.ascent()) }
+
+        paintText(style, pathBox) {
+            canvas.drawTextOnPath(run.text, path, offset - anchorOffset, baselineShift(metrics, style.baseline), it)
+        }
     }
 
     /** dominant-baseline: where y falls on the text, as a shift of the baseline. */
@@ -652,20 +683,38 @@ private class SvgRenderer(
         else -> 0f
     }
 
-    /** The paint for a run: its color (0 for none), font and spacing, left-aligned (runs are placed by hand). */
-    private fun configureText(style: SvgStyle): Paint {
-        val color = resolved(style.fill) as? SvgPaint.Color
+    /** A run filled (a color, or a gradient or pattern laid over [box]) and stroked, each by [draw]. */
+    private fun paintText(style: SvgStyle, box: RectF, draw: (Paint) -> Unit) {
+        if (configure(style.fill, style.fillOpacity, box)) {
+            setTextAttributes(paint, style)
+            paint.style = Paint.Style.FILL
+            draw(paint)
+        }
+        if (configure(style.stroke, style.strokeOpacity, box)) {
+            setTextAttributes(paint, style)
+            configureStroke(style, max(hypot(toViewValue(Matrix.MSCALE_X), toViewValue(Matrix.MSKEW_Y)), 0.01f))
+            draw(paint)
+        }
+    }
 
-        paint.reset()
-        paint.isAntiAlias = true
-        paint.style = Paint.Style.FILL
-        paint.color = color?.let { withOpacity(it.color, style.fillOpacity) } ?: 0
-        paint.textSize = style.fontSize
-        paint.typeface = Typeface.create(style.fontFamily, if (style.isBold) Typeface.BOLD else Typeface.NORMAL)
-        paint.letterSpacing = if (style.fontSize > 0) style.letterSpacing / style.fontSize else 0f
-        paint.textAlign = Paint.Align.LEFT
+    /** A paint to measure a run with. */
+    private fun textPaint(style: SvgStyle) = Paint(Paint.ANTI_ALIAS_FLAG).also { setTextAttributes(it, style) }
 
-        return paint
+    /** Font, size, spacing and decoration, left-aligned (runs are placed by hand). */
+    private fun setTextAttributes(textPaint: Paint, style: SvgStyle) {
+        val typefaceStyle = when {
+            style.isBold && style.isItalic -> Typeface.BOLD_ITALIC
+            style.isBold -> Typeface.BOLD
+            style.isItalic -> Typeface.ITALIC
+            else -> Typeface.NORMAL
+        }
+
+        textPaint.textSize = style.fontSize
+        textPaint.typeface = Typeface.create(style.fontFamily, typefaceStyle)
+        textPaint.letterSpacing = if (style.fontSize > 0) style.letterSpacing / style.fontSize else 0f
+        textPaint.textAlign = Paint.Align.LEFT
+        textPaint.isUnderlineText = "underline" in style.textDecoration
+        textPaint.isStrikeThruText = "line-through" in style.textDecoration
     }
 
     private fun toViewValue(index: Int): Float = FloatArray(9).also(toView::getValues)[index]
@@ -673,8 +722,8 @@ private class SvgRenderer(
     private fun resolved(paint: SvgPaint): SvgPaint =
         if (paint is SvgPaint.CurrentColor) SvgPaint.Color(currentColor) else paint
 
-    /** Sets up the paint for a fill or a stroke; false when there's nothing to draw. */
-    private fun configure(svgPaint: SvgPaint, opacity: Float, shape: Path): Boolean {
+    /** Sets up the paint for a fill or a stroke over [bounds], the shape's box; false when there's nothing to draw. */
+    private fun configure(svgPaint: SvgPaint, opacity: Float, bounds: RectF): Boolean {
         paint.reset()
         paint.isAntiAlias = true
 
@@ -685,7 +734,6 @@ private class SvgRenderer(
             }
             is SvgPaint.Reference -> {
                 val definition = definitions[resolved.id] ?: return false
-                val bounds = RectF().also { shape.computeBounds(it, true) }
                 paint.shader = (if (definition.tag == "pattern") patternShader(definition, bounds) else SvgGradients.shader(definition, bounds))
                     ?: return false
                 paint.alpha = (opacity * 255).roundToInt()
@@ -813,6 +861,38 @@ private object SvgGradients {
 
         return shader
     }
+}
+
+/**
+ * filter="url(#id)" as src/svg.ts sends it: `shadows`, [dx, dy, blur, color, inner] each, a `blur` and a
+ * `colorMatrix` (4×5, row by row) of the element itself.
+ */
+private class SvgEffects(attributes: SvgAttributes) {
+    class Shadow(val dx: Float, val dy: Float, val blur: Float, val color: Int, val isInner: Boolean)
+
+    val shadows = (attributes.values["shadows"] as? List<*>).orEmpty().mapNotNull { value ->
+        val numbers = (value as? List<*>)?.mapNotNull { it as? Number }
+        if (numbers?.size != 5) return@mapNotNull null
+
+        Shadow(
+            numbers[0].toFloat(),
+            numbers[1].toFloat(),
+            numbers[2].toFloat(),
+            androidColor(numbers[3]) ?: 0x80000000.toInt(),
+            numbers[4].toInt() == 1,
+        )
+    }
+    val blur = attributes.number("blur")
+    // Android's offsets are 0 to 255, SVG's 0 to 1.
+    val colorMatrix = (attributes.values["colorMatrix"] as? List<*>)?.mapNotNull { (it as? Number)?.toFloat() }
+        ?.takeIf { it.size == 20 }
+        ?.mapIndexed { index, value -> if (index % 5 == 4) value * 255 else value }
+        ?.let { ColorMatrix(it.toFloatArray()) }
+
+    val isEmpty get() = shadows.isEmpty() && blur <= 0 && colorMatrix == null
+
+    /** How far past the element the effects reach, in the drawing's units. */
+    val margin get() = shadows.maxOfOrNull { max(abs(it.dx), abs(it.dy)) + it.blur * 3 }?.let { max(it, blur * 3) } ?: (blur * 3)
 }
 
 /** A viewBox fitted into a frame as preserveAspectRatio says, like src/svg.ts's viewBoxFit. */

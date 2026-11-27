@@ -1154,9 +1154,9 @@ const across = elementsTagged(effects, 'linearGradient').find(
 )
 assert.equal(elementsTagged(across, 'stop').length, 2)
 assert.deepEqual([across[1].x2, across[1].y2], [1, 0])
-// filter="url(#id)" with an feDropShadow: a shadow, [dx, dy, blur, color].
-const card = elementsTagged(effects, 'rect').find(([, attributes]) => attributes.shadow)
-assert.deepEqual(card[1].shadow.slice(0, 3), [0, 3, 3])
+// filter="url(#id)" with an feDropShadow: a shadow, [dx, dy, blur, color, inner].
+const card = elementsTagged(effects, 'rect').find(([, attributes]) => attributes.shadows)
+assert.deepEqual(card[1].shadows[0].slice(0, 3), [0, 3, 3])
 assert.equal(card[1].filter, undefined)
 // <text> and its <tspan>: runs, whitespace collapsed to single spaces and trimmed at the ends.
 const [doneText] = elementsTagged(effects, 'text')
@@ -1183,10 +1183,17 @@ assert.equal(elementsTagged(badgeDrawing, 'path')[0][1]['stroke-width'], 4)
 assert.equal(elementsTagged(badgeDrawing, 'style').length, 0)
 assert.equal(viewsById[badgeId].style.width, 48)
 
-// Design tools' shadow (feOffset, feGaussianBlur, feColorMatrix): a shadow in the matrix's color.
+// Design tools' shadows (feOffset, feGaussianBlur, feColorMatrix): in the matrix's color, and inside
+// the element with an arithmetic feComposite.
 const more = drawingOf(moreId)
-const exportedCard = elementsTagged(more, 'rect').find(([, attributes]) => attributes.shadow)
-assert.deepEqual(exportedCard[1].shadow, [0, 4, 4, 0x0b122040])
+const exportedCard = elementsTagged(more, 'rect').find(([, attributes]) => attributes.shadows)
+assert.deepEqual(exportedCard[1].shadows, [
+  [0, 4, 4, 0x0b122040, 0],
+  [0, -3, 2, 0x4af2aeff, 1],
+])
+// feColorMatrix type="saturate": a color matrix on the element itself.
+const grayscale = elementsTagged(more, 'image')[0][1].colorMatrix
+assert.deepEqual(grayscale.slice(0, 3), [0.213, 0.715, 0.072])
 // feGaussianBlur alone: a blur. Filters themselves aren't sent.
 assert.equal(elementsTagged(more, 'circle')[0][1].blur, 4)
 assert.equal(elementsTagged(more, 'filter').length, 0)

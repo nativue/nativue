@@ -54,6 +54,7 @@ export const PART_TAGS = [
   'pattern',
   'marker',
   'textPath',
+  'a',
   'title',
   'desc',
   'metadata',
@@ -123,6 +124,35 @@ const STRING_ATTRIBUTES = new Set([
   'in2',
   'type',
   'values',
+  'operator',
+  'visibility',
+  'mask-type',
+  'paint-order',
+  'vector-effect',
+  'font-style',
+  'text-decoration',
+])
+// Absolute units in user units (CSS pixels); em and ex are resolved with the font size.
+const PIXELS_PER_UNIT: Record<string, number> = {
+  px: 1,
+  pt: 4 / 3,
+  pc: 16,
+  in: 96,
+  cm: 96 / 2.54,
+  mm: 96 / 25.4,
+  q: 96 / 101.6,
+}
+// Drawn things a hidden visibility leaves out; a group's children decide for themselves.
+const VISIBLE_TAGS = new Set([
+  'path',
+  'circle',
+  'ellipse',
+  'rect',
+  'line',
+  'polyline',
+  'polygon',
+  'text',
+  'image',
 ])
 // Nested <use>s stop here, so one that refers to itself can't loop.
 const MAXIMUM_USE_DEPTH = 8
@@ -219,16 +249,17 @@ function multiply([a, b, c, d, e, f]: number[], [g, h, i, j, k, l]: number[]): n
   ]
 }
 
-/** "12" and "12px" as numbers; "50%" stays, resolved when the drawing is made. */
+/** "12", "12px" and "9pt" as numbers; "50%" and "1.5em" stay, resolved when the drawing is made. */
 function numberValue(value: unknown): unknown {
   if (typeof value !== 'string') return value
 
   const trimmed = value.trim()
-  if (trimmed.endsWith('%')) return trimmed
+  const unit = /[a-z%]*$/i.exec(trimmed)?.[0].toLowerCase() ?? ''
+  if (unit === '%' || unit === 'em' || unit === 'ex') return trimmed
 
   const number = Number.parseFloat(trimmed)
 
-  return Number.isNaN(number) ? trimmed : number
+  return Number.isNaN(number) ? trimmed : number * (PIXELS_PER_UNIT[unit] ?? 1)
 }
 
 /** [name, value] the native drawing reads, or null to leave it out. */
@@ -310,6 +341,8 @@ type DrawingContext = {
   viewport: Viewport
   nodesById: Map<string, SvgNode>
   useDepth: number
+  /** Inherited: 'hidden' leaves out what's drawn, unless it says 'visible'. */
+  visibility?: unknown
 }
 
 /** The drawing the native view gets: the root's attributes, then its children. */
@@ -356,10 +389,15 @@ function elementsOf(node: SvgNode, context: DrawingContext): DrawingElement[] {
   if (!PART_TAG_SET.has(tag) || UNDRAWN_TAGS.has(tag)) return []
   if (tag === 'use') return useElements(node, context)
 
-  const attributes = resolvedPercentages(tag, attributesOf(node), context.viewport)
+  const attributes = resolvedPercentages(tag, attributesOf(node), context.viewport, emSizeOf(node))
   if (attributes.display === 'none') return []
 
-  let children = node.children.flatMap((child) => elementsOf(child, context))
+  const visibility = attributes.visibility ?? context.visibility
+  const isHidden = visibility === 'hidden' || visibility === 'collapse'
+  if (isHidden && VISIBLE_TAGS.has(tag)) return []
+
+  const nested = { ...context, visibility }
+  let children = node.children.flatMap((child) => elementsOf(child, nested))
 
   if (context.isPressable(node)) attributes.nodeId = node.id
   applyFilter(attributes, context)
@@ -383,7 +421,15 @@ function elementsOf(node: SvgNode, context: DrawingContext): DrawingElement[] {
   if (tag === 'text') return [[tag, attributes, textRuns(node, context)]]
   if (MARKED_TAGS.has(tag)) return withMarkers([tag, attributes, children], node, context)
 
-  return [[tag, attributes, children]]
+  // A link groups what it holds: there's nothing to follow in an app.
+  return [[tag === 'a' ? 'g' : tag, attributes, children]]
+}
+
+/** What em is: the font size the element inherits, 16 without one. */
+function emSizeOf(node: SvgNode): number {
+  const fontSize = inheritedAttribute(node, 'font-size')
+
+  return typeof fontSize === 'number' ? fontSize : 16
 }
 
 /**
@@ -459,7 +505,10 @@ function alignment(position: string): number {
   return position === 'Max' ? 1 : 0.5
 }
 
-/** filter="url(#id)" in place: what native draws, a shadow ([dx, dy, blur, color]) and a blur. */
+/**
+ * filter="url(#id)" in place: what native draws, `shadows` ([dx, dy, blur, color, inner], under the
+ * element or, inner, inside it), a `blur` and a `colorMatrix` of the element itself.
+ */
 function applyFilter(attributes: Record<string, unknown>, context: DrawingContext) {
   if (!attributes.filter) return
 
@@ -467,42 +516,88 @@ function applyFilter(attributes: Record<string, unknown>, context: DrawingContex
   delete attributes.filter
 }
 
+type Shadow = { dx: number; dy: number; blur: number; color: number; isInner: boolean }
+
+// A shadow without a color of its own, as in a hand-written <feOffset> and <feMerge>.
+const DEFAULT_SHADOW_COLOR = 0x00000080
+
 /**
- * The effects native draws: an <feDropShadow>; the shadow design tools export, an <feOffset> and an
- * <feGaussianBlur> merged under the element, colored by an <feFlood> or an <feColorMatrix>; or an
- * <feGaussianBlur> of the element itself. Other filters draw the element as it is.
+ * The effects native draws, read in order: an <feDropShadow>; each <feOffset> starts a shadow (design
+ * tools export one per effect), blurred by the <feGaussianBlur> around it, colored by an
+ * <feColorMatrix> or <feFlood>, and inside the element when an <feComposite operator="arithmetic">
+ * cuts it to the element (an inner shadow); with no <feOffset>, <feGaussianBlur> and <feColorMatrix>
+ * apply to the element itself. Other primitives draw nothing.
  */
 function filterEffects(filter: SvgNode | undefined): Record<string, unknown> {
-  const primitives = new Map(
-    (filter?.children ?? []).map((child) => [child.type, attributesOf(child)] as const),
-  )
-  const dropShadow = primitives.get('feDropShadow')
-  const offset = primitives.get('feOffset')
-  const blur = primitives.get('feGaussianBlur')
+  const shadows: Shadow[] = []
+  let current: Shadow | undefined
+  let pendingBlur = 0
+  let blur = 0
+  let colorMatrix: number[] | undefined
 
-  if (dropShadow) {
-    return {
-      shadow: [
-        Number(dropShadow.dx ?? 2),
-        Number(dropShadow.dy ?? 2),
-        deviationOf(dropShadow.stdDeviation ?? 2),
-        floodColor(dropShadow),
-      ],
+  for (const primitive of filter?.children ?? []) {
+    const attributes = attributesOf(primitive)
+    const readsSourceAlpha = attributes.in === 'SourceAlpha'
+
+    switch (primitive.type) {
+      case 'feDropShadow':
+        shadows.push({
+          dx: Number(attributes.dx ?? 2),
+          dy: Number(attributes.dy ?? 2),
+          blur: deviationOf(attributes.stdDeviation ?? 2),
+          color: floodColor(attributes),
+          isInner: false,
+        })
+        break
+      case 'feOffset':
+        current = {
+          dx: Number(attributes.dx ?? 0),
+          dy: Number(attributes.dy ?? 0),
+          blur: pendingBlur,
+          color: DEFAULT_SHADOW_COLOR,
+          isInner: false,
+        }
+        shadows.push(current)
+        pendingBlur = 0
+        break
+      case 'feGaussianBlur':
+        if (current) current.blur = deviationOf(attributes.stdDeviation)
+        else if (readsSourceAlpha) pendingBlur = deviationOf(attributes.stdDeviation)
+        else blur = deviationOf(attributes.stdDeviation)
+        break
+      case 'feComposite':
+        if (current && attributes.operator === 'arithmetic') current.isInner = true
+        break
+      case 'feFlood':
+        // Design tools add a transparent one for the background.
+        if (current && Number(attributes['flood-opacity'] ?? 1) > 0)
+          current.color = floodColor(attributes)
+        break
+      case 'feColorMatrix': {
+        if (readsSourceAlpha) break
+
+        const matrix = colorMatrixOf(attributes)
+
+        if (current && matrix) current.color = matrixColor(matrix)
+        else if (matrix) colorMatrix = matrix
+        break
+      }
     }
   }
-  if (offset) {
-    return {
-      shadow: [
-        Number(offset.dx ?? 0),
-        Number(offset.dy ?? 0),
-        deviationOf(blur?.stdDeviation),
-        shadowColor(primitives),
-      ],
-    }
-  }
-  if (blur) return { blur: deviationOf(blur.stdDeviation) }
 
-  return {}
+  return {
+    ...(shadows.length > 0 && {
+      shadows: shadows.map(({ dx, dy, blur, color, isInner }) => [
+        dx,
+        dy,
+        blur,
+        color,
+        isInner ? 1 : 0,
+      ]),
+    }),
+    ...(blur > 0 && { blur }),
+    ...(colorMatrix && { colorMatrix }),
+  }
 }
 
 /** stdDeviation="4" or "4 4": one deviation, both ways. */
@@ -518,27 +613,73 @@ function floodColor(attributes: Record<string, unknown>): number {
   return ((color & 0xffffff00) | alpha) >>> 0
 }
 
-/**
- * The color an <feColorMatrix type="matrix"> paints the shadow with (design tools write "0 0 0 0 red 0 0 0
- * 0 green 0 0 0 0 blue 0 0 0 opacity 0"), or an <feFlood>'s; black at 50% without either. The matrix
- * comes first: design tools also add a transparent <feFlood> for the background.
- */
-function shadowColor(primitives: Map<string, Record<string, unknown>>): number {
-  const values = String(primitives.get('feColorMatrix')?.values ?? '')
+// The weights SVG's saturate and hueRotate give red, green and blue (Filter Effects, feColorMatrix).
+const LUMINANCE = [0.213, 0.715, 0.072]
+const IDENTITY_ALPHA_ROW = [0, 0, 0, 1, 0]
+
+/** An <feColorMatrix>'s 4×5 matrix, row by row: type="matrix", "saturate", "hueRotate" or "luminanceToAlpha". */
+function colorMatrixOf(attributes: Record<string, unknown>): number[] | undefined {
+  const values = String(attributes.values ?? '')
     .trim()
     .split(/[\s,]+/)
+    .filter(Boolean)
     .map(Number)
-  const flood = primitives.get('feFlood')
 
-  if (values.length !== 20) return flood ? floodColor(flood) : 0x00000080
+  switch (attributes.type ?? 'matrix') {
+    case 'matrix':
+      return values.length === 20 ? values : undefined
+    case 'saturate':
+      return rgbMatrix(saturation(values[0] ?? 1))
+    case 'hueRotate':
+      return rgbMatrix(hueRotation(((values[0] ?? 0) * Math.PI) / 180))
+    case 'luminanceToAlpha':
+      return [...Array(15).fill(0), 0.2125, 0.7154, 0.0721, 0, 0]
+    default:
+      return undefined
+  }
+}
 
+function saturation(amount: number): number[][] {
+  return [0, 1, 2].map((row) =>
+    LUMINANCE.map((weight, column) => weight * (1 - amount) + (column === row ? amount : 0)),
+  )
+}
+
+function hueRotation(radians: number): number[][] {
+  const [cos, sin] = [Math.cos(radians), Math.sin(radians)]
+  const byCos = [
+    [0.787, -0.715, -0.072],
+    [-0.213, 0.285, -0.072],
+    [-0.213, -0.715, 0.928],
+  ]
+  const bySin = [
+    [-0.213, -0.715, 0.928],
+    [0.143, 0.14, -0.283],
+    [-0.787, 0.715, 0.072],
+  ]
+
+  return [0, 1, 2].map((row) =>
+    LUMINANCE.map((weight, column) => weight + cos * byCos[row][column] + sin * bySin[row][column]),
+  )
+}
+
+/** A 3×3 matrix on red, green and blue, alpha kept, as a 4×5 color matrix. */
+function rgbMatrix(rows: number[][]): number[] {
+  return [...rows.flatMap((row) => [...row, 0, 0]), ...IDENTITY_ALPHA_ROW]
+}
+
+/**
+ * The color a matrix paints a shadow with: design tools write "0 0 0 0 red 0 0 0 0 green 0 0 0 0 blue 0
+ * 0 0 opacity 0".
+ */
+function matrixColor(matrix: number[]): number {
   const channel = (value: number) => Math.round(Math.min(Math.max(value, 0), 1) * 255)
 
   return (
-    ((channel(values[4]) << 24) |
-      (channel(values[9]) << 16) |
-      (channel(values[14]) << 8) |
-      channel(values[18])) >>>
+    ((channel(matrix[4]) << 24) |
+      (channel(matrix[9]) << 16) |
+      (channel(matrix[14]) << 8) |
+      channel(matrix[18])) >>>
     0
   )
 }
@@ -553,7 +694,12 @@ function textRuns(node: SvgNode, context: DrawingContext): DrawingElement[] {
     if (child.type === 'textPath') return textPathRun(child, context)
     if (child.type !== 'tspan') return []
 
-    const attributes = resolvedPercentages('tspan', attributesOf(child), context.viewport)
+    const attributes = resolvedPercentages(
+      'tspan',
+      attributesOf(child),
+      context.viewport,
+      emSizeOf(child),
+    )
 
     return [['tspan', attributes, textOf(child)]]
   })
@@ -590,11 +736,22 @@ function textPathRun(node: SvgNode, context: DrawingContext): DrawingElement[] {
   return [['textPath', { ...attributes, d, pathTransform: transform }, textOf(node)]]
 }
 
-function resolvedPercentages(tag: string, attributes: Record<string, unknown>, viewport: Viewport) {
+function resolvedPercentages(
+  tag: string,
+  attributes: Record<string, unknown>,
+  viewport: Viewport,
+  emSize = 16,
+) {
   const diagonal = Math.hypot(viewport.width, viewport.height) / Math.SQRT2
   const unitsAttribute = UNITS_ATTRIBUTE_BY_TAG[tag]
 
   for (const [name, value] of Object.entries(attributes)) {
+    if (typeof value === 'string' && /\d(em|ex)$/i.test(value)) {
+      const ems = Number.parseFloat(value) * (value.toLowerCase().endsWith('ex') ? 0.5 : 1)
+
+      attributes[name] = ems * emSize
+      continue
+    }
     if (typeof value !== 'string' || !value.endsWith('%')) continue
     if (NATIVE_PERCENTAGE_ATTRIBUTES.has(name)) continue
 
@@ -626,7 +783,16 @@ function textOf(node: SvgNode): string {
 const MARKED_TAGS = new Set(['path', 'line', 'polyline', 'polygon'])
 const MARKER_POSITIONS = ['marker-start', 'marker-mid', 'marker-end'] as const
 // What applies to a marked shape as a whole, markers included.
-const GROUP_ATTRIBUTES = ['transform', 'opacity', 'clip-path', 'mask', 'shadow', 'blur', 'nodeId']
+const GROUP_ATTRIBUTES = [
+  'transform',
+  'opacity',
+  'clip-path',
+  'mask',
+  'shadows',
+  'blur',
+  'colorMatrix',
+  'nodeId',
+]
 
 type Vertex = { x: number; y: number; directionIn?: number[]; directionOut?: number[] }
 
