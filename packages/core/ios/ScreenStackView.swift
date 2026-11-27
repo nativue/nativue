@@ -73,6 +73,7 @@ final class ScreenStackView: UIView, ScreenContainer, UINavigationControllerDele
         super.didMoveToWindow()
 
         embedInNearestViewController(navigationController)
+        if window != nil { scheduleSync() }
     }
 
     private func configure(_ navigationController: UINavigationController) {
@@ -185,8 +186,13 @@ final class ScreenStackView: UIView, ScreenContainer, UINavigationControllerDele
     }
 
     private func presentModal(_ group: [ScreenController]) {
-        let modalNavigationController = UINavigationController()
         let presenter = modalNavigationControllers.last ?? navigationController
+
+        // Out of the window under a full-screen modal: UIKit would refuse without calling back. didMoveToWindow
+        // syncs again once it's back.
+        guard presenter.view.window != nil else { return }
+
+        let modalNavigationController = UINavigationController()
 
         configure(modalNavigationController)
         modalNavigationController.setViewControllers(group, animated: false)
