@@ -81,6 +81,7 @@ To run on a phone, see [Getting started](docs/getting-started.md#run-on-a-phone)
 | [`@nativue/icons`](packages/icons)                 | icon sets as components                         |
 | [`@nativue/tailwind`](packages/tailwind)           | Tailwind CSS classes, turned into native styles |
 | [`@nativue/clipboard`](packages/clipboard)         | copying text to the clipboard                   |
+| [`@nativue/file-system`](packages/file-system)     | read, write, download and upload files          |
 | [`@nativue/haptics`](packages/haptics)             | haptic feedback                                 |
 | [`@nativue/image-picker`](packages/image-picker)   | photos and videos from the library or camera    |
 | [`@nativue/notifications`](packages/notifications) | local notifications                             |

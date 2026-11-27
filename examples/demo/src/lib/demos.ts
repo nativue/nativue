@@ -9,6 +9,7 @@ import {
   ClipboardCopyIcon,
   CompassIcon,
   DatabaseIcon,
+  FolderOpenIcon,
   HandIcon,
   HardDriveIcon,
   ImagesIcon,
@@ -143,6 +144,13 @@ export const demoSections: DemoSection[] = [
         subtitle: 'Copy text, with native code: @nativue/clipboard',
         icon: ClipboardCopyIcon,
         tint: colors.purple,
+      },
+      {
+        href: '/explore/file-system',
+        title: 'File system',
+        subtitle: 'Read, write, download and upload files: @nativue/file-system',
+        icon: FolderOpenIcon,
+        tint: colors.teal,
       },
       {
         href: '/explore/image-picker',

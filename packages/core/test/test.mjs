@@ -42,6 +42,9 @@ const pickedMedia = [1, 2].map((index) => ({
 }))
 const pickCalls = []
 const cameraCalls = []
+// @nativue/file-system's files, by URI, and the transfers it started.
+const files = new Map()
+const transfers = []
 // What @nativue/secure-store's native side keeps, by key.
 const secureItems = new Map()
 // The statements @nativue/sqlite sent, as [sql, parameters]: it gets no rows back, and a COUNT gets zeros.
@@ -92,6 +95,46 @@ globalThis.__native = {
     canAskAgain: true,
   }),
   'pluginAsync:imagePicker.getPendingResult': resolvesWith(null),
+  'plugin:fileSystem.paths': () => ({
+    document: 'file:///app/Documents/',
+    cache: 'file:///app/Caches/',
+  }),
+  'pluginAsync:fileSystem.readText': (callId, uri) =>
+    globalThis.__asyncFunctionFinished(
+      callId,
+      files.get(uri) ?? null,
+      files.has(uri) ? null : 'Not found',
+      files.has(uri) ? undefined : 'ERR_NOT_FOUND',
+    ),
+  'pluginAsync:fileSystem.readBase64': resolvesWith(''),
+  'pluginAsync:fileSystem.writeText': (callId, uri, text, append) => {
+    files.set(uri, (append ? (files.get(uri) ?? '') : '') + text)
+    resolvesWith(null)(callId)
+  },
+  'pluginAsync:fileSystem.writeBase64': resolvesWith(null),
+  'pluginAsync:fileSystem.getInfo': (callId, uri) =>
+    resolvesWith({
+      exists: files.has(uri),
+      isDirectory: false,
+      size: files.get(uri)?.length ?? 0,
+      modificationTime: files.has(uri) ? 1_700_000_000_000 : 0,
+    })(callId),
+  'pluginAsync:fileSystem.delete': (callId, uri) => {
+    files.delete(uri)
+    resolvesWith(null)(callId)
+  },
+  'pluginAsync:fileSystem.makeDirectory': resolvesWith(null),
+  'pluginAsync:fileSystem.list': resolvesWith([]),
+  'pluginAsync:fileSystem.copy': resolvesWith(null),
+  'pluginAsync:fileSystem.move': resolvesWith(null),
+  'pluginAsync:fileSystem.download': (callId, taskId, url, to) => {
+    transfers.push(['download', url, to])
+    globalThis.__nativeEvent('fileSystem.progress', { taskId, bytes: 512, totalBytes: 2048 })
+    files.set(to, 'x'.repeat(2048))
+    resolvesWith({ uri: to, status: 200, headers: {} })(callId)
+  },
+  'pluginAsync:fileSystem.upload': resolvesWith({ status: 200, headers: {}, body: '{}' }),
+  'plugin:fileSystem.cancel': () => null,
   'pluginAsync:secureStore.setItem': (callId, key, value) => {
     secureItems.set(key, value)
     resolvesWith(null)(callId)
@@ -1346,6 +1389,23 @@ press(pressableContaining('Video', imagePickerId))
 await settle()
 assert.deepEqual(cameraCalls, [['videos', 30, 'high']])
 assert.ok(renderedTexts(imagePickerId).includes('video 400×300, 2 KB, 4.3 s'))
+// @nativue/file-system: a note saved, appended to and read back, and a download with its progress.
+const fileSystemId = await open('explore/file-system')
+press(pressableContaining('Save', fileSystemId))
+await settle()
+await settle()
+assert.equal(files.get('file:///app/Documents/notes/note.txt'), 'Hello from nativue')
+press(pressableContaining('Read', fileSystemId))
+await settle()
+assert.ok(renderedTexts(fileSystemId).includes('Hello from nativue'))
+press(pressableContaining('Download', fileSystemId))
+await settle()
+await settle()
+assert.deepEqual(transfers, [
+  ['download', 'https://picsum.photos/id/1018/3000/2000', 'file:///app/Caches/photo.jpg'],
+])
+assert.ok(renderedTexts(fileSystemId).includes('200: 2 KB saved'))
+
 // @nativue/secure-store: saves, reads and deletes through its native side.
 const secureStoreId = await open('explore/secure-store')
 press(pressableContaining('Save', secureStoreId))
