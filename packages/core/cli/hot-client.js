@@ -18,6 +18,69 @@
     }).catch(() => {})
   }
 
+  // What the console prints, also in the dev server's terminal: one request at a time, so it keeps
+  // the order, with what was printed meanwhile. Each stays well under what the server reads
+  // (MAX_POST_LENGTH), escaping included.
+  const MAX_LOG_LENGTH = 100_000
+  const MAX_BATCH_LENGTH = 300_000
+  const pendingLogs = []
+  let isSendingLogs = false
+  let isCallingFetch = false
+
+  function nextBatch() {
+    let length = 0
+    let count = 0
+
+    while (
+      count < pendingLogs.length &&
+      length + pendingLogs[count].text.length <= MAX_BATCH_LENGTH
+    ) {
+      length += pendingLogs[count].text.length
+      count++
+    }
+
+    return pendingLogs.splice(0, count)
+  }
+
+  // An app that wraps fetch to log its requests would log this one, and send that log, forever: what's
+  // printed while it's called stays on the device.
+  function postLogs(entries) {
+    isCallingFetch = true
+    try {
+      return fetch(`${serverURL}/log`, {
+        method: 'POST',
+        body: JSON.stringify({ platform: __native.platform(), entries }),
+      })
+    } finally {
+      isCallingFetch = false
+    }
+  }
+
+  function sendLogs() {
+    if (isSendingLogs || pendingLogs.length === 0) return
+
+    isSendingLogs = true
+    Promise.resolve()
+      .then(() => postLogs(nextBatch()))
+      .catch(() => {})
+      .finally(() => {
+        isSendingLogs = false
+        sendLogs()
+      })
+  }
+
+  globalThis.__nativueOnLog = (level, text) => {
+    if (isCallingFetch) return
+
+    const hidden = text.length - MAX_LOG_LENGTH
+
+    pendingLogs.push({
+      level,
+      text: hidden > 0 ? `${text.slice(0, MAX_LOG_LENGTH)}... ${hidden} more characters` : text,
+    })
+    sendLogs()
+  }
+
   function requestReload(reason) {
     if (isReloadPending) return
 

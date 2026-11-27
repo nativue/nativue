@@ -1,5 +1,6 @@
 import UIKit
 import JavaScriptRuntime
+import os
 import yoga
 
 /// Runs the JS bundle off the main thread and applies the operations sent by the Vue renderer
@@ -345,7 +346,7 @@ final class Bridge {
             }
         }
 
-        define("log") { arguments in print("[JS]", arguments[0]) }
+        define("log") { arguments in logFromJavaScript(string(arguments[0]), level: string(arguments[1])) }
 
         define("reportError") { [unowned self] arguments in
             reportError(message: string(arguments[0]), details: string(arguments[1]))
@@ -1106,6 +1107,49 @@ private func int(_ argument: Any) -> Int {
 
 private func double(_ argument: Any) -> Double {
     (argument as? NSNumber)?.doubleValue ?? 0
+}
+
+private let javaScriptLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "nativue", category: "JavaScript")
+/// The system log cuts a message at 1 KB: a longer one goes in parts of this many bytes, in order.
+private let maxLogPartBytes = 1000
+
+/// The console's levels as the system log's, which Xcode and Console.app show and filter. Release builds
+/// keep the text private, as anyone with the device can read the system log.
+private func logFromJavaScript(_ message: String, level: String) {
+    let type: OSLogType = switch level {
+    case "debug": .debug
+    case "info": .info
+    case "warn", "error": .error
+    default: .default
+    }
+
+    for part in logParts(of: message) {
+        #if DEBUG
+        javaScriptLogger.log(level: type, "\(part, privacy: .public)")
+        #else
+        javaScriptLogger.log(level: type, "\(part, privacy: .private)")
+        #endif
+    }
+}
+
+private func logParts(of message: String) -> [String] {
+    var parts: [String] = []
+    var part = ""
+    var partBytes = 0
+
+    for character in message {
+        let characterBytes = character.utf8.count
+
+        if partBytes + characterBytes > maxLogPartBytes {
+            parts.append(part)
+            part = ""
+            partBytes = 0
+        }
+        part.append(character)
+        partBytes += characterBytes
+    }
+
+    return parts + [part]
 }
 
 private func string(_ argument: Any) -> String {

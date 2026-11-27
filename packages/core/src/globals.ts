@@ -1,6 +1,7 @@
 // What the JavaScript engine has globally: the bridge, the hooks native calls into, and the web APIs
 // prelude.ts (timers, console) and fetch.ts provide. No DOM.
 import type { ColorScheme, WindowSize } from './appearance'
+import type { createConsole, LogLevel } from './console'
 import type { LayoutEvent, NativeModule, NetworkEventPayloads } from './types'
 
 declare global {
@@ -28,12 +29,9 @@ declare global {
   /** From the runtime (not __native): an object whose garbage collection releases the blob's bytes. */
   var __blobCollector: ((blobId: string) => object) | undefined
 
-  var console: {
-    log(...values: unknown[]): void
-    info(...values: unknown[]): void
-    warn(...values: unknown[]): void
-    error(...values: unknown[]): void
-  }
+  var console: ReturnType<typeof createConsole>
+  /** Development: the hot client's, sending what the console prints to the dev server. */
+  var __nativueOnLog: ((level: LogLevel, text: string) => void) | undefined
 
   function setTimeout<Args extends unknown[]>(
     callback: (...args: Args) => void,

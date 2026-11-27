@@ -16,6 +16,7 @@ import {
   ListChecksIcon,
   PaletteIcon,
   SparklesIcon,
+  SquareTerminalIcon,
   VibrateIcon,
 } from '@nativue/icons/lucide'
 import { colors } from './theme'
@@ -109,6 +110,13 @@ export const demoSections: DemoSection[] = [
         subtitle: 'The error screen of development builds',
         icon: BugIcon,
         tint: colors.red,
+      },
+      {
+        href: '/explore/console',
+        title: 'Console',
+        subtitle: 'log, warn, table and more, in the dev server terminal',
+        icon: SquareTerminalIcon,
+        tint: colors.ink,
       },
     ],
   },
