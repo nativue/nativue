@@ -888,8 +888,7 @@ class Bridge(private val activity: ComponentActivity, private val rootView: Root
         val node = nodesById[id] ?: return
         val view = node.view
 
-        // Style and accessibility are nativue's, as on its own views.
-        if (key != "style" && key != "accessibility" && view is PluginView) return view.setProp(key, value)
+        if (key !in VIEW_PROPS && view is PluginView) return view.setProp(key, value)
 
         when (key) {
             "style" -> {
@@ -1173,6 +1172,8 @@ class Bridge(private val activity: ComponentActivity, private val rootView: Root
         const val SYMBOLICATE_TIMEOUT_MS = 2000
         const val RECONNECT_DELAY_MS = 2000L
         const val BUTTON_TINT = 0xFF007AFF.toInt()
+        /** What nativue applies to any view, plugin views included: style, accessibility, layout and gestures. */
+        val VIEW_PROPS = setOf("style", "accessibility", "onLayout", "onPan", "onPinch", "onRotate")
         val EDGES = listOf(YogaEdge.LEFT, YogaEdge.TOP, YogaEdge.RIGHT, YogaEdge.BOTTOM)
         val SYSTEM_BARS = WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
         val IME = WindowInsetsCompat.Type.ime()

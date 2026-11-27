@@ -738,6 +738,7 @@ private struct SvgRenderer {
         } else {
             CGAffineTransform.identity
         }
+
         if let patternTransform = SvgElement.matrix(attributes.values["patternTransform"]) {
             context.concatenate(patternTransform)
         }
@@ -811,7 +812,14 @@ final class SvgImages {
         guard loadingSources.insert(source).inserted else { return nil }
 
         Task { @MainActor [weak self] in
-            guard let image = await loadImage(source), let self else { return }
+            let image = await loadImage(source)
+            guard let self else { return }
+
+            // A load that fails is tried again on the next draw.
+            guard let image else {
+                loadingSources.remove(source)
+                return
+            }
 
             imagesBySource[source] = image
             onLoad()
@@ -857,20 +865,26 @@ private struct SvgPathWalker {
                 add(elementPoints[0])
             case .addQuadCurveToPoint:
                 let (control, end) = (elementPoints[0], elementPoints[1])
-                addCurve { t in
-                    let u = 1 - t
+                addCurve { progress in
+                    let remaining = 1 - progress
                     return CGPoint(
-                        x: u * u * current.x + 2 * u * t * control.x + t * t * end.x,
-                        y: u * u * current.y + 2 * u * t * control.y + t * t * end.y
+                        x: remaining * remaining * current.x + 2 * remaining * progress * control.x + progress * progress * end.x,
+                        y: remaining * remaining * current.y + 2 * remaining * progress * control.y + progress * progress * end.y
                     )
                 }
             case .addCurveToPoint:
                 let (first, second, end) = (elementPoints[0], elementPoints[1], elementPoints[2])
-                addCurve { t in
-                    let u = 1 - t
+                addCurve { progress in
+                    let remaining = 1 - progress
+                    let weights = (
+                        remaining * remaining * remaining,
+                        3 * remaining * remaining * progress,
+                        3 * remaining * progress * progress,
+                        progress * progress * progress
+                    )
                     return CGPoint(
-                        x: u * u * u * current.x + 3 * u * u * t * first.x + 3 * u * t * t * second.x + t * t * t * end.x,
-                        y: u * u * u * current.y + 3 * u * u * t * first.y + 3 * u * t * t * second.y + t * t * t * end.y
+                        x: weights.0 * current.x + weights.1 * first.x + weights.2 * second.x + weights.3 * end.x,
+                        y: weights.0 * current.y + weights.1 * first.y + weights.2 * second.y + weights.3 * end.y
                     )
                 }
             case .closeSubpath:

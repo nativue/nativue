@@ -702,7 +702,43 @@ function markerAt(
     fit,
   ].reduce(multiply)
 
-  return ['g', { transform }, marker.children.flatMap((child) => elementsOf(child, context))]
+  return [
+    'g',
+    { ...markerStyle(marker), transform },
+    marker.children.flatMap((child) => elementsOf(child, context)),
+  ]
+}
+
+// What a marker's content would otherwise inherit from the marked shape: SVG's defaults.
+const MARKER_STYLE_DEFAULTS: Record<string, unknown> = {
+  fill: 0x000000ff,
+  stroke: 'none',
+  'stroke-width': 1,
+  'fill-opacity': 1,
+  'stroke-opacity': 1,
+  'stroke-linecap': 'butt',
+  'stroke-linejoin': 'miter',
+  'stroke-dasharray': [],
+  'stroke-dashoffset': 0,
+  'fill-rule': 'nonzero',
+}
+
+/** A marker's content inherits from where the <marker> is, not from the shape it marks. */
+function markerStyle(marker: SvgNode): Record<string, unknown> {
+  const ancestors: SvgNode[] = []
+
+  for (let current: SvgNode | null = marker; current; current = current.parent)
+    ancestors.unshift(current)
+
+  const style = { ...MARKER_STYLE_DEFAULTS }
+
+  for (const ancestor of ancestors) {
+    const attributes = attributesOf(ancestor)
+
+    for (const name in MARKER_STYLE_DEFAULTS) if (name in attributes) style[name] = attributes[name]
+  }
+
+  return style
 }
 
 function applied([a, b, c, d, e, f]: number[], x: number, y: number): number[] {

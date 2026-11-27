@@ -822,6 +822,42 @@ try {
       )
     },
   )
+
+  await asyncTest(
+    'also finds the native packages a nativue package depends on',
+    async (appDirectory) => {
+      const writeManifest = (directory, manifest) => {
+        mkdirSync(directory, { recursive: true })
+        writeFileSync(join(directory, 'package.json'), JSON.stringify(manifest))
+      }
+      const iconsDirectory = join(appDirectory, 'node_modules', 'nativue-icons')
+      const svgDirectory = join(iconsDirectory, 'node_modules', 'nativue-svg')
+
+      writeManifest(appDirectory, { dependencies: { 'nativue-icons': '1.0.0', lodash: '1.0.0' } })
+      // A JS-only package made for nativue, bringing a native one nested under it.
+      writeManifest(iconsDirectory, {
+        name: 'nativue-icons',
+        dependencies: { 'nativue-svg': '1.0.0' },
+        peerDependencies: { '@nativue/core': '*' },
+      })
+      writeManifest(svgDirectory, { name: 'nativue-svg', nativue: { plugin: './plugin.mjs' } })
+      writeFileSync(
+        join(svgDirectory, 'plugin.mjs'),
+        "export default () => ({ name: 'nativue-svg' })",
+      )
+      // Not made for nativue: its dependencies aren't looked at.
+      writeManifest(join(appDirectory, 'node_modules', 'lodash'), {
+        name: 'lodash',
+        dependencies: { 'nativue-hidden': '1.0.0' },
+      })
+      writeManifest(join(appDirectory, 'node_modules', 'nativue-hidden'), {
+        name: 'nativue-hidden',
+        nativue: { plugin: './plugin.mjs' },
+      })
+
+      assert.deepStrictEqual(await resolvePlugins(appDirectory), [{ name: 'nativue-svg' }])
+    },
+  )
 } finally {
   appDirectories.forEach((directory) => rmSync(directory, { recursive: true, force: true }))
 }

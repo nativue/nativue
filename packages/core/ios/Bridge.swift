@@ -902,11 +902,13 @@ final class Bridge {
         node.markContentChanged()
     }
 
+    /// What nativue applies to any view, plugin views included: style, accessibility, layout and gestures.
+    private static let viewProps: Set<String> = ["style", "accessibility", "onLayout", "onPan", "onPinch", "onRotate"]
+
     private func setProp(_ key: String, value: Any?, onNodeId id: Int) {
         guard let node = nodesById[id] else { return }
 
-        // Style and accessibility are nativue's, as on its own views.
-        if key != "style", key != "accessibility", let pluginView = node.view as? PluginView {
+        if !Self.viewProps.contains(key), let pluginView = node.view as? PluginView {
             pluginView.setProp(key, value: value is NSNull ? nil : value)
             return
         }
@@ -935,7 +937,9 @@ final class Bridge {
         case "tabBarItem":
             let item = value as? [String: Any] ?? [:]
             let screen = screenController(id)
-            let image = NavigationIcons.image(item, size: 25) { [weak screen] image in screen?.tabBarItem.image = image }
+            let image = screen.flatMap { screen in
+                NavigationIcons.image(item, size: 25, for: screen) { [weak screen] image in screen?.tabBarItem.image = image }
+            }
             screen?.setTabBarItem(
                 label: item["label"] as? String,
                 image: image,

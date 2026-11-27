@@ -78,10 +78,25 @@ shape's box in gradients and stops' `offset`. `width` and `height` on `<svg>` si
 
 Animating `stroke-dashoffset` from the line's length to 0 draws it in, as on the web.
 
-Not drawn: `foreignObject`, a nested `<svg>`, filters other than the ones above (their element is
-drawn as it is), and a `<style>` element (Vue leaves `<style>` out of templates: use `style=""`). A
-marker's content isn't clipped to its box, and on an arc a marker turns with the arc's chord. On
-Android before 12, a radial gradient's `fx` and `fy` are ignored.
+## What it doesn't do
+
+- `foreignObject`: it holds HTML, which native apps don't have. Lay nativue views over the `<svg>`
+  instead.
+- SMIL animation (`<animate>`, `<animateTransform>`, `<set>`): animate attributes from Vue (a `ref` in
+  `:stroke-dashoffset`), or with `Animated`.
+- Filters other than the ones above (`feTurbulence`, `feMorphology`, lighting, `feImage`...): the
+  element is drawn without the filter.
+- Gestures other than `@press` on elements (a long press, a drag): put the `<svg>` in a view that takes
+  them.
+- `textLength` and `lengthAdjust`, vertical text, `rotate` per character, and a `tspan` inside a
+  `textPath`.
+- `<switch>`, which picks what to draw by the browser's features.
+- `<title>` and `<desc>` as what screen readers say: give the `<svg>` an `aria-label` and `role="img"`.
+
+And its limits:
+
+- A marker's content isn't clipped to its box, and on an arc a marker turns with the arc's chord.
+- On Android before 12, a radial gradient's `fx` and `fy` are ignored.
 
 ## Taps
 

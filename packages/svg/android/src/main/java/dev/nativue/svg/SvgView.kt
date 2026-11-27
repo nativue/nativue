@@ -401,8 +401,9 @@ private class SvgRenderer(
         val attributes = element.attributes
         val source = (attributes.values["href"] ?: attributes.values["xlink:href"]) as? String ?: return
         val bitmap = images.bitmap(source) ?: return
-        val imageWidth = bitmap.width / density
-        val imageHeight = bitmap.height / density
+        // A pixel per unit, as SVG sizes an image.
+        val imageWidth = bitmap.width.toFloat()
+        val imageHeight = bitmap.height.toFloat()
         val left = attributes.number("x")
         val top = attributes.number("y")
         val frame = RectF(
@@ -858,7 +859,8 @@ private class SvgImages(private val context: Context, private val onLoad: () -> 
         bitmapsBySource[source]?.let { return it }
         if (!loadingSources.add(source)) return null
 
-        RemoteImageView.loadBitmap(context, source) { bitmap ->
+        // A load that fails is tried again on the next draw.
+        RemoteImageView.loadBitmap(context, source, onFailed = { loadingSources.remove(source) }) { bitmap ->
             bitmapsBySource[source] = bitmap
             onLoad()
         }

@@ -69,6 +69,7 @@ export function nativuePackages(appDirectory) {
       )
     }
   }
+
   while (pending.length > 0) visit(...pending.shift())
 
   return found

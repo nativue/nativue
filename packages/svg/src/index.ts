@@ -2,6 +2,7 @@
 // elements as components, <Path> for <path>, and svgIcon for tab bar and header icons.
 import {
   h,
+  markRaw,
   type AccessibilityProps,
   type DefineComponent,
   type FunctionalComponent,
@@ -72,7 +73,8 @@ export type SvgElement = [tag: string, attributes: Record<string, string | numbe
  * `tabBarIcon: svgIcon([0, 0, 24, 24], [['path', { d: 'M3 12h18' }]])`.
  */
 export function svgIcon(viewBox: ViewBox, elements: SvgElement[]): DrawnIcon {
-  return { drawnIcon: { drawer: 'svg', viewBox, elements } }
+  // Raw: options holding it can be reactive, and a proxied drawing would reach native as something else.
+  return markRaw({ drawnIcon: { drawer: 'svg', viewBox, elements } })
 }
 
 /** Renders the element with what it's given: <Path d="..."> is <path d="...">. */

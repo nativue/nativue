@@ -76,7 +76,7 @@ public struct PluginError: LocalizedError {
     public var errorDescription: String? { message }
 }
 
-/// A plugin view gets its props here, all but `style` and `accessibility`, which nativue applies (layout included).
+/// A plugin view gets its props here, all but `style`, `accessibility`, `@layout` and the gestures (`@pan`...), which nativue applies.
 public protocol PluginView: UIView {
     func setProp(_ key: String, value: Any?)
 }

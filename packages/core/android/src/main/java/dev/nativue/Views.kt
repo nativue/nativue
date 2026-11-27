@@ -596,10 +596,16 @@ class RemoteImageView(context: Context) : ImageView(context) {
 
         /**
          * An image as <Image> loads it: from memory, the disk cache or its url, then kept as [cachePolicy] says
-         * (read once it has loaded, so it applies even when set after the source). [onLoaded] runs on the main
-         * thread.
+         * (read once it has loaded, so it applies even when set after the source). [onLoaded], or [onFailed], runs
+         * on the main thread.
          */
-        fun loadBitmap(context: Context, source: String, cachePolicy: () -> String = { "disk" }, onLoaded: (Bitmap) -> Unit) {
+        fun loadBitmap(
+            context: Context,
+            source: String,
+            cachePolicy: () -> String = { "disk" },
+            onFailed: () -> Unit = {},
+            onLoaded: (Bitmap) -> Unit,
+        ) {
             if (cachePolicy() != "none") decodedImages.get(source)?.let { return onLoaded(it) }
 
             val diskCache = ImageDiskCache(context.cacheDir)
@@ -607,8 +613,12 @@ class RemoteImageView(context: Context) : ImageView(context) {
             loader.execute {
                 val cachedBytes = if (readsDisk) diskCache.read(source) else null
                 val downloadedBytes = if (cachedBytes == null) runCatching { download(source) }.getOrNull() else null
-                val bytes = cachedBytes ?: downloadedBytes ?: return@execute
-                val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@execute
+                val bytes = cachedBytes ?: downloadedBytes
+                val bitmap = bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+                if (bitmap == null) {
+                    mainThread.post(onFailed)
+                    return@execute
+                }
 
                 mainThread.post {
                     store(bitmap, downloadedBytes, source, diskCache, cachePolicy())

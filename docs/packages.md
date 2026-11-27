@@ -89,8 +89,8 @@ Arguments and results are booleans, numbers, strings, `null`, arrays and objects
 bytes: an `ArrayBuffer` or a typed array (`Uint8Array`...) arrives as `Data` on iOS and `ByteArray`
 on Android, and returned bytes reach JavaScript as a `Uint8Array`, with no base64 in between.
 
-Plugin views get their props through `PluginView.setProp(key, value)`; nativue applies `style` and
-`accessibility`, and lays them out, sized by their style (they don't measure their content). The package's
+Plugin views get their props through `PluginView.setProp(key, value)`; nativue applies `style`,
+`accessibility`, `@layout` and the gestures (`@pan`, `@pinch`, `@rotate`), and lays them out, sized by their style (they don't measure their content). The package's
 JavaScript calls the functions with `requireNativeFunction` and renders the views by their tag:
 
 ```ts

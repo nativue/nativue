@@ -1183,6 +1183,8 @@ assert.equal(elementsTagged(more, 'filter').length, 0)
 // Markers become groups at the vertices: an arrow at each end of the path, turned with it.
 const markedPath = elementsTagged(more, 'g').find(([, , children]) => children[0]?.[0] === 'path')
 assert.equal(markedPath[2].length, 3)
+// A marker's content inherits from the <marker>, not from the path's stroke.
+assert.equal(markedPath[2][1][1].stroke, 'none')
 assert.ok(elementsTagged(more, 'circle').length >= 3) // the polyline's middle vertices
 // <pattern> goes to native with its transform as a matrix; <image> with its source.
 const [stripes] = elementsTagged(more, 'pattern')

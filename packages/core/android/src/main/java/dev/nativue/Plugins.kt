@@ -164,7 +164,7 @@ private fun pluginClassNames(context: Context): List<String> {
     return context.getString(resourceId).split(',').filter { it.isNotEmpty() }
 }
 
-/** A plugin view gets its props here, all but `style` and `accessibility`, which nativue applies (layout included). */
+/** A plugin view gets its props here, all but `style`, `accessibility`, `@layout` and the gestures (`@pan`...), which nativue applies. */
 interface PluginView {
     fun setProp(key: String, value: Any?)
 }
