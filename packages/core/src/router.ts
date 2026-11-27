@@ -28,16 +28,26 @@ import {
 } from '@vue/runtime-core'
 import { processColor } from './colors'
 import { Pressable } from './components'
-import type { SvgIcon } from './native-components'
 import { setURLNavigation } from './native-events'
 import { createApp } from './renderer'
 
 export type Params = Record<string, string | string[]>
 
+/**
+ * A tab bar or header icon: an SF Symbol's name (iOS only), an image ({ uri }: an imported asset or a url),
+ * or one a package draws natively, like @nativue/icons' components.
+ */
+export type NavigationIcon = string | { uri: string } | DrawnIcon
+
+/** Drawn by the package that registered `drawer` natively (registry.addIconDrawer), e.g. @nativue/svg. */
+export interface DrawnIcon {
+  drawnIcon: { drawer: string; [data: string]: unknown }
+}
+
 // An icon shows instead of the title, which still names it for screen readers.
 export interface HeaderItem {
   title?: string
-  icon?: string | SvgIcon // SF Symbol name (iOS only), or an icon from @nativue/icons
+  icon?: NavigationIcon
   onPress?: () => void
 }
 
@@ -52,7 +62,7 @@ export interface ScreenOptions {
   presentation?: 'card' | 'modal' | 'formSheet' | 'fullScreenModal'
   // <Tabs> only
   tabBarLabel?: string
-  tabBarIcon?: string | SvgIcon // SF Symbol name, or an icon from @nativue/icons
+  tabBarIcon?: NavigationIcon
   tabBarBadge?: string | number
   tabBarActiveTintColor?: string // the whole bar's: set it in <Tabs :screen-options>
   tabBarInactiveTintColor?: string
@@ -710,7 +720,7 @@ const StackNavigatorComponent = defineComponent({
 })
 
 // A page tab gets a single-screen stack, for its header; a layout tab brings its own navigator.
-// Tab options: title / tabBarLabel, tabBarIcon (SF Symbol name or SvgIcon), tabBarBadge, plus the header ones, and
+// Tab options: title / tabBarLabel, tabBarIcon, tabBarBadge, plus the header ones, and
 // lazy: mount the tab's content only when it's first opened (faster startup, a short build on first open).
 function tabContent(tab: Entry, options: ScreenOptions) {
   if (tab.node.type !== 'page') return screenContent(tab)
@@ -724,9 +734,12 @@ function optionalColor(color: string | undefined) {
   return color && processColor(color)
 }
 
-// An SF Symbol name or an icon from @nativue/icons, as the native side reads them.
-function iconProps(icon: string | SvgIcon | undefined) {
-  return typeof icon === 'string' ? { systemImage: icon } : { svg: icon?.svg }
+// An icon as the native side reads it: systemImage, image (a url) or drawnIcon.
+function iconProps(icon: NavigationIcon | undefined) {
+  if (typeof icon === 'string') return { systemImage: icon }
+  if (icon && 'uri' in icon) return { image: icon.uri }
+
+  return { drawnIcon: icon?.drawnIcon }
 }
 
 const TabScreen = defineComponent({

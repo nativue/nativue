@@ -1,7 +1,7 @@
 {
   "name": "@nativue/icons",
-  "version": "0.2.0",
-  "description": "Icon sets for nativue apps, drawn natively",
+  "version": "0.3.0",
+  "description": "Icon sets for nativue apps, drawn natively by @nativue/svg",
   "keywords": [
     "vue",
     "native",
@@ -26,10 +26,11 @@
     "typecheck": "vue-tsc"
   },
   "dependencies": {
+    "@nativue/svg": "^0.1.0",
     "lucide": "^1.82.0"
   },
   "peerDependencies": {
-    "@nativue/core": "*"
+    "@nativue/core": ">=0.16.0"
   },
   "files": [
     "src"

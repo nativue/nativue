@@ -279,7 +279,7 @@ assert.equal(viewsById[rootStackId].type, 'ScreenStack')
 assert.equal(rootScreenIds().length, 1)
 assert.equal(viewsById[rootScreenIds()[0]].props.headerShown, false) // (tabs) brings its own headers
 
-// Tab icons from @nativue/icons reach the native side as their drawing.
+// Tab icons from @nativue/icons reach the native side as their drawing, which @nativue/svg draws.
 const tabBarItems = childScreenIds(tabBarId).map((id) => viewsById[id].props.tabBarItem)
 assert.deepEqual(
   tabBarItems.map(({ label, badge }) => ({ label, badge })),
@@ -288,9 +288,10 @@ assert.deepEqual(
     { label: 'Explore', badge: undefined },
   ],
 )
-for (const { svg } of tabBarItems) {
-  assert.deepEqual(svg.viewBox, [0, 0, 24, 24])
-  assert.ok(svg.elements.length > 0)
+for (const { drawnIcon } of tabBarItems) {
+  assert.equal(drawnIcon.drawer, 'svg')
+  assert.deepEqual(drawnIcon.viewBox, [0, 0, 24, 24])
+  assert.ok(drawnIcon.elements.length > 0)
 }
 assert.equal(tabBar.props.selectedIndex, 0)
 assert.equal(tabBar.props.activeTintColor, processColor('#0e9f84'))
@@ -1092,6 +1093,126 @@ const platformCardId = findViewId(
   tailwindId,
 )
 assert.ok(viewsById[platformCardId].style.backgroundColor) // ios:bg-sky-100, not android:'s
+
+// ---------- SVG: <svg> as on the web, drawn by one native view ----------
+
+const svgScreenId = await open('explore/svg')
+const [chartId, effectsId, illustrationId, badgeId, moreId] = renderedViewIds(svgScreenId).filter(
+  (id) => viewsById[id].type === 'Svg',
+)
+const drawingOf = (id) => viewsById[id].props.drawing
+const elementsTagged = (element, tag) => [
+  ...(element[0] === tag ? [element] : []),
+  ...(Array.isArray(element[2]) ? element[2].flatMap((child) => elementsTagged(child, tag)) : []),
+]
+// <text>'s content is its runs: its text and its <tspan>s.
+const chartTitle = () =>
+  elementsTagged(drawingOf(chartId), 'text')
+    .at(-1)[2]
+    .map((run) => run[2])
+    .join('')
+
+// What's inside the <svg> never becomes a native view: the root gets it all as one drawing.
+assert.equal(renderedViewIds(chartId).length, 1)
+assert.deepEqual(drawingOf(chartId)[1].viewBox, [0, 0, 300, 170])
+assert.equal(elementsTagged(drawingOf(chartId), 'stop')[0][1]['stop-opacity'], 0.45)
+assert.equal(elementsTagged(drawingOf(chartId), 'stop')[0][1].offset, 0)
+assert.deepEqual(viewsById[chartId].style.width, 320) // the width attribute sizes it
+assert.equal(chartTitle(), 'Sun: 8,300 steps')
+
+const circles = elementsTagged(drawingOf(chartId), 'circle')
+assert.equal(circles.length, 7)
+assert.ok(circles.every(([, attributes]) => typeof attributes.nodeId === 'number')) // they take presses
+assert.equal(typeof circles[0][1].fill, 'number') // colors as 0xRRGGBBAA, like styles
+
+globalThis.__dispatch(chartId, 'elementpress', { nodeIds: [circles[3][1].nodeId], x: 0, y: 0 })
+await settle()
+assert.equal(chartTitle(), 'Thu: 9,800 steps')
+assert.equal(elementsTagged(drawingOf(chartId), 'circle')[3][1].r, 7)
+
+// <Svg>, <Circle>, <G>: the same drawing, the transform as a matrix.
+const group = elementsTagged(drawingOf(illustrationId), 'g')[0]
+assert.equal(group[1].opacity, 0.85)
+assert.deepEqual(
+  group[1].transform.map((value) => Number(value.toFixed(3))),
+  [0.966, 0.259, -0.259, 0.966, 80, 14],
+)
+assert.equal(elementsTagged(drawingOf(illustrationId), 'radialGradient')[0][1].id, 'sun')
+// style="fill: ..." is a drawing attribute too.
+assert.equal(elementsTagged(drawingOf(illustrationId), 'rect')[0][1].fill, 0x94a3b8ff)
+
+// <use href="#star">: a copy of the symbol, moved and fitted, inheriting the <use>'s fill.
+const effects = drawingOf(effectsId)
+const stars = effects[2].filter(([tag, attributes]) => tag === 'g' && attributes.fill !== undefined)
+assert.equal(stars.length, 3)
+assert.deepEqual(stars[1][1].transform, [1, 0, 0, 1, 30, 84])
+assert.equal(stars[1][2][0][0], 'g') // the symbol's viewBox, fitted into 22 by 22
+assert.equal(elementsTagged(stars[1][2][0], 'path').length, 1)
+// A gradient's href lends it the stops and attributes it doesn't set.
+const across = elementsTagged(effects, 'linearGradient').find(
+  ([, attributes]) => attributes.id === 'brandAcross',
+)
+assert.equal(elementsTagged(across, 'stop').length, 2)
+assert.deepEqual([across[1].x2, across[1].y2], [1, 0])
+// filter="url(#id)" with an feDropShadow: a shadow, [dx, dy, blur, color, inner].
+const card = elementsTagged(effects, 'rect').find(([, attributes]) => attributes.shadows)
+assert.deepEqual(card[1].shadows[0].slice(0, 3), [0, 3, 3])
+assert.equal(card[1].filter, undefined)
+// <text> and its <tspan>: runs, whitespace collapsed to single spaces and trimmed at the ends.
+const [doneText] = elementsTagged(effects, 'text')
+assert.deepEqual(
+  doneText[2].map(([, , text]) => text),
+  ['75% done ', "of today's goal"], // the space between them is one, as in SVG
+)
+const ring = () =>
+  elementsTagged(drawingOf(effectsId), 'circle').find(
+    ([, attributes]) => attributes['stroke-dashoffset'] !== undefined,
+  )
+assert.equal(Math.round(ring()[1]['stroke-dashoffset']), 47)
+press(pressableContaining('More progress', svgScreenId))
+await settle()
+assert.equal(ring()[1]['stroke-dashoffset'], 0)
+
+// An imported .svg is a component: its <style>'s rules applied to the elements they select, the more
+// specific one winning (#badge .ring over .cls-1 order), and the <style> itself left out.
+const badgeDrawing = drawingOf(badgeId)
+const [badgeRing, badgeDisc] = elementsTagged(badgeDrawing, 'circle')
+assert.equal(badgeRing[1].fill, 0x4af2aeff)
+assert.equal(badgeDisc[1].fill, 0x0e9f84ff)
+assert.equal(elementsTagged(badgeDrawing, 'path')[0][1]['stroke-width'], 4)
+assert.equal(elementsTagged(badgeDrawing, 'style').length, 0)
+assert.equal(viewsById[badgeId].style.width, 48)
+
+// Design tools' shadows (feOffset, feGaussianBlur, feColorMatrix): in the matrix's color, and inside
+// the element with an arithmetic feComposite.
+const more = drawingOf(moreId)
+const exportedCard = elementsTagged(more, 'rect').find(([, attributes]) => attributes.shadows)
+assert.deepEqual(exportedCard[1].shadows, [
+  [0, 4, 4, 0x0b122040, 0],
+  [0, -3, 2, 0x4af2aeff, 1],
+])
+// feColorMatrix type="saturate": a color matrix on the element itself.
+const grayscale = elementsTagged(more, 'image')[0][1].colorMatrix
+assert.deepEqual(grayscale.slice(0, 3), [0.213, 0.715, 0.072])
+// feGaussianBlur alone: a blur. Filters themselves aren't sent.
+assert.equal(elementsTagged(more, 'circle')[0][1].blur, 4)
+assert.equal(elementsTagged(more, 'filter').length, 0)
+// Markers become groups at the vertices: an arrow at each end of the path, turned with it.
+const markedPath = elementsTagged(more, 'g').find(([, , children]) => children[0]?.[0] === 'path')
+assert.equal(markedPath[2].length, 3)
+// A marker's content inherits from the <marker>, not from the path's stroke.
+assert.equal(markedPath[2][1][1].stroke, 'none')
+assert.ok(elementsTagged(more, 'circle').length >= 3) // the polyline's middle vertices
+// <pattern> goes to native with its transform as a matrix; <image> with its source.
+const [stripes] = elementsTagged(more, 'pattern')
+assert.equal(stripes[1].patternTransform.length, 6)
+assert.equal(typeof elementsTagged(more, 'image')[0][1].href, 'string')
+// <textPath>: its run carries the path it follows.
+const curveRun = elementsTagged(more, 'text').at(-1)[2][0]
+assert.equal(curveRun[0], 'textPath')
+assert.equal(curveRun[1].d, 'M20 215 Q150 150 280 215')
+assert.equal(curveRun[1].startOffset, '50%')
+assert.equal(curveRun[2], 'Text along a curve')
 
 // ---------- Native plugins (@nativue/haptics, @nativue/clipboard) ----------
 

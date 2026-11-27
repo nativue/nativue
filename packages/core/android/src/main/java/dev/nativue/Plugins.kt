@@ -1,6 +1,7 @@
 package dev.nativue
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.view.View
 import androidx.activity.ComponentActivity
 import java.util.concurrent.atomic.AtomicBoolean
@@ -46,6 +47,9 @@ class PluginException(val code: String, message: String) : Exception(message)
 
 /** Called on the JavaScript thread; settles `promise` from any thread, when the work is done. */
 typealias AsyncFunction = (arguments: List<Any?>, promise: Promise) -> Unit
+
+/** An icon JS describes ({ drawer, ... }) drawn [size] pixels square, for a tab bar or a header. */
+typealias DrawIcon = (icon: Map<*, *>, size: Int) -> Bitmap?
 
 interface ActivityListener {
     /** Register activity-result launchers here, every time and in the same order, so results survive a recreation. */
@@ -142,6 +146,14 @@ class PluginRegistry private constructor(context: Context) {
     fun addView(type: String, makeView: (SendEvent) -> View) {
         viewMakers[type] = makeView
     }
+
+    /**
+     * Draws the tab bar and header icons whose `drawnIcon.drawer` is [drawer] (see router.ts's DrawnIcon).
+     * The bitmap is tinted: only its shape counts.
+     */
+    fun addIconDrawer(drawer: String, draw: DrawIcon) {
+        NavigationIcons.drawersByName[drawer] = draw
+    }
 }
 
 /** The string resource nativue.settings.gradle.kts writes: the plugin classes, comma-separated. */
@@ -152,7 +164,7 @@ private fun pluginClassNames(context: Context): List<String> {
     return context.getString(resourceId).split(',').filter { it.isNotEmpty() }
 }
 
-/** A plugin view gets its props here, all but `style`, which nativue applies (layout included). */
+/** A plugin view gets its props here, all but `style`, `accessibility`, `@layout` and the gestures (`@pan`...), which nativue applies. */
 interface PluginView {
     fun setProp(key: String, value: Any?)
 }

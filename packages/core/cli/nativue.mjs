@@ -46,7 +46,6 @@ const NATIVE_COMPONENT_TAGS = [
   'Switch',
   'ActivityIndicator',
   'Modal',
-  'Svg',
 ]
 
 function frameworkPath(relativePath) {

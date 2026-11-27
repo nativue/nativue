@@ -13,9 +13,10 @@
     "@nativue/clipboard": "*",
     "@nativue/core": "*",
     "@nativue/haptics": "*",
-    "@nativue/notifications": "*",
     "@nativue/icons": "*",
+    "@nativue/notifications": "*",
     "@nativue/sqlite": "*",
+    "@nativue/svg": "*",
     "@nativue/tailwind": "*"
   }
 }

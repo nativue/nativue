@@ -18,7 +18,16 @@ doesn't work. Full docs: https://github.com/nativue/nativue/tree/main/docs
 
 Global, with no import: `View`, `Text`, `Image`, `ImageBackground`, `Pressable`, `Button`, `TextInput`,
 `Switch`, `ScrollView`, `FlatList`, `Swipeable`, `Modal`, `ActivityIndicator`, `SafeAreaView`,
-`KeyboardAvoidingView`, `Svg`.
+`KeyboardAvoidingView`.
+
+- Charts and drawings: `<svg>` as on the web, with `@nativue/svg` installed (`@nativue/icons` brings
+  it): shapes, `text`/`tspan`/`textPath`, gradients and `pattern`s in `defs` (`fill="url(#id)"`),
+  `clipPath`, `mask`, `use`/`symbol`, `marker`, `image`, drop shadows and blur filters, and `@press`
+  on an element. Also as components to import: `import { Svg, Path, Text as SvgText } from
+'@nativue/svg'` (rename `Text` and `Image`, which are nativue's). Without the package, `<svg>`
+  shows nothing. An imported `.svg` file is a component (`import Logo from '@/assets/logo.svg'`, with
+  `/// <reference types="@nativue/svg/client" />` in `src/env.d.ts`), and a `<style>` inside an `<svg>`
+  styles its elements by tag, class and id.
 
 - Text must be inside a `<Text>`, never directly in a `<View>`.
 - Taps: `<Pressable @press="save">` (also `@long-press`, and `v-slot="{ pressed }"`), or
@@ -94,7 +103,9 @@ Import the runtime from `vue`: `ref`, `computed`, `StyleSheet`, `Animated`, `Lay
 
 - `@/` points at `src/`. Shared components go in `src/components`, everything else in `src/lib`.
 - Vue plugins (Pinia...) are installed in `src/app.ts`: `export default function setup(app: App)`.
-- Official packages: `@nativue/icons` (icon components), `@nativue/tailwind`, `@nativue/haptics`,
+- Tab and header icons (`tabBarIcon`, a header item's `icon`): an `@nativue/icons` component,
+  `svgIcon(viewBox, elements)` from `@nativue/svg`, an image `{ uri }`, or an SF Symbol name (iOS).
+- Official packages: `@nativue/svg`, `@nativue/icons` (icon components), `@nativue/tailwind`, `@nativue/haptics`,
   `@nativue/clipboard` (copy text), `@nativue/notifications` (local notifications), `@nativue/sqlite`.
   A package with native code needs the app
   rebuilt with `npm run ios` or `npm run android`, not just a reload.

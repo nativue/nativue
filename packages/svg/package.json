@@ -1,0 +1,62 @@
+{
+  "name": "@nativue/svg",
+  "version": "0.1.0",
+  "description": "<svg> in nativue apps, as on the web: charts, illustrations and icons drawn natively",
+  "keywords": [
+    "vue",
+    "native",
+    "svg",
+    "charts",
+    "nativue"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/nativue/nativue#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nativue/nativue.git",
+    "directory": "packages/svg"
+  },
+  "bugs": "https://github.com/nativue/nativue/issues",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./runtime": "./src/runtime.ts",
+    "./plugin": {
+      "types": "./plugin.d.mts",
+      "default": "./plugin.mjs"
+    },
+    "./client": {
+      "types": "./client.d.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "vue-tsc"
+  },
+  "peerDependencies": {
+    "@nativue/core": ">=0.16.0"
+  },
+  "nativue": {
+    "plugin": "./plugin.mjs",
+    "ios": {
+      "sources": "ios",
+      "plugin": "SvgPlugin"
+    },
+    "android": {
+      "sources": "android",
+      "plugin": "dev.nativue.svg.SvgPlugin"
+    }
+  },
+  "files": [
+    "src",
+    "ios",
+    "android/build.gradle.kts",
+    "android/src",
+    "plugin.mjs",
+    "plugin.d.mts",
+    "vite.mjs",
+    "client.d.ts"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

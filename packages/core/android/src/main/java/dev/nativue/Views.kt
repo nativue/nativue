@@ -549,28 +549,7 @@ class RemoteImageView(context: Context) : ImageView(context) {
         show(if (source != null && cachePolicy != "none") decodedImages.get(source) else null)
         if (source == null || bitmap != null) return
 
-        val diskCache = ImageDiskCache(context.cacheDir)
-        val readsDisk = cachePolicy == "disk"
-        loader.execute {
-            val cachedBytes = if (readsDisk) diskCache.read(source) else null
-            val downloadedBytes = if (cachedBytes == null) runCatching { download(source) }.getOrNull() else null
-            val bytes = cachedBytes ?: downloadedBytes ?: return@execute
-            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return@execute
-
-            post {
-                store(bitmap, downloadedBytes, source, diskCache)
-                if (source == this.source) show(bitmap)
-            }
-        }
-    }
-
-    private fun store(bitmap: Bitmap, downloadedBytes: ByteArray?, source: String, diskCache: ImageDiskCache) {
-        if (cachePolicy == "none") return
-
-        decodedImages.put(source, bitmap)
-        if (cachePolicy != "disk" || downloadedBytes == null || isInMemory(source)) return
-
-        loader.execute { diskCache.write(source, downloadedBytes) }
+        loadBitmap(context, source, { cachePolicy }) { loaded -> if (source == this.source) show(loaded) }
     }
 
     private fun show(nextBitmap: Bitmap?) {
@@ -611,18 +590,61 @@ class RemoteImageView(context: Context) : ImageView(context) {
         setMeasuredDimension(measuredWidth.roundToInt(), measuredHeight.roundToInt())
     }
 
-    /** data: and blob: images are already on the device: nothing to keep on disk. */
-    private fun isInMemory(source: String) = source.startsWith("data:") || source.startsWith("blob:")
-
-    private fun download(source: String): ByteArray {
-        if (source.startsWith("data:")) return Base64.decode(source.substringAfter(","), Base64.DEFAULT)
-        if (source.startsWith("blob:")) return BlobStore.shared.bytes(source) ?: throw IOException("The blob has been released")
-
-        return URL(source).openStream().use { it.readBytes() }
-    }
-
     companion object {
         private val loader = Executors.newFixedThreadPool(4)
+        private val mainThread = Handler(Looper.getMainLooper())
+
+        /**
+         * An image as <Image> loads it: from memory, the disk cache or its url, then kept as [cachePolicy] says
+         * (read once it has loaded, so it applies even when set after the source). [onLoaded], or [onFailed], runs
+         * on the main thread.
+         */
+        fun loadBitmap(
+            context: Context,
+            source: String,
+            cachePolicy: () -> String = { "disk" },
+            onFailed: () -> Unit = {},
+            onLoaded: (Bitmap) -> Unit,
+        ) {
+            if (cachePolicy() != "none") decodedImages.get(source)?.let { return onLoaded(it) }
+
+            val diskCache = ImageDiskCache(context.cacheDir)
+            val readsDisk = cachePolicy() == "disk"
+            loader.execute {
+                val cachedBytes = if (readsDisk) diskCache.read(source) else null
+                val downloadedBytes = if (cachedBytes == null) runCatching { download(source) }.getOrNull() else null
+                val bytes = cachedBytes ?: downloadedBytes
+                val bitmap = bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+                if (bitmap == null) {
+                    mainThread.post(onFailed)
+                    return@execute
+                }
+
+                mainThread.post {
+                    store(bitmap, downloadedBytes, source, diskCache, cachePolicy())
+                    onLoaded(bitmap)
+                }
+            }
+        }
+
+        private fun store(bitmap: Bitmap, downloadedBytes: ByteArray?, source: String, diskCache: ImageDiskCache, cachePolicy: String) {
+            if (cachePolicy == "none") return
+
+            decodedImages.put(source, bitmap)
+            if (cachePolicy != "disk" || downloadedBytes == null || isInMemory(source)) return
+
+            loader.execute { diskCache.write(source, downloadedBytes) }
+        }
+
+        /** data: and blob: images are already on the device: nothing to keep on disk. */
+        private fun isInMemory(source: String) = source.startsWith("data:") || source.startsWith("blob:")
+
+        private fun download(source: String): ByteArray {
+            if (source.startsWith("data:")) return Base64.decode(source.substringAfter(","), Base64.DEFAULT)
+            if (source.startsWith("blob:")) return BlobStore.shared.bytes(source) ?: throw IOException("The blob has been released")
+
+            return URL(source).openStream().use { it.readBytes() }
+        }
 
         /** Decoded images, an eighth of the app's memory at most: one that comes back on screen shows at once. */
         private val decodedImages = object : LruCache<String, Bitmap>((Runtime.getRuntime().maxMemory() / 8).toInt()) {

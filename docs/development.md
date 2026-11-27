@@ -64,7 +64,8 @@ packages/core/            the framework (npm package "@nativue/core")
   android/                Android native side, a Gradle library (Hermes, JNI bridge, views, Yoga)
   cli/                    the `nativue` command: dev server, bundler, run on simulators
   test/                   runs the demo's bundle against a fake native side
-packages/icons/           icon sets as components, drawn by the native <Svg>
+packages/svg/             <svg> as on the web, drawn by one native view per <svg>
+packages/icons/           icon sets as components, drawn by @nativue/svg
   src/lucide.ts           generated from lucide: `npm run generate -w @nativue/icons`
 packages/tailwind/        Tailwind CSS classes, converted to native styles when the app is built
 packages/haptics/         haptic feedback, an example of a package with native code

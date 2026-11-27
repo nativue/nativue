@@ -19,10 +19,10 @@ The components are global in every template: no import needed. Each one is a rea
 | [`ActivityIndicator`](activity-indicator.md)        | a spinner                                             |
 | [`SafeAreaView`](safe-area-view.md)                 | keeps content clear of the notch and system bars      |
 | [`KeyboardAvoidingView`](keyboard-avoiding-view.md) | moves content above the keyboard                      |
-| [`Svg`](svg.md)                                     | low level vector drawing, used by icons               |
 
-Navigation components (`Stack`, `Tabs`, `Link`) are in [Navigation](../navigation.md), and icons in
-[`@nativue/icons`](../../packages/icons/README.md).
+Navigation components (`Stack`, `Tabs`, `Link`) are in [Navigation](../navigation.md), icons in
+[`@nativue/icons`](../../packages/icons/README.md), and `<svg>` in
+[`@nativue/svg`](../../packages/svg/README.md).
 
 ## What every component takes
 

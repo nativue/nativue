@@ -2,6 +2,7 @@
 
 | Package                                                         | What it adds                                                                 |
 | --------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| [`@nativue/svg`](../packages/svg/README.md)                     | `<svg>` as on the web: charts, illustrations, gradients, taps                |
 | [`@nativue/icons`](../packages/icons/README.md)                 | 2,000+ Lucide icons as components, drawn natively; also tab and header icons |
 | [`@nativue/tailwind`](../packages/tailwind/README.md)           | Tailwind CSS classes, turned into native styles when the app is built        |
 | [`@nativue/clipboard`](../packages/clipboard/README.md)         | copying text to the clipboard                                                |
@@ -88,8 +89,8 @@ Arguments and results are booleans, numbers, strings, `null`, arrays and objects
 bytes: an `ArrayBuffer` or a typed array (`Uint8Array`...) arrives as `Data` on iOS and `ByteArray`
 on Android, and returned bytes reach JavaScript as a `Uint8Array`, with no base64 in between.
 
-Plugin views get their props through `PluginView.setProp(key, value)`; nativue applies `style`
-and lays them out, sized by their style (they don't measure their content). The package's
+Plugin views get their props through `PluginView.setProp(key, value)`; nativue applies `style`,
+`accessibility`, `@layout` and the gestures (`@pan`, `@pinch`, `@rotate`), and lays them out, sized by their style (they don't measure their content). The package's
 JavaScript calls the functions with `requireNativeFunction` and renders the views by their tag:
 
 ```ts
@@ -103,6 +104,17 @@ export const CameraView = defineComponent(
       h('CameraView', attrs),
 )
 ```
+
+### Views that draw what's inside them
+
+A view like `<svg>` keeps its elements in JavaScript and draws them all at once: `registerDrawnView`
+(from `vue`, in the package's `runtime` module) says which tags create it and which are drawn inside
+it, and turns them into one prop, `drawing`, after each batch of changes. Presses on what it draws
+come back as an `elementpress` event with the ids of the elements hit. See
+[`@nativue/svg`](../packages/svg/src/runtime.ts).
+
+A package can also draw tab bar and header icons: `registry.addIconDrawer("name")` gets the icons
+whose `drawnIcon.drawer` is `"name"` and returns an image, which the bar tints.
 
 ### Events and errors
 

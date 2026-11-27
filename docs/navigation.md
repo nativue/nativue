@@ -89,14 +89,21 @@ its own history.
 | `headerRight`, `headerLeft`                        | `HeaderItem[]`                                          | buttons in the header, see below                                          |
 | `presentation`                                     | `'card' \| 'modal' \| 'formSheet' \| 'fullScreenModal'` | how the screen opens, see below                                           |
 | `tabBarLabel`                                      | `string`                                                | the tab's label, when it differs from `title`                             |
-| `tabBarIcon`                                       | an icon component, or an SF Symbol name                 | the tab's icon                                                            |
+| `tabBarIcon`                                       | an icon, see below                                      | the tab's icon                                                            |
 | `tabBarBadge`                                      | `string \| number`                                      | a badge on the tab                                                        |
 | `tabBarActiveTintColor`, `tabBarInactiveTintColor` | `string`                                                | the tab bar's colors: set them in `<Tabs :screen-options>`                |
 | `tabBarBackgroundColor`                            | `string`                                                | the tab bar's background (Android and iOS 18; iOS 26 keeps its glass bar) |
 | `lazy`                                             | `boolean`                                               | in `<Tabs>`: builds the tab only when it's first opened                   |
 
-Icons from [`@nativue/icons`](../packages/icons/README.md) work on both platforms. SF Symbol names
-(`tabBarIcon: 'house'`) are iOS only.
+An icon, in `tabBarIcon` or a header button's `icon`, is one of:
+
+- an icon from [`@nativue/icons`](../packages/icons/README.md): `tabBarIcon: HouseIcon`;
+- your own shapes, with [`@nativue/svg`](../packages/svg/README.md)'s `svgIcon`:
+  `svgIcon([0, 0, 24, 24], [['path', { d: 'M3 12h18' }]])`;
+- an image: `{ uri: logo }`, an imported PNG or a url;
+- an SF Symbol's name, iOS only: `tabBarIcon: 'house'`.
+
+The bar tints them with its colors: only their shape counts.
 
 ### Header buttons
 

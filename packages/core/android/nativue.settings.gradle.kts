@@ -18,18 +18,38 @@ fun packageDirectory(name: String, appDirectory: File): File? =
         .map { File(it, "node_modules/$name") }
         .firstOrNull { File(it, "package.json").isFile }
 
-fun dependencyNames(appDirectory: File): List<String> {
-    val appPackage = readJson(File(appDirectory, "package.json"))
-
-    return listOf("dependencies", "devDependencies").flatMap { (appPackage[it] as? Map<*, *>)?.keys.orEmpty() }
-        .map { it.toString() }
-}
+fun dependencyNames(packageJson: Map<String, Any?>, keys: List<String>): List<String> =
+    keys.flatMap { (packageJson[it] as? Map<*, *>)?.keys.orEmpty() }.map { it.toString() }
 
 data class AndroidPlugin(val projectPath: String, val pluginClass: String)
 
-fun androidPlugin(name: String, appDirectory: File): AndroidPlugin? {
-    val directory = packageDirectory(name, appDirectory) ?: return null
-    val nativue = readJson(File(directory, "package.json"))["nativue"] as? Map<*, *>
+/**
+ * The app's packages with an Android side, then theirs, as cli/link.mjs finds them: a package made for
+ * nativue brings the native packages it depends on (@nativue/icons brings @nativue/svg).
+ */
+fun androidPlugins(appDirectory: File): List<AndroidPlugin> {
+    val appPackage = readJson(File(appDirectory, "package.json"))
+    val pending = ArrayDeque(dependencyNames(appPackage, listOf("dependencies", "devDependencies")).map { it to appDirectory })
+    val visited = mutableSetOf<String>()
+    val plugins = mutableListOf<AndroidPlugin>()
+
+    while (pending.isNotEmpty()) {
+        val (name, fromDirectory) = pending.removeFirst()
+        if (!visited.add(name)) continue
+
+        val directory = packageDirectory(name, fromDirectory) ?: continue
+        val packageJson = readJson(File(directory, "package.json"))
+        val nativue = packageJson["nativue"] as? Map<*, *>
+        val isForNativue = nativue != null || (packageJson["peerDependencies"] as? Map<*, *>)?.containsKey("@nativue/core") == true
+
+        androidPlugin(name, directory, nativue)?.let(plugins::add)
+        if (isForNativue) dependencyNames(packageJson, listOf("dependencies")).forEach { pending.add(it to directory) }
+    }
+
+    return plugins
+}
+
+fun androidPlugin(name: String, directory: File, nativue: Map<*, *>?): AndroidPlugin? {
     val android = nativue?.get("android") as? Map<*, *> ?: return null
     val projectPath = ":" + name.removePrefix("@").replace('/', '-')
 
@@ -44,7 +64,7 @@ fun pascalCase(name: String): String =
     name.split(Regex("[^a-zA-Z0-9]+")).filter { it.isNotEmpty() }.joinToString("") { it.replaceFirstChar(Char::uppercaseChar) }
 
 val appDirectory: File = settingsDir.parentFile
-val androidPlugins = dependencyNames(appDirectory).mapNotNull { name -> androidPlugin(name, appDirectory) }
+val androidPlugins = androidPlugins(appDirectory)
 val appSourceDirectories = File(appDirectory, "native").listFiles().orEmpty()
     // native/extensions holds iOS extension targets, not modules.
     .filter { it.name != "extensions" }

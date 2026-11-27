@@ -14,7 +14,7 @@ New to nativue? Start with [Getting started](getting-started.md).
 - [Accessibility](accessibility.md): VoiceOver and TalkBack, `role` and `aria-*`, `AccessibilityInfo`
 - [APIs](apis.md): `AsyncStorage`, `fetch`, `Platform`, `Appearance`, `Keyboard`, `Dimensions`,
   `useWindowDimensions`, timers
-- [Packages](packages.md): icons, Tailwind, haptics, clipboard, SQLite, and writing a package with native code
+- [Packages](packages.md): SVG, icons, Tailwind, haptics, clipboard, SQLite, and writing a package with native code
 
 ## Components
 
@@ -35,9 +35,9 @@ New to nativue? Start with [Getting started](getting-started.md).
 | [`ActivityIndicator`](components/activity-indicator.md)        | a spinner                                             |
 | [`SafeAreaView`](components/safe-area-view.md)                 | keeps content clear of the notch and system bars      |
 | [`KeyboardAvoidingView`](components/keyboard-avoiding-view.md) | moves content above the keyboard                      |
-| [`Svg`](components/svg.md)                                     | low level vector drawing, used by icons               |
 
-Navigation components (`Stack`, `Tabs`, `Link`) are in [Navigation](navigation.md).
+Navigation components (`Stack`, `Tabs`, `Link`) are in [Navigation](navigation.md), and `<svg>` in
+[`@nativue/svg`](../packages/svg/README.md).
 
 ## Working on nativue itself
 

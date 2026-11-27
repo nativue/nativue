@@ -25,6 +25,8 @@ import { FlatListComponent, ImageBackground, Pressable, Swipeable } from './comp
 import type { LayoutAnimationConfig, Style } from './types'
 export * from '@vue/runtime-core'
 export { AccessibilityInfo } from './accessibility'
+export type { AccessibilityProps } from './native-components'
+export { processColor } from './colors'
 export { Animated } from './animated'
 export {
   Appearance,
@@ -43,7 +45,6 @@ export { openSettings, usePermission } from './permissions'
 export type { PermissionResponse, PermissionResponseWith } from './permissions'
 export { AsyncStorage } from './storage'
 export type * from './types'
-export type { SvgElement, SvgIcon } from './native-components'
 
 interface Node {
   id: number
@@ -64,6 +65,44 @@ interface Node {
   /** <TextInput v-model.trim>: its modifiers, and the text typed last. */
   modelModifiers?: ModelModifiers
   typedText?: string
+  /** A drawn view's style from its own props (<svg width height>): under its class and style. */
+  baseStyle?: Style
+}
+
+/** An element inside a drawn view, or the view itself, as its package sees it. */
+export interface DrawnElement {
+  readonly id: number
+  readonly type: string
+  readonly parent: DrawnElement | null
+  readonly children: DrawnElement[]
+  readonly text: string
+}
+
+/**
+ * A native view that draws what's inside it, like @nativue/svg's <svg>: its elements stay in JS and
+ * never become views. After each batch of changes, the view gets them as one prop, `drawing`.
+ */
+export interface DrawnView {
+  /** The native view's type, e.g. 'Svg', which a package's plugin registers natively. */
+  type: string
+  /** The tags that create it in a template, e.g. ['svg']. */
+  tags: string[]
+  /** The tags of the elements drawn inside it, e.g. 'path'. */
+  partTags: string[]
+  /** A part's prop (an @event's handler excepted, which nativue keeps). */
+  setPartProp(element: DrawnElement, key: string, value: unknown): void
+  /**
+   * The view's own prop: true when only the drawing reads it, false when it also goes to the native view.
+   * `setBaseStyle` styles the view under its class and style.
+   */
+  setViewProp(
+    element: DrawnElement,
+    key: string,
+    value: unknown,
+    setBaseStyle: (style: Style) => void,
+  ): boolean
+  /** The view's `drawing`, once per batch of changes; undefined leaves it as it is. */
+  drawing(view: DrawnElement, isPressable: (element: DrawnElement) => boolean): unknown
 }
 
 type ModelModifiers = { trim?: boolean; number?: boolean; lazy?: boolean }
@@ -90,6 +129,19 @@ export function setClassStyleResolver(resolver: ClassStyleResolver): void {
   nodesWithClass.forEach((node) => updateStyle(node, {}))
 }
 
+const warnedTags = new Set<string>()
+
+// Native components are capitalized: a lowercase tag is HTML (<div>), or a drawn view's (<svg>) whose
+// package isn't installed. Either way it would show nothing.
+function warnIfUnknown(tag: string) {
+  if (!/^[a-z]/.test(tag) || drawnViewsByTag.has(tag) || warnedTags.has(tag)) return
+
+  warnedTags.add(tag)
+  console.warn(
+    `<${tag}> isn't a nativue element, so it shows nothing: use nativue's components (<View>, <Text>...), or install the package that provides <${tag}>.`,
+  )
+}
+
 function createNode(type: string): Node {
   return { id: nextNodeId++, type, parent: null, children: [], text: '' }
 }
@@ -101,9 +153,76 @@ function nativeIdsIn(node: Node): number[] {
   return [...ownId, ...node.children.flatMap(nativeIdsIn)]
 }
 
-// '#text' and '#comment' nodes only exist in JS (Vue anchors / raw text); native never sees them.
+// '#text' and '#comment' nodes only exist in JS (Vue anchors / raw text), and so do a drawn view's
+// elements, which the view draws: native never sees them.
 function isNativeNode(node: Node): boolean {
-  return !node.type.startsWith('#')
+  return !node.type.startsWith('#') && !drawnViewsByPartTag.has(node.type)
+}
+
+const drawnViewsByTag = new Map<string, DrawnView>()
+const drawnViewsByPartTag = new Map<string, DrawnView>()
+const drawnViewsByType = new Map<string, DrawnView>()
+const drawnViewsToRedraw = new Set<Node>()
+
+/** For a package's runtime module, before the app starts: see DrawnView. */
+export function registerDrawnView(view: DrawnView): void {
+  for (const tag of [...view.tags, view.type]) drawnViewsByTag.set(tag, view)
+  for (const tag of view.partTags) drawnViewsByPartTag.set(tag, view)
+  drawnViewsByType.set(view.type, view)
+}
+
+function drawnViewOf(node: Node | null): Node | null {
+  let current = node
+
+  while (current && !drawnViewsByType.has(current.type)) current = current.parent
+
+  return current
+}
+
+/** Every change inside a drawn view in one batch: the drawing is sent once, after them. */
+function redraw(node: Node | null) {
+  const view = drawnViewOf(node)
+  if (!view) return
+
+  if (drawnViewsToRedraw.size === 0) Promise.resolve().then(sendDrawings)
+  drawnViewsToRedraw.add(view)
+}
+
+function sendDrawings() {
+  const isPressable = (element: DrawnElement) => Boolean(eventHandlersByNodeId[element.id]?.press)
+  // Copied first: a drawing that fails doesn't keep the others from being sent next time.
+  const views = [...drawnViewsToRedraw]
+
+  drawnViewsToRedraw.clear()
+  for (const view of views) {
+    const drawing = drawnViewsByType.get(view.type)?.drawing(view, isPressable)
+
+    if (drawing !== undefined) native.setProp(view.id, 'drawing', drawing)
+  }
+}
+
+/** A drawn view's own props: false for those that go on as for any view. */
+function patchDrawnViewProp(element: Node, key: string, value: unknown): boolean {
+  const name = camelize(key)
+
+  if (isEventProp(name)) redraw(element)
+  if (key === 'style' || key === 'class' || isEventProp(name) || isAccessibilityAttribute(key)) {
+    return false
+  }
+
+  const setBaseStyle = (style: Style) => {
+    const previousStyle = combinedStyle(element)
+
+    element.baseStyle = style
+    patchStyle(element, previousStyle, combinedStyle(element))
+  }
+  const isDrawingOnly = drawnViewsByType
+    .get(element.type)!
+    .setViewProp(element, key, value, setBaseStyle)
+
+  redraw(element)
+
+  return isDrawingOnly
 }
 
 // Vue removes only the root of an unmounted subtree: its descendants go with it.
@@ -198,9 +317,9 @@ function withoutAnimatedProperties(
 // The class's styles come first, so the style prop overrides them, as inline styles do on the web.
 function combinedStyle(element: Node): Style | null {
   const focusedStyle = element.focused ? element.focusedStyle : null
-  if (!element.classStyle && !focusedStyle) return element.style ?? null
+  if (!element.classStyle && !focusedStyle && !element.baseStyle) return element.style ?? null
 
-  return { ...element.classStyle, ...element.style, ...focusedStyle }
+  return { ...element.baseStyle, ...element.classStyle, ...element.style, ...focusedStyle }
 }
 
 function classStyleOf(element: Node): Style | undefined {
@@ -264,6 +383,23 @@ function reportsToJavaScript(eventName: string, handler: unknown): boolean {
   return eventName !== 'scroll' || handler.listener != null
 }
 
+/** Inside a drawn view there's no native view to tell: the drawing says which elements take presses. */
+function patchDrawnEventHandler(
+  element: Node,
+  key: string,
+  handler: unknown,
+  component: ComponentInternalInstance | null,
+) {
+  const listener = handler as Function | undefined
+
+  eventHandlersByNodeId[element.id] ??= {}
+  eventHandlersByNodeId[element.id][key.slice(2).toLowerCase()] =
+    listener &&
+    ((payload) =>
+      callWithAsyncErrorHandling(listener, component, ErrorCodes.NATIVE_EVENT_HANDLER, [payload]))
+  redraw(element)
+}
+
 // An Animated.event handler writes into values natively; JS keeps only its listener. Handlers run
 // through Vue's error handling, like on the web, so an error names the component it came from.
 function patchEventHandler(
@@ -291,8 +427,12 @@ function patchEventHandler(
 
 const { createApp: createBaseApp } = createRenderer<Node, Node>({
   createElement(type) {
-    const element = createNode(type)
-    native.create(element.id, type)
+    if (drawnViewsByPartTag.has(type)) return createNode(type)
+
+    const element = createNode(drawnViewsByTag.get(type)?.type ?? type)
+
+    warnIfUnknown(type)
+    native.create(element.id, element.type)
     if (type === 'TextInput') textInputsById.set(element.id, element)
 
     return element
@@ -312,11 +452,16 @@ const { createApp: createBaseApp } = createRenderer<Node, Node>({
   setText(textNode, text) {
     textNode.text = text
     syncTextContent(textNode.parent)
+    redraw(textNode.parent)
   },
 
   setElementText(element, text) {
     element.children = []
     if (element.type === 'Text') native.setText(element.id, text.trim())
+    if (drawnViewsByPartTag.has(element.type)) {
+      element.children = [{ ...createNode('#text'), text, parent: element }]
+      redraw(element)
+    }
   },
 
   insert(child, parent, anchor) {
@@ -328,6 +473,7 @@ const { createApp: createBaseApp } = createRenderer<Node, Node>({
 
     if (isNativeNode(child)) native.insert(parent.id, child.id, nativeIndexBefore(parent, index))
     else syncTextContent(parent)
+    redraw(parent)
   },
 
   remove(child) {
@@ -336,6 +482,7 @@ const { createApp: createBaseApp } = createRenderer<Node, Node>({
 
     if (isNativeNode(child)) native.remove(child.id, nativeIdsIn(child))
     else syncTextContent(parent)
+    redraw(parent)
   },
 
   parentNode(node) {
@@ -349,7 +496,18 @@ const { createApp: createBaseApp } = createRenderer<Node, Node>({
   },
 
   patchProp(element, key, previousValue, nextValue, _namespace, component) {
-    if (key === 'style') updateStyle(element, { style: nextValue })
+    const drawnView = drawnViewsByPartTag.get(element.type)
+
+    if (drawnView) {
+      if (isEventProp(camelize(key))) {
+        patchDrawnEventHandler(element, camelize(key), nextValue, component ?? null)
+      } else {
+        drawnView.setPartProp(element, key, nextValue)
+        redraw(element)
+      }
+    } else if (drawnViewsByType.has(element.type) && patchDrawnViewProp(element, key, nextValue)) {
+      return
+    } else if (key === 'style') updateStyle(element, { style: nextValue })
     else if (key === 'class') updateStyle(element, { className: nextValue ?? undefined })
     else if (key === 'pressed') updateStyle(element, { pressed: nextValue })
     else if (isAccessibilityAttribute(key)) updateAccessibility(element, key, nextValue)
@@ -373,6 +531,13 @@ const MODEL_EVENT_BY_NATIVE_EVENT: Record<string, string> = {
 }
 
 globalThis.__dispatch = (nodeId, eventName, payload) => {
+  // A press on a drawn view's elements: the innermost first, then the groups around it.
+  if (eventName === 'elementpress') {
+    const { nodeIds, ...location } = payload as { nodeIds: number[] }
+
+    return nodeIds.forEach((id) => eventHandlersByNodeId[id]?.press?.(location))
+  }
+
   updateFocus(nodeId, eventName)
 
   const handlers = eventHandlersByNodeId[nodeId]

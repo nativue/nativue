@@ -32,7 +32,7 @@ final class ImageView: UIImageView {
     /// The image changed, and with it the size the view measures.
     var onImageChange: (() -> Void)?
 
-    /// "disk", "memory" or "none". Read when a download finishes, so it applies even when set after `source`.
+    /// "disk", "memory" or "none". Read once loading starts, so it applies even when set after `source`.
     var cachePolicy = "disk"
 
     private var loadingTask: Task<Void, Never>?
@@ -57,28 +57,45 @@ final class ImageView: UIImageView {
         }
 
         show(nil)
-        let readsDisk = cachePolicy == "disk"
         loadingTask = Task { [weak self] in
-            let cachedData = readsDisk ? await Task.detached { ImageDiskCache.data(for: source) }.value : nil
-            let downloadedData = cachedData == nil ? await Self.download(source, from: url) : nil
             guard
-                let data = cachedData ?? downloadedData,
-                let image = await UIImage(data: data)?.byPreparingForDisplay(), // decoded off the main thread
+                let cachePolicy = self?.cachePolicy,
+                let image = await Self.image(for: source, from: url, cachePolicy: cachePolicy),
                 !Task.isCancelled,
                 let self
             else { return }
 
-            store(image, downloadedData: downloadedData, for: source)
             show(image)
         }
     }
 
-    private func store(_ image: UIImage, downloadedData: Data?, for source: String) {
+    /// An image as <Image> loads it: from memory, the disk cache or its url, then kept as `cachePolicy` says.
+    static func image(for source: String, cachePolicy: String = "disk") async -> UIImage? {
+        if cachePolicy != "none", let cachedImage = decodedImages.object(forKey: source as NSString) { return cachedImage }
+        guard let url = URL(string: source) else { return nil }
+
+        return await image(for: source, from: url, cachePolicy: cachePolicy)
+    }
+
+    private static func image(for source: String, from url: URL, cachePolicy: String) async -> UIImage? {
+        let cachedData = cachePolicy == "disk" ? await Task.detached { ImageDiskCache.data(for: source) }.value : nil
+        let downloadedData = cachedData == nil ? await download(source, from: url) : nil
+        guard
+            let data = cachedData ?? downloadedData,
+            let image = await UIImage(data: data)?.byPreparingForDisplay() // decoded off the main thread
+        else { return nil }
+
+        store(image, downloadedData: downloadedData, for: source, cachePolicy: cachePolicy)
+
+        return image
+    }
+
+    private static func store(_ image: UIImage, downloadedData: Data?, for source: String, cachePolicy: String) {
         guard cachePolicy != "none" else { return }
 
-        Self.decodedImages.setObject(image, forKey: source as NSString, cost: Self.byteCount(of: image))
+        decodedImages.setObject(image, forKey: source as NSString, cost: byteCount(of: image))
 
-        guard cachePolicy == "disk", let downloadedData, !Self.isInMemory(source) else { return }
+        guard cachePolicy == "disk", let downloadedData, !isInMemory(source) else { return }
         Task.detached(priority: .utility) { ImageDiskCache.store(downloadedData, for: source) }
     }
 
@@ -128,6 +145,11 @@ final class ImageView: UIImageView {
 
         return cgImage.bytesPerRow * cgImage.height
     }
+}
+
+/// An image loaded and cached as <Image> does it: for a package's views.
+public func loadImage(_ source: String) async -> UIImage? {
+    await ImageView.image(for: source)
 }
 
 /// Downloaded images by url, in the system's caches folder, which iOS may empty when storage runs low. Past

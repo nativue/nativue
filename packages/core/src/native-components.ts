@@ -24,13 +24,6 @@ export interface AccessibilityProps {
   'aria-checked'?: BooleanAttribute
 }
 type EventHandler<Payload> = ((payload: Payload) => void) | AnimatedEvent<Payload>
-// [tag, attributes], e.g. ['circle', { cx: 12, cy: 12, r: 10 }]: path, circle, ellipse, rect, line,
-// polyline and polygon. Stroked with `color`; filled too when `fill` isn't 'none'.
-export type SvgElement = [tag: string, attributes: Record<string, string | number>]
-// An icon component that carries its drawing, so it can also be a tab bar icon (see @nativue/icons).
-export interface SvgIcon {
-  svg: { viewBox: [number, number, number, number]; elements: SvgElement[] }
-}
 type ModelProps<Value> = { modelValue?: Value; 'onUpdate:modelValue'?: (value: Value) => void }
 
 declare module '@vue/runtime-core' {
@@ -90,13 +83,6 @@ declare module '@vue/runtime-core' {
       animating?: boolean
       color?: string
       size?: 'small' | 'large'
-    }>
-    // Low level: draws SVG elements, e.g. an icon set's nodes (see @nativue/icons).
-    Svg: NativeComponent<{
-      viewBox?: [number, number, number, number]
-      elements: SvgElement[]
-      color?: string
-      strokeWidth?: number
     }>
     Modal: NativeComponent<{
       visible?: boolean

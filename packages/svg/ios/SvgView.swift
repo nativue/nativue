@@ -1,0 +1,1554 @@
+import Nativue
+import UIKit
+
+/// View behind <svg>: draws what JS sends as `drawing`, [tag, attributes, children or text] (src/svg.ts),
+/// its viewBox fitted as preserveAspectRatio says. Icons send `elements` instead, [tag, attributes] pairs
+/// stroked with `color`.
+final class SvgView: UIView, PluginView, InteractiveView {
+    var viewBox = CGRect(x: 0, y: 0, width: 24, height: 24) {
+        didSet { updateIconDrawing() }
+    }
+
+    var strokeWidth: CGFloat = 2 {
+        didSet { updateIconDrawing() }
+    }
+
+    /// currentColor.
+    var color: UIColor = .black {
+        didSet { setNeedsDisplay() }
+    }
+
+    var elements: [[Any]] = [] {
+        didSet { updateIconDrawing() }
+    }
+
+    /// From JS (an <svg>'s content). An icon's `elements` draw instead, when it has them.
+    var drawing: Any? {
+        didSet {
+            drawingRoot = SvgElement(drawing as Any)
+            rootDidChange()
+        }
+    }
+
+    /// The ids of the elements pressed, innermost first, and where (in the view).
+    var onElementPress: ((_ nodeIds: [Int], _ location: CGPoint) -> Void)?
+
+    private var drawingRoot: SvgElement?
+    private var iconRoot: SvgElement?
+    private var root: SvgElement? { elements.isEmpty ? drawingRoot : iconRoot }
+    /// Pressable shapes as last drawn, in view coordinates, topmost last.
+    private var pressTargets: [SvgPressTarget] = []
+    /// What the touch that began on an element is pressing.
+    private var pressedTarget: SvgPressTarget?
+    private let images = SvgImages()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+
+        isOpaque = false
+        contentMode = .redraw
+        isUserInteractionEnabled = false // a press on an icon presses what contains it
+        images.onLoad = { [weak self] in self?.setNeedsDisplay() }
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    /// [minX, minY, width, height], as sent from JS.
+    static func rect(fromViewBox value: Any?) -> CGRect? {
+        let numbers = (value as? [NSNumber])?.map { CGFloat($0.doubleValue) } ?? []
+        guard numbers.count == 4 else { return nil }
+
+        return CGRect(x: numbers[0], y: numbers[1], width: numbers[2], height: numbers[3])
+    }
+
+    func setProp(_ key: String, value: Any?) {
+        switch key {
+        case "color": color = value.flatMap { UIColor(rgba: $0) } ?? .black
+        case "viewBox": if let rect = Self.rect(fromViewBox: value) { viewBox = rect }
+        case "elements": elements = value as? [[Any]] ?? []
+        case "drawing": drawing = value
+        case "strokeWidth": strokeWidth = CGFloat((value as? NSNumber)?.doubleValue ?? 2)
+        default: break
+        }
+    }
+
+    /// A tab bar or header icon (svgIcon in src/index.ts): { viewBox, elements }, tinted by the bar.
+    static func iconImage(_ icon: [String: Any], size: CGFloat) -> UIImage {
+        templateImage(elements: icon["elements"] as? [[Any]] ?? [], viewBox: icon["viewBox"], size: size)
+    }
+
+    /// The elements drawn into a template image (tinted by its container, like SF Symbols).
+    static func templateImage(elements: [[Any]], viewBox: Any?, size: CGFloat) -> UIImage {
+        let svgView = SvgView(frame: CGRect(x: 0, y: 0, width: size, height: size))
+        if let rect = rect(fromViewBox: viewBox) { svgView.viewBox = rect }
+        svgView.elements = elements
+
+        let image = UIGraphicsImageRenderer(bounds: svgView.bounds).image { context in
+            svgView.draw(in: context.cgContext)
+        }
+
+        return image.withRenderingMode(.alwaysTemplate)
+    }
+
+    override func draw(_ rect: CGRect) {
+        guard let context = UIGraphicsGetCurrentContext() else { return }
+
+        draw(in: context)
+    }
+
+    private func draw(in context: CGContext) {
+        guard let root else { return }
+
+        var renderer = SvgRenderer(context: context, currentColor: color.cgColor, definitions: root.definitionsById(), images: images)
+        context.concatenate(root.viewBoxTransform(in: bounds))
+        renderer.draw(root, style: SvgStyle(), pressableAncestors: [])
+        pressTargets = renderer.pressTargets
+    }
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        pressTarget(at: point) != nil
+    }
+
+    // A touch on an element is the element's: not passed on to a <Pressable> around the <svg>.
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        pressedTarget = touches.first.flatMap { pressTarget(at: $0.location(in: self)) }
+        if pressedTarget == nil { super.touchesBegan(touches, with: event) }
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        if pressedTarget == nil { super.touchesMoved(touches, with: event) }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let target = pressedTarget else { return super.touchesEnded(touches, with: event) }
+
+        pressedTarget = nil
+        guard let location = touches.first?.location(in: self), target.contains(location) else { return }
+
+        onElementPress?(target.nodeIds, location)
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard pressedTarget != nil else { return super.touchesCancelled(touches, with: event) }
+
+        pressedTarget = nil
+    }
+
+    private func rootDidChange() {
+        isUserInteractionEnabled = root?.hasPressableElements ?? false
+        setNeedsDisplay()
+    }
+
+    private func pressTarget(at point: CGPoint) -> SvgPressTarget? {
+        pressTargets.last { $0.contains(point) }
+    }
+
+    /// An icon: its elements, stroked with currentColor (round caps and joins, as icon sets expect), and
+    /// filled with it when their fill isn't "none".
+    private func updateIconDrawing() {
+        defer { rootDidChange() }
+        guard !elements.isEmpty else { return }
+
+        let rootAttributes: [String: Any] = [
+            "viewBox": [viewBox.minX, viewBox.minY, viewBox.width, viewBox.height],
+            "fill": "none",
+            "stroke": "currentColor",
+            "stroke-width": strokeWidth,
+            "stroke-linecap": "round",
+            "stroke-linejoin": "round",
+        ]
+        let children = elements.map { element -> [Any] in
+            var attributes = element.last as? [String: Any] ?? [:]
+
+            if let fill = attributes["fill"], "\(fill)" != "none" { attributes["fill"] = "currentColor" }
+
+            return [element.first ?? "", attributes, [Any]()]
+        }
+        iconRoot = SvgElement(["svg", rootAttributes, children])
+    }
+}
+
+/// One element of a drawing.
+private struct SvgElement {
+    let tag: String
+    let attributes: SvgAttributes
+    let children: [SvgElement]
+    let text: String
+
+    init?(_ value: Any) {
+        guard let parts = value as? [Any], let tag = parts.first as? String else { return nil }
+
+        self.tag = tag
+        attributes = SvgAttributes(values: parts.count > 1 ? parts[1] as? [String: Any] ?? [:] : [:])
+        children = (parts.count > 2 ? parts[2] as? [Any] ?? [] : []).compactMap(SvgElement.init)
+        text = parts.count > 2 ? parts[2] as? String ?? "" : ""
+    }
+
+    var hasPressableElements: Bool {
+        attributes.values["nodeId"] != nil || children.contains { $0.hasPressableElements }
+    }
+
+    /// Gradients, patterns, clip paths and masks, which elements refer to by id.
+    func definitionsById() -> [String: SvgElement] {
+        var definitions: [String: SvgElement] = [:]
+
+        if ["linearGradient", "radialGradient", "pattern", "clipPath", "mask"].contains(tag), let id = attributes.values["id"] as? String {
+            definitions[id] = self
+        }
+        for child in children { definitions.merge(child.definitionsById()) { first, _ in first } }
+
+        return definitions
+    }
+
+    /// The root's viewBox fitted into the view, as its preserveAspectRatio says.
+    func viewBoxTransform(in bounds: CGRect) -> CGAffineTransform {
+        guard let viewBox = SvgView.rect(fromViewBox: attributes.values["viewBox"]) else { return .identity }
+
+        return SvgFit.transform(viewBox, into: bounds, preserveAspectRatio: attributes.text("preserveAspectRatio"))
+    }
+
+    /// Its own transform attribute.
+    var transform: CGAffineTransform? {
+        Self.matrix(attributes.values["transform"])
+    }
+
+    /// [a, b, c, d, tx, ty], as JS sends transforms.
+    static func matrix(_ value: Any?) -> CGAffineTransform? {
+        guard let values = value as? [NSNumber], values.count == 6 else { return nil }
+
+        let numbers = values.map { CGFloat($0.doubleValue) }
+
+        return CGAffineTransform(
+            a: numbers[0], b: numbers[1], c: numbers[2], d: numbers[3], tx: numbers[4], ty: numbers[5]
+        )
+    }
+}
+
+/// fill and stroke: none, a color, currentColor, or a gradient or pattern (url(#id)).
+private enum SvgPaint {
+    case none
+    case color(CGColor)
+    case currentColor
+    case reference(id: String)
+
+    init?(_ value: Any?) {
+        switch value {
+        case let number as NSNumber:
+            guard let color = UIColor(rgba: number) else { return nil }
+            self = .color(color.cgColor)
+        case let text as String where text == "none":
+            self = .none
+        case let text as String where text == "currentColor":
+            self = .currentColor
+        case let text as String where text.hasPrefix("url(#"):
+            self = .reference(id: String(text.dropFirst(5).dropLast()))
+        default:
+            return nil
+        }
+    }
+}
+
+/// What children inherit, as SVG's presentation attributes cascade.
+private struct SvgStyle {
+    var fill: SvgPaint = .color(UIColor.black.cgColor)
+    var stroke: SvgPaint = .none
+    var strokeWidth: CGFloat = 1
+    var fillOpacity: CGFloat = 1
+    var strokeOpacity: CGFloat = 1
+    var lineCap: CGLineCap = .butt
+    var lineJoin: CGLineJoin = .miter
+    var dashes: [CGFloat] = []
+    var dashOffset: CGFloat = 0
+    var isEvenOdd = false
+    var letterSpacing: CGFloat = 0
+    var fontSize: CGFloat = 16
+    var fontWeight: UIFont.Weight = .regular
+    var fontFamily: String?
+    var textAnchor = "start"
+    var baseline = "auto"
+    var miterLimit: CGFloat = 4
+    var isItalic = false
+    var textDecoration = "none"
+    var paintsStrokeFirst = false
+    var hasNonScalingStroke = false
+
+    func inheriting(_ attributes: SvgAttributes) -> SvgStyle {
+        var style = self
+
+        if let fill = SvgPaint(attributes.values["fill"]) { style.fill = fill }
+        if let stroke = SvgPaint(attributes.values["stroke"]) { style.stroke = stroke }
+        if let width = attributes.optionalNumber("stroke-width") { style.strokeWidth = width }
+        if let opacity = attributes.optionalNumber("fill-opacity") { style.fillOpacity = opacity }
+        if let opacity = attributes.optionalNumber("stroke-opacity") { style.strokeOpacity = opacity }
+        if let dashes = attributes.values["stroke-dasharray"] as? [NSNumber] {
+            style.dashes = dashes.map { CGFloat($0.doubleValue) }
+        }
+        if let offset = attributes.optionalNumber("stroke-dashoffset") { style.dashOffset = offset }
+        if let spacing = attributes.optionalNumber("letter-spacing") { style.letterSpacing = spacing }
+        if let fontSize = attributes.optionalNumber("font-size") { style.fontSize = fontSize }
+        if let family = attributes.values["font-family"] as? String { style.fontFamily = family }
+        if let anchor = attributes.values["text-anchor"] as? String { style.textAnchor = anchor }
+        if let baseline = (attributes.values["dominant-baseline"] ?? attributes.values["alignment-baseline"]) as? String {
+            style.baseline = baseline
+        }
+        if let limit = attributes.optionalNumber("stroke-miterlimit") { style.miterLimit = limit }
+        if let fontStyle = attributes.values["font-style"] as? String { style.isItalic = fontStyle != "normal" }
+        if let decoration = attributes.values["text-decoration"] as? String { style.textDecoration = decoration }
+        if let order = attributes.values["paint-order"] as? String { style.paintsStrokeFirst = order.hasPrefix("stroke") }
+        if let effect = attributes.values["vector-effect"] as? String { style.hasNonScalingStroke = effect == "non-scaling-stroke" }
+        if let weight = attributes.values["font-weight"] { style.fontWeight = Self.fontWeight("\(weight)") }
+        switch attributes.values["stroke-linecap"] as? String {
+        case "round": style.lineCap = .round
+        case "square": style.lineCap = .square
+        case "butt": style.lineCap = .butt
+        default: break
+        }
+        switch attributes.values["stroke-linejoin"] as? String {
+        case "round": style.lineJoin = .round
+        case "bevel": style.lineJoin = .bevel
+        case "miter": style.lineJoin = .miter
+        default: break
+        }
+        if let rule = attributes.values["fill-rule"] as? String { style.isEvenOdd = rule == "evenodd" }
+
+        return style
+    }
+
+    private static func fontWeight(_ value: String) -> UIFont.Weight {
+        switch value {
+        case "bold", "700": .bold
+        case "600": .semibold
+        case "500": .medium
+        case "800", "900": .heavy
+        case "300": .light
+        case "100", "200": .thin
+        default: .regular
+        }
+    }
+}
+
+private struct SvgPressTarget {
+    let path: CGPath
+    let nodeIds: [Int]
+
+    func contains(_ point: CGPoint) -> Bool {
+        path.contains(point)
+    }
+}
+
+/// Draws elements into a context already scaled to the viewBox, and notes what can be pressed.
+private struct SvgRenderer {
+    /// Referred to by id (url(#id), href), not drawn where they are.
+    static let definitionTags: Set<String> = [
+        "defs", "linearGradient", "radialGradient", "stop", "pattern", "symbol", "clipPath", "mask",
+    ]
+
+    let context: CGContext
+    let currentColor: CGColor
+    let definitions: [String: SvgElement]
+    let images: SvgImages
+    /// The view's coordinates, before the viewBox scales them: where press targets are kept.
+    let viewTransform: CGAffineTransform
+    var pressTargets: [SvgPressTarget] = []
+
+    /// `toView`: from the context's current coordinates to the view's; another context (an offscreen one)
+    /// keeps press targets where the view has them.
+    init(
+        context: CGContext, currentColor: CGColor, definitions: [String: SvgElement], images: SvgImages,
+        toView: CGAffineTransform = .identity
+    ) {
+        self.context = context
+        self.currentColor = currentColor
+        self.definitions = definitions
+        self.images = images
+        viewTransform = context.ctm.inverted().concatenating(toView).inverted()
+    }
+
+    /// From the element's coordinates to the view's.
+    private var toView: CGAffineTransform {
+        context.ctm.concatenating(viewTransform.inverted())
+    }
+
+    mutating func draw(_ element: SvgElement, style inherited: SvgStyle, pressableAncestors: [Int]) {
+        guard !Self.definitionTags.contains(element.tag) else { return }
+
+        let style = inherited.inheriting(element.attributes)
+        let nodeIds = (element.attributes.values["nodeId"] as? NSNumber).map { [$0.intValue] } ?? []
+        let pressable = nodeIds + pressableAncestors
+        let opacity = element.attributes.optionalNumber("opacity") ?? 1
+        let effects = SvgEffects(element.attributes)
+        // Opacity applies to the element as a whole, overlaps included: drawn apart, then blended.
+        let isLayered = opacity < 1
+
+        context.saveGState()
+        if let transform = element.transform { context.concatenate(transform) }
+        applyClipPath(of: element)
+        applyMask(of: element, style: style)
+        if isLayered {
+            context.setAlpha(opacity)
+            context.beginTransparencyLayer(auxiliaryInfo: nil)
+        }
+
+        if effects.isEmpty {
+            drawContent(element, style: style, pressable: pressable)
+        } else {
+            drawWithEffects(element, style: style, pressable: pressable, effects: effects)
+        }
+
+        if isLayered { context.endTransparencyLayer() }
+        context.restoreGState()
+    }
+
+    private mutating func drawContent(_ element: SvgElement, style: SvgStyle, pressable: [Int]) {
+        switch element.tag {
+        case "svg", "g":
+            // An <svg @press>: anywhere in it, under its elements.
+            if element.tag == "svg", let nodeId = element.attributes.values["nodeId"] as? NSNumber {
+                var toView = toView
+                let viewport = CGPath(rect: context.boundingBoxOfClipPath, transform: &toView)
+                pressTargets.append(SvgPressTarget(path: viewport, nodeIds: [nodeId.intValue]))
+            }
+            for child in element.children { draw(child, style: style, pressableAncestors: pressable) }
+        case "text":
+            drawText(element, style: style, pressable: pressable)
+        case "image":
+            drawImage(element, pressable: pressable)
+        default:
+            if let shape = SvgShapes.path(element.tag, element.attributes) {
+                drawShape(shape, style: style, pressable: pressable)
+            }
+        }
+    }
+
+    /// A filter's effects: the element drawn apart, its color matrix, blur and shadows applied with Core
+    /// Image, and the result drawn in its place.
+    private mutating func drawWithEffects(_ element: SvgElement, style: SvgStyle, pressable: [Int], effects: SvgEffects) {
+        let visible = context.boundingBoxOfClipPath
+        let box = SvgShapes.boundingBox(of: element)
+        let margin = effects.margin + style.strokeWidth
+        let region = box.isEmpty ? visible : box.insetBy(dx: -margin, dy: -margin).intersection(visible)
+        let pixelsPerUnit = hypot(context.ctm.a, context.ctm.b)
+        guard !region.isNull, region.width * region.height * pixelsPerUnit * pixelsPerUnit <= 4096 * 4096 else {
+            return drawContent(element, style: style, pressable: pressable)
+        }
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = pixelsPerUnit
+        format.opaque = false
+        var offscreenRenderer: SvgRenderer?
+        let image = UIGraphicsImageRenderer(size: region.size, format: format).image { offscreen in
+            offscreen.cgContext.translateBy(x: -region.minX, y: -region.minY)
+            var renderer = SvgRenderer(
+                context: offscreen.cgContext, currentColor: currentColor, definitions: definitions, images: images,
+                toView: toView
+            )
+            renderer.drawContent(element, style: style, pressable: pressable)
+            offscreenRenderer = renderer
+        }
+        pressTargets += offscreenRenderer?.pressTargets ?? []
+
+        guard
+            let content = image.cgImage.map(CIImage.init(cgImage:)),
+            let output = Self.imageContext.createCGImage(
+                effects.applied(to: content, pixelsPerUnit: pixelsPerUnit), from: content.extent
+            )
+        else { return }
+
+        UIGraphicsPushContext(context)
+        UIImage(cgImage: output, scale: image.scale, orientation: .up).draw(in: region)
+        UIGraphicsPopContext()
+    }
+
+    private static let imageContext = CIContext()
+
+    /// <image>: its picture fitted into x, y, width and height as preserveAspectRatio says, once loaded.
+    private mutating func drawImage(_ element: SvgElement, pressable: [Int]) {
+        let attributes = element.attributes
+        let source = attributes.values["href"] ?? attributes.values["xlink:href"]
+        guard let source = source as? String, let image = images.image(source) else { return }
+
+        let frame = CGRect(
+            x: attributes.number("x"),
+            y: attributes.number("y"),
+            width: attributes.optionalNumber("width") ?? image.size.width,
+            height: attributes.optionalNumber("height") ?? image.size.height
+        )
+        let fit = SvgFit.transform(
+            CGRect(origin: .zero, size: image.size), into: frame, preserveAspectRatio: attributes.text("preserveAspectRatio")
+        )
+
+        context.saveGState()
+        context.clip(to: frame)
+        context.concatenate(fit)
+        UIGraphicsPushContext(context)
+        image.draw(in: CGRect(origin: .zero, size: image.size))
+        UIGraphicsPopContext()
+        context.restoreGState()
+
+        guard !pressable.isEmpty else { return }
+
+        var toView = toView
+        pressTargets.append(SvgPressTarget(path: CGPath(rect: frame, transform: &toView), nodeIds: pressable))
+    }
+
+    /// The element referred to by an attribute's url(#id).
+    private func definition(_ attribute: String, of element: SvgElement, tag: String) -> SvgElement? {
+        let reference = element.attributes.text(attribute)
+        guard reference.hasPrefix("url(#") else { return nil }
+
+        let found = definitions[String(reference.dropFirst(5).dropLast())]
+
+        return found?.tag == tag ? found : nil
+    }
+
+    /// clip-path="url(#id)": only what its shapes cover is drawn.
+    private func applyClipPath(of element: SvgElement) {
+        guard let clipPath = definition("clip-path", of: element, tag: "clipPath") else { return }
+
+        var transform = clipPath.transform ?? .identity
+        if clipPath.attributes.text("clipPathUnits") == "objectBoundingBox" {
+            let box = SvgShapes.boundingBox(of: element)
+            transform = transform.concatenating(CGAffineTransform(a: box.width, b: 0, c: 0, d: box.height, tx: box.minX, ty: box.minY))
+        }
+
+        let shapes = SvgShapes.combinedPath(of: clipPath.children)
+        let isEvenOdd = clipPath.children.first?.attributes.text("clip-rule") == "evenodd"
+        context.addPath(shapes.copy(using: &transform) ?? shapes)
+        context.clip(using: isEvenOdd ? .evenOdd : .winding)
+    }
+
+    /// mask="url(#id)": drawn where the mask's content is light, as its luminance says.
+    private func applyMask(of element: SvgElement, style: SvgStyle) {
+        guard let mask = definition("mask", of: element, tag: "mask") else { return }
+
+        let region = context.boundingBoxOfClipPath
+        let pixelsPerUnit = hypot(context.ctm.a, context.ctm.b)
+        let width = Int(ceil(region.width * pixelsPerUnit))
+        let height = Int(ceil(region.height * pixelsPerUnit))
+        // mask-type="alpha": where the mask's content is opaque, whatever its colors.
+        let isAlpha = mask.attributes.text("mask-type") == "alpha"
+        guard
+            width > 0, height > 0, width * height <= 4096 * 4096,
+            let maskContext = CGContext(
+                data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                space: isAlpha ? CGColorSpaceCreateDeviceRGB() : CGColorSpaceCreateDeviceGray(),
+                bitmapInfo: isAlpha ? CGImageAlphaInfo.premultipliedLast.rawValue : CGImageAlphaInfo.none.rawValue
+            )
+        else { return }
+
+        // Unflipped, as clip(to:mask:) lays the image out in this flipped space.
+        maskContext.scaleBy(x: pixelsPerUnit, y: pixelsPerUnit)
+        maskContext.translateBy(x: -region.minX, y: -region.minY)
+        var maskRenderer = SvgRenderer(context: maskContext, currentColor: currentColor, definitions: definitions, images: images)
+        for child in mask.children { maskRenderer.draw(child, style: SvgStyle(), pressableAncestors: []) }
+
+        guard let image = isAlpha ? Self.grayImage(ofAlpha: maskContext) : maskContext.makeImage() else { return }
+
+        context.clip(to: region, mask: image)
+    }
+
+    /// An RGBA bitmap's alpha as a gray image, which clip(to:mask:) takes.
+    private static func grayImage(ofAlpha bitmap: CGContext) -> CGImage? {
+        guard let bytes = bitmap.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
+
+        let alphas = (0..<bitmap.height).flatMap { row in
+            (0..<bitmap.width).map { column in bytes[row * bitmap.bytesPerRow + column * 4 + 3] }
+        }
+        guard let provider = CGDataProvider(data: Data(alphas) as CFData) else { return nil }
+
+        return CGImage(
+            width: bitmap.width, height: bitmap.height, bitsPerComponent: 8, bitsPerPixel: 8, bytesPerRow: bitmap.width,
+            space: CGColorSpaceCreateDeviceGray(), bitmapInfo: [], provider: provider, decode: nil, shouldInterpolate: false,
+            intent: .defaultIntent
+        )
+    }
+
+    private mutating func drawShape(_ shape: CGPath, style: SvgStyle, pressable: [Int]) {
+        let bounds = shape.boundingBoxOfPath
+        var toView = toView
+        let scale = max(hypot(toView.a, toView.b), 0.01)
+        // vector-effect="non-scaling-stroke": as wide on screen whatever the drawing's scale.
+        let strokeWidth = style.hasNonScalingStroke ? style.strokeWidth / scale : style.strokeWidth
+        let stroked = shape.copy(
+            strokingWithWidth: strokeWidth,
+            lineCap: style.lineCap,
+            lineJoin: style.lineJoin,
+            miterLimit: style.miterLimit
+        )
+        let outline = style.dashes.isEmpty ? stroked : shape.copy(dashingWithPhase: style.dashOffset, lengths: style.dashes)
+            .copy(strokingWithWidth: strokeWidth, lineCap: style.lineCap, lineJoin: style.lineJoin, miterLimit: style.miterLimit)
+        // paint-order="stroke": the fill over the stroke.
+        for paintsStroke in style.paintsStrokeFirst ? [true, false] : [false, true] {
+            if paintsStroke {
+                paint(style.stroke, opacity: style.strokeOpacity, path: outline, bounds: bounds) { context in context.fillPath() }
+            } else {
+                paint(style.fill, opacity: style.fillOpacity, path: shape, bounds: bounds) { context in
+                    context.fillPath(using: style.isEvenOdd ? .evenOdd : .winding)
+                }
+            }
+        }
+
+        guard !pressable.isEmpty else { return }
+
+        let area = CGMutablePath()
+
+        if case .none = style.fill {} else { area.addPath(shape) }
+        area.addPath(stroked)
+        // A thin line is hard to hit: at least 44 points wide, as Apple's guidelines ask for targets.
+        area.addPath(shape.copy(strokingWithWidth: 44 / scale, lineCap: .round, lineJoin: .round, miterLimit: 4))
+        pressTargets.append(SvgPressTarget(path: area.copy(using: &toView) ?? area, nodeIds: pressable))
+    }
+
+    /// <text>'s runs: a run with its own x starts a chunk, which text-anchor places. A <textPath> follows its path.
+    private mutating func drawText(_ element: SvgElement, style: SvgStyle, pressable: [Int]) {
+        for run in element.children where run.tag == "textPath" {
+            drawTextAlongPath(run, style: style.inheriting(run.attributes))
+        }
+
+        let runs = element.children.filter { $0.tag != "textPath" }.map { run in (run, style.inheriting(run.attributes)) }
+        var pen = CGPoint(
+            x: element.attributes.number("x") + element.attributes.number("dx"),
+            y: element.attributes.number("y") + element.attributes.number("dy")
+        )
+        var textBox = CGRect.null
+        var index = 0
+
+        while index < runs.count {
+            var end = index + 1
+            while end < runs.count, runs[end].0.attributes.optionalNumber("x") == nil { end += 1 }
+
+            let chunk = runs[index..<end].map { run, runStyle in (run, runStyle, attributedText(run.text, style: runStyle)) }
+            let chunkWidth = chunk.reduce(CGFloat(0)) { $0 + $1.2.size().width }
+            let anchor = chunk[0].1.textAnchor
+            let anchorOffset = anchor == "middle" ? chunkWidth / 2 : anchor == "end" ? chunkWidth : 0
+
+            for (position, (run, runStyle, text)) in chunk.enumerated() {
+                if let x = run.attributes.optionalNumber("x") { pen.x = x }
+                if let y = run.attributes.optionalNumber("y") { pen.y = y }
+                pen.x += run.attributes.number("dx") - (position == 0 ? anchorOffset : 0)
+                pen.y += run.attributes.number("dy")
+
+                // y is the baseline, unless dominant-baseline moves it.
+                let font = Self.font(runStyle)
+                let baseline = CGPoint(x: pen.x, y: pen.y + Self.baselineShift(font, runStyle.baseline))
+                drawRun(text, at: baseline, style: runStyle)
+                textBox = textBox.union(CGRect(origin: CGPoint(x: baseline.x, y: baseline.y - font.ascender), size: text.size()))
+                pen.x += text.size().width
+            }
+            index = end
+        }
+
+        guard !pressable.isEmpty, !textBox.isNull else { return }
+
+        var toView = toView
+        pressTargets.append(SvgPressTarget(path: CGPath(rect: textBox, transform: &toView), nodeIds: pressable))
+    }
+
+    /// <textPath>: each character placed along the path, turned with it, from startOffset (a length, or a
+    /// percentage of the path's).
+    private mutating func drawTextAlongPath(_ run: SvgElement, style: SvgStyle) {
+        var parser = SvgPathParser(run.attributes.text("d"))
+        var transform = SvgElement.matrix(run.attributes.values["pathTransform"]) ?? .identity
+        let parsed = parser.parse()
+        let walker = SvgPathWalker(parsed.copy(using: &transform) ?? parsed)
+        let font = Self.font(style)
+        let width = attributedText(run.text, style: style).size().width
+        let startOffset = run.attributes.text("startOffset")
+        var distance = startOffset.hasSuffix("%")
+            ? (Double(startOffset.dropLast()).map { CGFloat($0) } ?? 0) / 100 * walker.length
+            : run.attributes.number("startOffset")
+        distance -= style.textAnchor == "middle" ? width / 2 : style.textAnchor == "end" ? width : 0
+        let baselineY = Self.baselineShift(font, style.baseline)
+        let outline = CGMutablePath()
+
+        for character in run.text {
+            let glyph = attributedText(String(character), style: style)
+            let advance = glyph.size().width
+            defer { distance += advance }
+            guard let (point, angle) = walker.position(at: distance + advance / 2) else { continue }
+
+            let placement = CGAffineTransform(translationX: point.x, y: point.y).rotated(by: angle)
+            let glyphBaseline = CGPoint(x: -advance / 2, y: baselineY)
+
+            if drawsOutline(style) {
+                outline.addPath(Self.outline(of: glyph, baselineAt: glyphBaseline), transform: placement)
+            }
+            guard case .color = resolved(style.fill) else { continue }
+
+            context.saveGState()
+            context.concatenate(placement)
+            UIGraphicsPushContext(context)
+            glyph.draw(at: CGPoint(x: glyphBaseline.x, y: glyphBaseline.y - font.ascender))
+            UIGraphicsPopContext()
+            context.restoreGState()
+        }
+
+        paintTextOutline(outline, style: style)
+    }
+
+    /// dominant-baseline: where y falls on the text, as a shift of the baseline.
+    private static func baselineShift(_ font: UIFont, _ baseline: String) -> CGFloat {
+        switch baseline {
+        case "middle", "central": (font.ascender + font.descender) / 2
+        case "hanging", "text-before-edge", "text-top": font.ascender
+        case "text-after-edge", "text-bottom", "ideographic": font.descender
+        default: 0
+        }
+    }
+
+    /// A run with its baseline at `baseline`: drawn as text in a color, and as its glyphs' outline when it's
+    /// painted with a gradient or pattern, or stroked.
+    private func drawRun(_ text: NSAttributedString, at baseline: CGPoint, style: SvgStyle) {
+        if case .color = resolved(style.fill) {
+            UIGraphicsPushContext(context)
+            text.draw(at: CGPoint(x: baseline.x, y: baseline.y - Self.font(style).ascender))
+            UIGraphicsPopContext()
+        }
+        if drawsOutline(style) { paintTextOutline(Self.outline(of: text, baselineAt: baseline), style: style) }
+    }
+
+    private func drawsOutline(_ style: SvgStyle) -> Bool {
+        if case .reference = style.fill { return true }
+        if case .none = style.stroke { return false }
+
+        return true
+    }
+
+    /// Text's glyphs, filled when the fill is a gradient or pattern laid over all of them, and stroked.
+    private func paintTextOutline(_ outline: CGPath, style: SvgStyle) {
+        let bounds = outline.boundingBoxOfPath
+
+        if case .reference = style.fill {
+            paint(style.fill, opacity: style.fillOpacity, path: outline, bounds: bounds) { $0.fillPath() }
+        }
+        if case .none = style.stroke { return }
+
+        let stroked = outline.copy(
+            strokingWithWidth: style.strokeWidth, lineCap: style.lineCap, lineJoin: style.lineJoin, miterLimit: style.miterLimit
+        )
+        paint(style.stroke, opacity: style.strokeOpacity, path: stroked, bounds: bounds) { $0.fillPath() }
+    }
+
+    /// The text's glyphs as a path, laid out by Core Text from `baseline`.
+    private static func outline(of text: NSAttributedString, baselineAt baseline: CGPoint) -> CGPath {
+        let path = CGMutablePath()
+        let runs = CTLineGetGlyphRuns(CTLineCreateWithAttributedString(text)) as? [CTRun] ?? []
+
+        for run in runs {
+            let attributes = CTRunGetAttributes(run) as NSDictionary
+            guard let fontValue = attributes[kCTFontAttributeName] else { continue }
+
+            let font = fontValue as! CTFont
+            let count = CTRunGetGlyphCount(run)
+            var glyphs = [CGGlyph](repeating: 0, count: count)
+            var positions = [CGPoint](repeating: .zero, count: count)
+            CTRunGetGlyphs(run, CFRange(location: 0, length: 0), &glyphs)
+            CTRunGetPositions(run, CFRange(location: 0, length: 0), &positions)
+
+            for (glyph, position) in zip(glyphs, positions) {
+                guard let glyphPath = CTFontCreatePathForGlyph(font, glyph, nil) else { continue }
+
+                // Core Text's y goes up; the drawing's goes down.
+                path.addPath(glyphPath, transform: CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: baseline.x + position.x, ty: baseline.y))
+            }
+        }
+
+        return path
+    }
+
+    private func attributedText(_ text: String, style: SvgStyle) -> NSAttributedString {
+        var attributes: [NSAttributedString.Key: Any] = [.font: Self.font(style), .kern: style.letterSpacing]
+
+        if case let .color(color) = resolved(style.fill) {
+            attributes[.foregroundColor] = UIColor(cgColor: color.copy(alpha: color.alpha * style.fillOpacity) ?? color)
+        }
+        if style.textDecoration.contains("underline") { attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue }
+        if style.textDecoration.contains("line-through") { attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
+
+        return NSAttributedString(string: text, attributes: attributes)
+    }
+
+    private static func font(_ style: SvgStyle) -> UIFont {
+        let font = style.fontFamily.flatMap { UIFont(name: $0, size: style.fontSize) }
+            ?? UIFont.systemFont(ofSize: style.fontSize, weight: style.fontWeight)
+        let traits = font.fontDescriptor.symbolicTraits.union(.traitItalic)
+        guard style.isItalic, let italic = font.fontDescriptor.withSymbolicTraits(traits) else { return font }
+
+        return UIFont(descriptor: italic, size: style.fontSize)
+    }
+
+    private func resolved(_ paint: SvgPaint) -> SvgPaint {
+        if case .currentColor = paint { return .color(currentColor) }
+
+        return paint
+    }
+
+    /// Fills `path` (already outlined, for a stroke) with a color or a gradient laid over `bounds`, the shape's own box.
+    private func paint(_ paint: SvgPaint, opacity: CGFloat, path: CGPath, bounds: CGRect, fill: (CGContext) -> Void) {
+        switch resolved(paint) {
+        case .none, .currentColor:
+            return
+        case let .color(color):
+            context.setFillColor(color.copy(alpha: color.alpha * opacity) ?? color)
+            context.addPath(path)
+            fill(context)
+        case let .reference(id):
+            guard let definition = definitions[id] else { return }
+
+            context.saveGState()
+            context.addPath(path)
+            context.clip()
+            context.setAlpha(opacity)
+            if definition.tag == "pattern" {
+                context.beginTransparencyLayer(auxiliaryInfo: nil)
+                drawPattern(definition, bounds: bounds)
+                context.endTransparencyLayer()
+            } else {
+                SvgGradients.draw(definition, in: context, bounds: bounds)
+            }
+            context.restoreGState()
+        }
+    }
+
+    /// A <pattern>'s content, tiled over the shape (whose box is `bounds`) as far as the clip lets it show.
+    private func drawPattern(_ pattern: SvgElement, bounds: CGRect) {
+        let attributes = pattern.attributes
+        let isInBox = attributes.text("patternUnits") != "userSpaceOnUse"
+        var tile = CGRect(
+            x: attributes.number("x"), y: attributes.number("y"),
+            width: attributes.number("width"), height: attributes.number("height")
+        )
+        if isInBox {
+            tile = CGRect(
+                x: bounds.minX + tile.minX * bounds.width, y: bounds.minY + tile.minY * bounds.height,
+                width: tile.width * bounds.width, height: tile.height * bounds.height
+            )
+        }
+        guard tile.width > 0, tile.height > 0 else { return }
+
+        let content = if let viewBox = SvgView.rect(fromViewBox: attributes.values["viewBox"]) {
+            SvgFit.transform(viewBox, into: CGRect(origin: .zero, size: tile.size), preserveAspectRatio: attributes.text("preserveAspectRatio"))
+        } else if attributes.text("patternContentUnits") == "objectBoundingBox" {
+            CGAffineTransform(scaleX: bounds.width, y: bounds.height)
+        } else {
+            CGAffineTransform.identity
+        }
+
+        if let patternTransform = SvgElement.matrix(attributes.values["patternTransform"]) {
+            context.concatenate(patternTransform)
+        }
+
+        let area = context.boundingBoxOfClipPath
+        let columns = Int(floor((area.minX - tile.minX) / tile.width))...Int(ceil((area.maxX - tile.minX) / tile.width))
+        let rows = Int(floor((area.minY - tile.minY) / tile.height))...Int(ceil((area.maxY - tile.minY) / tile.height))
+        // ponytail: tiles drawn one by one, fine for the usual stripes and dots; a cached tile image if a
+        // dense pattern over a large area gets slow.
+        guard columns.count * rows.count <= 10_000 else { return }
+
+        var renderer = SvgRenderer(context: context, currentColor: currentColor, definitions: definitions, images: images)
+        for column in columns {
+            for row in rows {
+                context.saveGState()
+                context.translateBy(x: tile.minX + CGFloat(column) * tile.width, y: tile.minY + CGFloat(row) * tile.height)
+                context.clip(to: CGRect(origin: .zero, size: tile.size))
+                context.concatenate(content)
+                for child in pattern.children { renderer.draw(child, style: SvgStyle(), pressableAncestors: []) }
+                context.restoreGState()
+            }
+        }
+    }
+}
+
+/// filter="url(#id)" as src/svg.ts sends it: `shadows`, [dx, dy, blur, color, inner] each, a `blur` and a
+/// `colorMatrix` (4×5, row by row) of the element itself.
+private struct SvgEffects {
+    struct Shadow {
+        let offset: CGPoint
+        let blur: CGFloat
+        let color: CIColor
+        let isInner: Bool
+    }
+
+    let shadows: [Shadow]
+    let blur: CGFloat
+    let colorMatrix: [CGFloat]?
+
+    init(_ attributes: SvgAttributes) {
+        shadows = (attributes.values["shadows"] as? [[NSNumber]] ?? []).compactMap { values in
+            guard values.count == 5 else { return nil }
+
+            return Shadow(
+                offset: CGPoint(x: values[0].doubleValue, y: values[1].doubleValue),
+                blur: CGFloat(values[2].doubleValue),
+                color: UIColor(rgba: values[3]).map { CIColor(color: $0) } ?? CIColor(red: 0, green: 0, blue: 0),
+                isInner: values[4].boolValue
+            )
+        }
+        blur = attributes.number("blur")
+        colorMatrix = (attributes.values["colorMatrix"] as? [NSNumber]).flatMap { values in
+            values.count == 20 ? values.map { CGFloat($0.doubleValue) } : nil
+        }
+    }
+
+    var isEmpty: Bool { shadows.isEmpty && blur <= 0 && colorMatrix == nil }
+
+    /// How far past the element the effects reach, in the drawing's units.
+    var margin: CGFloat {
+        shadows.map { max(abs($0.offset.x), abs($0.offset.y)) + $0.blur * 3 }.reduce(blur * 3, max)
+    }
+
+    /// The element's image (`content`) with the effects, in the same extent.
+    func applied(to content: CIImage, pixelsPerUnit: CGFloat) -> CIImage {
+        var element = content
+
+        if let colorMatrix { element = element.applyingFilter("CIColorMatrix", parameters: Self.parameters(colorMatrix)) }
+        if blur > 0 {
+            element = element.clampedToExtent().applyingGaussianBlur(sigma: blur * pixelsPerUnit).cropped(to: content.extent)
+        }
+
+        var result = element
+        for shadow in shadows {
+            // Core Image's y goes up.
+            let move = CGAffineTransform(translationX: shadow.offset.x * pixelsPerUnit, y: -shadow.offset.y * pixelsPerUnit)
+            let tint = Self.tint(shadow.color, invertsAlpha: shadow.isInner)
+            let shade = element.applyingFilter("CIColorMatrix", parameters: tint)
+                .applyingGaussianBlur(sigma: shadow.blur * pixelsPerUnit)
+                .transformed(by: move)
+
+            if shadow.isInner {
+                // What's around the element, shifted in, kept only where the element is.
+                let inner = shade.applyingFilter("CISourceInCompositing", parameters: [kCIInputBackgroundImageKey: element])
+                result = inner.composited(over: result)
+            } else {
+                result = result.composited(over: shade)
+            }
+        }
+
+        return result.cropped(to: content.extent)
+    }
+
+    /// Every pixel in `color`, as opaque as the element is there; or, `invertsAlpha`, as it isn't.
+    private static func tint(_ color: CIColor, invertsAlpha: Bool) -> [String: Any] {
+        [
+            "inputRVector": CIVector(x: 0, y: 0, z: 0, w: 0),
+            "inputGVector": CIVector(x: 0, y: 0, z: 0, w: 0),
+            "inputBVector": CIVector(x: 0, y: 0, z: 0, w: 0),
+            "inputAVector": CIVector(x: 0, y: 0, z: 0, w: invertsAlpha ? -color.alpha : color.alpha),
+            "inputBiasVector": CIVector(x: color.red, y: color.green, z: color.blue, w: invertsAlpha ? color.alpha : 0),
+        ]
+    }
+
+    private static func parameters(_ matrix: [CGFloat]) -> [String: Any] {
+        let row = { (index: Int) in
+            CIVector(x: matrix[index * 5], y: matrix[index * 5 + 1], z: matrix[index * 5 + 2], w: matrix[index * 5 + 3])
+        }
+
+        return [
+            "inputRVector": row(0),
+            "inputGVector": row(1),
+            "inputBVector": row(2),
+            "inputAVector": row(3),
+            "inputBiasVector": CIVector(x: matrix[4], y: matrix[9], z: matrix[14], w: matrix[19]),
+        ]
+    }
+}
+
+/// A viewBox fitted into a frame as preserveAspectRatio says, like src/svg.ts's viewBoxFit: "xMidYMid meet"
+/// (the default) scales it to fit and centers it, "slice" to cover, "none" stretches it.
+enum SvgFit {
+    static func transform(_ viewBox: CGRect, into frame: CGRect, preserveAspectRatio: String) -> CGAffineTransform {
+        guard viewBox.width > 0, viewBox.height > 0 else { return .identity }
+
+        let parts = preserveAspectRatio.split(whereSeparator: \.isWhitespace).map(String.init)
+        let align = parts.first ?? "xMidYMid"
+        var scaleX = frame.width / viewBox.width
+        var scaleY = frame.height / viewBox.height
+
+        if align != "none" {
+            let scale = parts.count > 1 && parts[1] == "slice" ? max(scaleX, scaleY) : min(scaleX, scaleY)
+            (scaleX, scaleY) = (scale, scale)
+        }
+
+        let translateX = frame.minX + alignment(align, at: 1) * (frame.width - viewBox.width * scaleX)
+        let translateY = frame.minY + alignment(align, at: 5) * (frame.height - viewBox.height * scaleY)
+
+        return CGAffineTransform(
+            a: scaleX, b: 0, c: 0, d: scaleY, tx: translateX - viewBox.minX * scaleX, ty: translateY - viewBox.minY * scaleY
+        )
+    }
+
+    /// "xMinYMax": Min at 1 (x), Max at 5 (y).
+    private static func alignment(_ align: String, at offset: Int) -> CGFloat {
+        let characters = Array(align)
+        guard characters.count >= offset + 3 else { return 0.5 }
+
+        switch String(characters[offset..<offset + 3]) {
+        case "Min": return 0
+        case "Max": return 1
+        default: return 0.5
+        }
+    }
+}
+
+/// <image>s' pictures, loaded as <Image> loads them; the view redraws as each arrives.
+final class SvgImages {
+    var onLoad: () -> Void = {}
+    private var imagesBySource: [String: UIImage] = [:]
+    private var loadingSources: Set<String> = []
+
+    func image(_ source: String) -> UIImage? {
+        if let image = imagesBySource[source] { return image }
+        guard loadingSources.insert(source).inserted else { return nil }
+
+        Task { @MainActor [weak self] in
+            let image = await loadImage(source)
+            guard let self else { return }
+
+            // A load that fails is tried again on the next draw.
+            guard let image else {
+                loadingSources.remove(source)
+                return
+            }
+
+            imagesBySource[source] = image
+            onLoad()
+        }
+
+        return nil
+    }
+}
+
+/// A path as short lines, each with its distance from the start: where <textPath> places characters.
+private struct SvgPathWalker {
+    private(set) var points: [CGPoint] = []
+    private(set) var distances: [CGFloat] = []
+    var length: CGFloat { distances.last ?? 0 }
+
+    /// Curves are cut into this many lines.
+    private static let curveSteps = 16
+
+    init(_ path: CGPath) {
+        var points: [CGPoint] = []
+        var distances: [CGFloat] = []
+        var subpathStart = CGPoint.zero
+
+        func add(_ point: CGPoint, isJump: Bool = false) {
+            let distance = (distances.last ?? 0) + (isJump ? 0 : points.last.map { hypot(point.x - $0.x, point.y - $0.y) } ?? 0)
+            points.append(point)
+            distances.append(distance)
+        }
+
+        func addCurve(_ curvePoint: (CGFloat) -> CGPoint) {
+            for step in 1...Self.curveSteps { add(curvePoint(CGFloat(step) / CGFloat(Self.curveSteps))) }
+        }
+
+        path.applyWithBlock { element in
+            let elementPoints = element.pointee.points
+            let current = points.last ?? .zero
+
+            switch element.pointee.type {
+            case .moveToPoint:
+                subpathStart = elementPoints[0]
+                add(elementPoints[0], isJump: true)
+            case .addLineToPoint:
+                add(elementPoints[0])
+            case .addQuadCurveToPoint:
+                let (control, end) = (elementPoints[0], elementPoints[1])
+                addCurve { progress in
+                    let remaining = 1 - progress
+                    return CGPoint(
+                        x: remaining * remaining * current.x + 2 * remaining * progress * control.x + progress * progress * end.x,
+                        y: remaining * remaining * current.y + 2 * remaining * progress * control.y + progress * progress * end.y
+                    )
+                }
+            case .addCurveToPoint:
+                let (first, second, end) = (elementPoints[0], elementPoints[1], elementPoints[2])
+                addCurve { progress in
+                    let remaining = 1 - progress
+                    let weights = (
+                        remaining * remaining * remaining,
+                        3 * remaining * remaining * progress,
+                        3 * remaining * progress * progress,
+                        progress * progress * progress
+                    )
+                    return CGPoint(
+                        x: weights.0 * current.x + weights.1 * first.x + weights.2 * second.x + weights.3 * end.x,
+                        y: weights.0 * current.y + weights.1 * first.y + weights.2 * second.y + weights.3 * end.y
+                    )
+                }
+            case .closeSubpath:
+                add(subpathStart)
+            @unknown default:
+                break
+            }
+        }
+
+        self.points = points
+        self.distances = distances
+    }
+
+    /// The point `distance` along the path, and the angle the path goes there; nil past its ends.
+    func position(at distance: CGFloat) -> (CGPoint, CGFloat)? {
+        guard distance >= 0, distance <= length, points.count > 1 else { return nil }
+
+        for index in 1..<points.count where distances[index] >= distance && distances[index] > distances[index - 1] {
+            let (from, to) = (points[index - 1], points[index])
+            let fraction = (distance - distances[index - 1]) / (distances[index] - distances[index - 1])
+
+            return (
+                CGPoint(x: from.x + (to.x - from.x) * fraction, y: from.y + (to.y - from.y) * fraction),
+                atan2(to.y - from.y, to.x - from.x)
+            )
+        }
+
+        return nil
+    }
+}
+
+/// <linearGradient> and <radialGradient>: coordinates in the shape's box (objectBoundingBox, the default) or
+/// in the drawing's (userSpaceOnUse).
+private enum SvgGradients {
+    /// reflect and repeat: Core Graphics only pads, so the stops are laid out again this many times.
+    private static let repeatCount = 8
+
+    static func draw(_ element: SvgElement, in context: CGContext, bounds: CGRect) {
+        let stops = element.children.filter { $0.tag == "stop" }
+        let colors = stops.map { stop -> CGColor in
+            let color = (SvgPaint(stop.attributes.values["stop-color"]).flatMap { paint -> CGColor? in
+                if case let .color(color) = paint { return color }
+                return nil
+            }) ?? UIColor.black.cgColor
+
+            return color.copy(alpha: color.alpha * (stop.attributes.optionalNumber("stop-opacity") ?? 1)) ?? color
+        }
+        let locations = stops.map { $0.attributes.optionalNumber("offset") ?? 0 }
+        guard !colors.isEmpty else { return }
+
+        let attributes = element.attributes
+        let spread = attributes.text("spreadMethod")
+        let isRepeated = spread == "reflect" || spread == "repeat"
+        let isLinear = element.tag == "linearGradient"
+        // Linear gradients repeat both ways; radial ones outwards.
+        let copies = isRepeated ? (isLinear ? (-repeatCount...repeatCount) : (0...repeatCount)) : (0...0)
+        let (allColors, allLocations) = repeated(colors, locations, copies: copies, reflects: spread == "reflect")
+        guard
+            let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: allColors as CFArray, locations: allLocations)
+        else { return }
+
+        if attributes.text("gradientUnits") != "userSpaceOnUse" {
+            context.translateBy(x: bounds.minX, y: bounds.minY)
+            context.scaleBy(x: bounds.width, y: bounds.height)
+        }
+        if let values = attributes.values["gradientTransform"] as? [NSNumber], values.count == 6 {
+            let numbers = values.map { CGFloat($0.doubleValue) }
+            context.concatenate(CGAffineTransform(a: numbers[0], b: numbers[1], c: numbers[2], d: numbers[3], tx: numbers[4], ty: numbers[5]))
+        }
+
+        let extend: CGGradientDrawingOptions = [.drawsBeforeStartLocation, .drawsAfterEndLocation]
+        let span = CGFloat(copies.count)
+        if isLinear {
+            let start = CGPoint(x: attributes.optionalNumber("x1") ?? 0, y: attributes.optionalNumber("y1") ?? 0)
+            let end = CGPoint(x: attributes.optionalNumber("x2") ?? 1, y: attributes.optionalNumber("y2") ?? 0)
+            let vector = CGPoint(x: end.x - start.x, y: end.y - start.y)
+            let first = CGFloat(copies.lowerBound)
+            context.drawLinearGradient(
+                gradient,
+                start: CGPoint(x: start.x + vector.x * first, y: start.y + vector.y * first),
+                end: CGPoint(x: start.x + vector.x * (first + span), y: start.y + vector.y * (first + span)),
+                options: extend
+            )
+        } else {
+            let center = CGPoint(x: attributes.optionalNumber("cx") ?? 0.5, y: attributes.optionalNumber("cy") ?? 0.5)
+            let focus = CGPoint(x: attributes.optionalNumber("fx") ?? center.x, y: attributes.optionalNumber("fy") ?? center.y)
+            let radius = attributes.optionalNumber("r") ?? 0.5
+            context.drawRadialGradient(
+                gradient, startCenter: focus, startRadius: 0, endCenter: center, endRadius: radius * span, options: extend
+            )
+        }
+    }
+
+    /// The stops laid out once per copy, each copy over its own stretch; reflect mirrors every other one.
+    private static func repeated(
+        _ colors: [CGColor], _ locations: [CGFloat], copies: ClosedRange<Int>, reflects: Bool
+    ) -> ([CGColor], [CGFloat]) {
+        let span = CGFloat(copies.count)
+        var allColors: [CGColor] = []
+        var allLocations: [CGFloat] = []
+
+        for (index, copy) in copies.enumerated() {
+            let isMirrored = reflects && copy % 2 != 0
+            let pairs = isMirrored ? Array(zip(colors, locations.map { 1 - $0 }).reversed()) : Array(zip(colors, locations))
+
+            for (color, location) in pairs {
+                allColors.append(color)
+                allLocations.append((CGFloat(index) + min(max(location, 0), 1)) / span)
+            }
+        }
+
+        return (allColors, allLocations)
+    }
+}
+
+private enum SvgShapes {
+    /// A <clipPath>'s shapes as one path, each in its place (its transform).
+    static func combinedPath(of elements: [SvgElement]) -> CGPath {
+        let combined = CGMutablePath()
+
+        for element in elements {
+            let shape = element.tag == "g" ? combinedPath(of: element.children) : path(element.tag, element.attributes)
+            guard let shape else { continue }
+
+            combined.addPath(shape, transform: element.transform ?? .identity)
+        }
+
+        return combined
+    }
+
+    /// For objectBoundingBox units: the box of what the element draws, in its own coordinates.
+    static func boundingBox(of element: SvgElement) -> CGRect {
+        if element.tag == "g" || element.tag == "svg" { return combinedPath(of: element.children).boundingBoxOfPath }
+
+        return path(element.tag, element.attributes)?.boundingBoxOfPath ?? .zero
+    }
+
+    static func path(_ tag: String, _ attributes: SvgAttributes) -> CGPath? {
+        switch tag {
+        case "path":
+            var parser = SvgPathParser(attributes.text("d"))
+            return parser.parse()
+
+        case "circle":
+            let radius = attributes.number("r")
+            return CGPath(ellipseIn: ellipseBounds(attributes, radiusX: radius, radiusY: radius), transform: nil)
+
+        case "ellipse":
+            let bounds = ellipseBounds(attributes, radiusX: attributes.number("rx"), radiusY: attributes.number("ry"))
+            return CGPath(ellipseIn: bounds, transform: nil)
+
+        case "rect":
+            return roundedRect(attributes)
+
+        case "line":
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: attributes.number("x1"), y: attributes.number("y1")))
+            path.addLine(to: CGPoint(x: attributes.number("x2"), y: attributes.number("y2")))
+            return path
+
+        case "polyline", "polygon":
+            let path = CGMutablePath()
+            var parser = SvgPathParser(attributes.text("points"))
+            path.addLines(between: parser.points())
+            if tag == "polygon" { path.closeSubpath() }
+            return path
+
+        default:
+            return nil
+        }
+    }
+
+    private static func ellipseBounds(_ attributes: SvgAttributes, radiusX: CGFloat, radiusY: CGFloat) -> CGRect {
+        CGRect(
+            x: attributes.number("cx") - radiusX,
+            y: attributes.number("cy") - radiusY,
+            width: radiusX * 2,
+            height: radiusY * 2
+        )
+    }
+
+    /// rx and ry default to each other, and can't exceed half the side (like SVG).
+    private static func roundedRect(_ attributes: SvgAttributes) -> CGPath {
+        let rect = CGRect(
+            x: attributes.number("x"),
+            y: attributes.number("y"),
+            width: attributes.number("width"),
+            height: attributes.number("height")
+        )
+        let radiusX = attributes.optionalNumber("rx") ?? attributes.optionalNumber("ry") ?? 0
+        let radiusY = attributes.optionalNumber("ry") ?? radiusX
+
+        return CGPath(
+            roundedRect: rect,
+            cornerWidth: min(radiusX, rect.width / 2),
+            cornerHeight: min(radiusY, rect.height / 2),
+            transform: nil
+        )
+    }
+}
+
+/// Attribute values arrive as strings ("12") or numbers.
+private struct SvgAttributes {
+    let values: [String: Any]
+
+    func text(_ name: String) -> String {
+        values[name].map { "\($0)" } ?? ""
+    }
+
+    func optionalNumber(_ name: String) -> CGFloat? {
+        if let number = values[name] as? NSNumber { return CGFloat(number.doubleValue) }
+
+        return (values[name] as? String).flatMap(Double.init).map { CGFloat($0) }
+    }
+
+    func number(_ name: String) -> CGFloat {
+        optionalNumber(name) ?? 0
+    }
+}
+
+/// Parses SVG path data ("M12 2a10 10 0 1 0 0 20z"): every command, absolute and relative, including
+/// the compact forms optimizers emit ("l.486.9", arc flags written "01").
+private struct SvgPathParser {
+    private let characters: [Character]
+    private var index = 0
+
+    init(_ text: String) {
+        characters = Array(text)
+    }
+
+    /// "x,y x,y" (polyline / polygon points).
+    mutating func points() -> [CGPoint] {
+        var points: [CGPoint] = []
+        while let x = number(), let y = number() { points.append(CGPoint(x: x, y: y)) }
+
+        return points
+    }
+
+    mutating func parse() -> CGPath {
+        let path = CGMutablePath()
+        var command: Character = "M"
+        var current = CGPoint.zero
+        var subpathStart = CGPoint.zero
+        var lastCubicControl: CGPoint?
+        var lastQuadraticControl: CGPoint?
+
+        while true {
+            skipSeparators()
+            guard index < characters.count else { break }
+
+            if characters[index].isLetter {
+                command = characters[index]
+                index += 1
+            } else if command == "Z" || command == "z" {
+                break // numbers can't follow a close
+            }
+
+            let isRelative = command.isLowercase
+            let origin = isRelative ? current : .zero
+            var cubicControl: CGPoint?
+            var quadraticControl: CGPoint?
+
+            switch command.uppercased() {
+            case "M":
+                guard let point = point(from: origin) else { return path }
+                path.move(to: point)
+                current = point
+                subpathStart = point
+                command = isRelative ? "l" : "L" // further pairs are lines
+
+            case "L":
+                guard let point = point(from: origin) else { return path }
+                path.addLine(to: point)
+                current = point
+
+            case "H":
+                guard let x = number() else { return path }
+                current = CGPoint(x: x + origin.x, y: current.y)
+                path.addLine(to: current)
+
+            case "V":
+                guard let y = number() else { return path }
+                current = CGPoint(x: current.x, y: y + origin.y)
+                path.addLine(to: current)
+
+            case "C":
+                guard
+                    let control1 = point(from: origin),
+                    let control2 = point(from: origin),
+                    let end = point(from: origin)
+                else { return path }
+                path.addCurve(to: end, control1: control1, control2: control2)
+                cubicControl = control2
+                current = end
+
+            case "S":
+                guard let control2 = point(from: origin), let end = point(from: origin) else { return path }
+                let control1 = lastCubicControl.map { reflect($0, around: current) } ?? current
+                path.addCurve(to: end, control1: control1, control2: control2)
+                cubicControl = control2
+                current = end
+
+            case "Q":
+                guard let control = point(from: origin), let end = point(from: origin) else { return path }
+                path.addQuadCurve(to: end, control: control)
+                quadraticControl = control
+                current = end
+
+            case "T":
+                guard let end = point(from: origin) else { return path }
+                let control = lastQuadraticControl.map { reflect($0, around: current) } ?? current
+                path.addQuadCurve(to: end, control: control)
+                quadraticControl = control
+                current = end
+
+            case "A":
+                guard
+                    let radiusX = number(),
+                    let radiusY = number(),
+                    let rotation = number(),
+                    let largeArc = flag(),
+                    let sweep = flag(),
+                    let end = point(from: origin)
+                else { return path }
+                SvgArc(
+                    from: current, to: end, radiusX: radiusX, radiusY: radiusY,
+                    rotationDegrees: rotation, largeArc: largeArc, sweep: sweep
+                ).add(to: path)
+                current = end
+
+            case "Z":
+                path.closeSubpath()
+                current = subpathStart
+
+            default:
+                return path
+            }
+
+            lastCubicControl = cubicControl
+            lastQuadraticControl = quadraticControl
+        }
+
+        return path
+    }
+
+    private func reflect(_ point: CGPoint, around center: CGPoint) -> CGPoint {
+        CGPoint(x: 2 * center.x - point.x, y: 2 * center.y - point.y)
+    }
+
+    private mutating func point(from origin: CGPoint) -> CGPoint? {
+        guard let x = number(), let y = number() else { return nil }
+
+        return CGPoint(x: x + origin.x, y: y + origin.y)
+    }
+
+    private mutating func skipSeparators() {
+        while index < characters.count, characters[index].isWhitespace || characters[index] == "," {
+            index += 1
+        }
+    }
+
+    private mutating func flag() -> Bool? {
+        skipSeparators()
+        guard index < characters.count, characters[index] == "0" || characters[index] == "1" else { return nil }
+
+        index += 1
+
+        return characters[index - 1] == "1"
+    }
+
+    /// "-1.5e-3", ".5" and "1.5.5" (two numbers) all parse.
+    private mutating func number() -> CGFloat? {
+        skipSeparators()
+        let start = index
+        var hasDot = false
+
+        if index < characters.count, characters[index] == "-" || characters[index] == "+" { index += 1 }
+        while index < characters.count {
+            let character = characters[index]
+            if character.isNumber {
+                index += 1
+            } else if character == ".", !hasDot {
+                hasDot = true
+                index += 1
+            } else if character == "e" || character == "E" {
+                index += 1
+                if index < characters.count, characters[index] == "-" || characters[index] == "+" { index += 1 }
+            } else {
+                break
+            }
+        }
+
+        return Double(String(characters[start..<index])).map { CGFloat($0) }
+    }
+}
+
+/// An elliptical arc as cubic Béziers, one per quarter turn at most (SVG spec, appendix B.2.4).
+private struct SvgArc {
+    let from: CGPoint
+    let to: CGPoint
+    let radiusX: CGFloat
+    let radiusY: CGFloat
+    let rotationDegrees: CGFloat
+    let largeArc: Bool
+    let sweep: Bool
+
+    func add(to path: CGMutablePath) {
+        guard from != to else { return }
+        guard radiusX != 0, radiusY != 0 else { return path.addLine(to: to) }
+
+        let angle = rotationDegrees * .pi / 180
+        let (cosine, sine) = (cos(angle), sin(angle))
+
+        // The start point in the ellipse's own axes, relative to the chord's middle.
+        let halfDeltaX = (from.x - to.x) / 2
+        let halfDeltaY = (from.y - to.y) / 2
+        let startX = cosine * halfDeltaX + sine * halfDeltaY
+        let startY = -sine * halfDeltaX + cosine * halfDeltaY
+
+        // Radii too small to reach the end are scaled up just enough.
+        var (rx, ry) = (abs(radiusX), abs(radiusY))
+        let radiiScale = (startX * startX) / (rx * rx) + (startY * startY) / (ry * ry)
+        if radiiScale > 1 {
+            rx *= sqrt(radiiScale)
+            ry *= sqrt(radiiScale)
+        }
+
+        let numerator = rx * rx * ry * ry - rx * rx * startY * startY - ry * ry * startX * startX
+        let denominator = rx * rx * startY * startY + ry * ry * startX * startX
+        var coefficient = sqrt(max(0, numerator / denominator))
+        if largeArc == sweep { coefficient = -coefficient }
+
+        let centerX = coefficient * rx * startY / ry
+        let centerY = -coefficient * ry * startX / rx
+        let center = CGPoint(
+            x: cosine * centerX - sine * centerY + (from.x + to.x) / 2,
+            y: sine * centerX + cosine * centerY + (from.y + to.y) / 2
+        )
+
+        let startVector = CGPoint(x: (startX - centerX) / rx, y: (startY - centerY) / ry)
+        let endVector = CGPoint(x: (-startX - centerX) / rx, y: (-startY - centerY) / ry)
+        let startAngle = Self.angle(from: CGPoint(x: 1, y: 0), to: startVector)
+        var sweepAngle = Self.angle(from: startVector, to: endVector)
+        if !sweep, sweepAngle > 0 { sweepAngle -= 2 * .pi }
+        if sweep, sweepAngle < 0 { sweepAngle += 2 * .pi }
+
+        let segmentCount = max(1, Int(ceil(abs(sweepAngle) / (.pi / 2))))
+        let segmentAngle = sweepAngle / CGFloat(segmentCount)
+        let handle = 4 / 3 * tan(segmentAngle / 4)
+
+        // Unit-circle points mapped onto the rotated ellipse.
+        func onEllipse(_ x: CGFloat, _ y: CGFloat) -> CGPoint {
+            CGPoint(
+                x: center.x + rx * cosine * x - ry * sine * y,
+                y: center.y + rx * sine * x + ry * cosine * y
+            )
+        }
+
+        for segment in 0..<segmentCount {
+            let segmentStart = startAngle + CGFloat(segment) * segmentAngle
+            let segmentEnd = segmentStart + segmentAngle
+            let (startCos, startSin) = (cos(segmentStart), sin(segmentStart))
+            let (endCos, endSin) = (cos(segmentEnd), sin(segmentEnd))
+
+            path.addCurve(
+                to: onEllipse(endCos, endSin),
+                control1: onEllipse(startCos - handle * startSin, startSin + handle * startCos),
+                control2: onEllipse(endCos + handle * endSin, endSin - handle * endCos)
+            )
+        }
+    }
+
+    private static func angle(from first: CGPoint, to second: CGPoint) -> CGFloat {
+        atan2(first.x * second.y - first.y * second.x, first.x * second.x + first.y * second.y)
+    }
+}
