@@ -9,6 +9,7 @@
 | [`@nativue/haptics`](../packages/haptics/README.md)             | haptic feedback                                                              |
 | [`@nativue/image-picker`](../packages/image-picker/README.md)   | photos and videos from the library or the camera                             |
 | [`@nativue/notifications`](../packages/notifications/README.md) | local notifications                                                          |
+| [`@nativue/secure-store`](../packages/secure-store/README.md)   | small secrets (tokens, passwords), in the Keychain and the Android Keystore  |
 | [`@nativue/sqlite`](../packages/sqlite/README.md)               | SQLite databases                                                             |
 
 Any npm package written in plain JavaScript or Vue works too, as long as it doesn't use the browser's

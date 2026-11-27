@@ -84,6 +84,7 @@ To run on a phone, see [Getting started](docs/getting-started.md#run-on-a-phone)
 | [`@nativue/haptics`](packages/haptics)             | haptic feedback                                 |
 | [`@nativue/image-picker`](packages/image-picker)   | photos and videos from the library or camera    |
 | [`@nativue/notifications`](packages/notifications) | local notifications                             |
+| [`@nativue/secure-store`](packages/secure-store)   | secrets in the Keychain and the Keystore        |
 | [`@nativue/sqlite`](packages/sqlite)               | SQLite databases                                |
 
 ## Not affiliated

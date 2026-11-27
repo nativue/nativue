@@ -42,6 +42,8 @@ const pickedMedia = [1, 2].map((index) => ({
 }))
 const pickCalls = []
 const cameraCalls = []
+// What @nativue/secure-store's native side keeps, by key.
+const secureItems = new Map()
 // The statements @nativue/sqlite sent, as [sql, parameters]: it gets no rows back, and a COUNT gets zeros.
 const sqliteQueries = []
 
@@ -90,6 +92,16 @@ globalThis.__native = {
     canAskAgain: true,
   }),
   'pluginAsync:imagePicker.getPendingResult': resolvesWith(null),
+  'pluginAsync:secureStore.setItem': (callId, key, value) => {
+    secureItems.set(key, value)
+    resolvesWith(null)(callId)
+  },
+  'pluginAsync:secureStore.getItem': (callId, key) =>
+    resolvesWith(secureItems.get(key) ?? null)(callId),
+  'pluginAsync:secureStore.deleteItem': (callId, key) => {
+    secureItems.delete(key)
+    resolvesWith(null)(callId)
+  },
   'pluginAsync:sqlite.query': fakeSqliteQuery,
   'pluginAsync:sqlite.batch': resolvesWith({ changes: 0, lastInsertId: 0 }),
   'pluginAsync:sqlite.iterate': resolvesWith({ cursorId: 1, columns: [], rows: [], done: true }),
@@ -1334,6 +1346,18 @@ press(pressableContaining('Video', imagePickerId))
 await settle()
 assert.deepEqual(cameraCalls, [['videos', 30, 'high']])
 assert.ok(renderedTexts(imagePickerId).includes('video 400×300, 2 KB, 4.3 s'))
+// @nativue/secure-store: saves, reads and deletes through its native side.
+const secureStoreId = await open('explore/secure-store')
+press(pressableContaining('Save', secureStoreId))
+await settle()
+await settle() // saved, then read back
+assert.deepEqual([...secureItems], [['demo-token', 's3cr3t-t0ken']])
+assert.ok(renderedTexts(secureStoreId).includes('Stored: s3cr3t-t0ken'))
+press(pressableContaining('Delete', secureStoreId))
+await settle()
+await settle()
+assert.equal(secureItems.size, 0)
+assert.ok(renderedTexts(secureStoreId).includes('Nothing stored'))
 
 // @nativue/sqlite: its async plugin function, and named parameters numbered before they're sent.
 const sqliteId = await open('explore/sqlite')

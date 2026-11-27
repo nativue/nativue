@@ -12,6 +12,7 @@ import {
   HandIcon,
   HardDriveIcon,
   ImagesIcon,
+  KeyRoundIcon,
   ListChecksIcon,
   PaletteIcon,
   SparklesIcon,
@@ -141,6 +142,13 @@ export const demoSections: DemoSection[] = [
         subtitle: 'Photos, videos and the camera: @nativue/image-picker',
         icon: ImagesIcon,
         tint: colors.pink,
+      },
+      {
+        href: '/explore/secure-store',
+        title: 'Secure store',
+        subtitle: 'Secrets in the Keychain and the Keystore: @nativue/secure-store',
+        icon: KeyRoundIcon,
+        tint: colors.orange,
       },
       {
         href: '/explore/notifications',
