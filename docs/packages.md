@@ -8,6 +8,7 @@
 | [`@nativue/clipboard`](../packages/clipboard/README.md)         | copying text to the clipboard                                                |
 | [`@nativue/haptics`](../packages/haptics/README.md)             | haptic feedback                                                              |
 | [`@nativue/image-picker`](../packages/image-picker/README.md)   | photos and videos from the library or the camera                             |
+| [`@nativue/network`](../packages/network/README.md)             | whether the app is online, and on what connection, live                      |
 | [`@nativue/notifications`](../packages/notifications/README.md) | local notifications                                                          |
 | [`@nativue/secure-store`](../packages/secure-store/README.md)   | small secrets (tokens, passwords), in the Keychain and the Android Keystore  |
 | [`@nativue/sqlite`](../packages/sqlite/README.md)               | SQLite databases                                                             |
