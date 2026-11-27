@@ -14,6 +14,8 @@ type SvgView = SvgNode & {
 // An icon's props, which its native view reads as they are; viewBox and stroke-width also draw.
 const ICON_PROPS = new Set(['elements', 'color'])
 const SHARED_PROPS = new Set(['viewBox', 'strokeWidth'])
+// A <style>'s declarations for the element, written by vite.mjs.
+const SVG_CSS = 'svg-css'
 
 function setAttribute(node: SvgNode, key: string, value: unknown) {
   const attribute = drawingAttribute(key, value)
@@ -40,6 +42,7 @@ registerDrawnView({
     const node = element as SvgNode
 
     if (key === 'style') node.svgStyleAttributes = styleAttributes(value)
+    else if (key === SVG_CSS) node.svgCssAttributes = styleAttributes(value)
     else if (key !== 'class') setAttribute(node, key, value)
   },
 
@@ -47,6 +50,11 @@ registerDrawnView({
     const view = element as SvgView
     const name = camelize(key)
 
+    if (key === SVG_CSS) {
+      view.svgCssAttributes = styleAttributes(value)
+
+      return true
+    }
     if (key === 'width' || key === 'height') {
       view.svgSize = { ...view.svgSize, [key]: sizeValue(value) }
       setBaseStyle(view.svgSize)

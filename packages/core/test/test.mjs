@@ -1097,7 +1097,7 @@ assert.ok(viewsById[platformCardId].style.backgroundColor) // ios:bg-sky-100, no
 // ---------- SVG: <svg> as on the web, drawn by one native view ----------
 
 const svgScreenId = await open('explore/svg')
-const [chartId, effectsId, illustrationId, moreId] = renderedViewIds(svgScreenId).filter(
+const [chartId, effectsId, illustrationId, badgeId, moreId] = renderedViewIds(svgScreenId).filter(
   (id) => viewsById[id].type === 'Svg',
 )
 const drawingOf = (id) => viewsById[id].props.drawing
@@ -1172,6 +1172,16 @@ assert.equal(Math.round(ring()[1]['stroke-dashoffset']), 47)
 press(pressableContaining('More progress', svgScreenId))
 await settle()
 assert.equal(ring()[1]['stroke-dashoffset'], 0)
+
+// An imported .svg is a component: its <style>'s rules applied to the elements they select, the more
+// specific one winning (#badge .ring over .cls-1 order), and the <style> itself left out.
+const badgeDrawing = drawingOf(badgeId)
+const [badgeRing, badgeDisc] = elementsTagged(badgeDrawing, 'circle')
+assert.equal(badgeRing[1].fill, 0x4af2aeff)
+assert.equal(badgeDisc[1].fill, 0x0e9f84ff)
+assert.equal(elementsTagged(badgeDrawing, 'path')[0][1]['stroke-width'], 4)
+assert.equal(elementsTagged(badgeDrawing, 'style').length, 0)
+assert.equal(viewsById[badgeId].style.width, 48)
 
 // Design tools' shadow (feOffset, feGaussianBlur, feColorMatrix): a shadow in the matrix's color.
 const more = drawingOf(moreId)

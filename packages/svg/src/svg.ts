@@ -9,6 +9,8 @@ export interface SvgNode {
   children: SvgNode[]
   text: string
   svgAttributes?: Record<string, unknown>
+  /** What a <style> inside the <svg> gives it (vite.mjs): over its attributes, under its style. */
+  svgCssAttributes?: Record<string, unknown>
   /** Its style attribute (style="fill: red"), over the attributes, as CSS is. */
   svgStyleAttributes?: Record<string, unknown>
 }
@@ -312,7 +314,7 @@ type DrawingContext = {
 
 /** The drawing the native view gets: the root's attributes, then its children. */
 export function drawingOf(root: SvgNode, isPressable: (node: SvgNode) => boolean): DrawingElement {
-  const attributes: Record<string, unknown> = { ...root.svgAttributes }
+  const attributes = attributesOf(root)
   const nodesById = new Map<string, SvgNode>()
   const context = { isPressable, viewport: viewportOf(attributes), nodesById, useDepth: 0 }
 
@@ -339,7 +341,7 @@ function viewportOf(attributes: Record<string, unknown>): Viewport {
 }
 
 function attributesOf(node: SvgNode): Record<string, unknown> {
-  return { ...node.svgAttributes, ...node.svgStyleAttributes }
+  return { ...node.svgAttributes, ...node.svgCssAttributes, ...node.svgStyleAttributes }
 }
 
 /** The element an href ("#id") or url(#id) refers to. */

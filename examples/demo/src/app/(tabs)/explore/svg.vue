@@ -4,6 +4,7 @@ import { Stack } from '@nativue/core/router'
 import { Circle, Defs, G, Path, RadialGradient, Rect, Stop, Svg } from '@nativue/svg'
 import Page from '@/components/Page.vue'
 import Section from '@/components/Section.vue'
+import Badge from '@/assets/badge.svg'
 import logoMark from '@/assets/logo-mark.png'
 import { colors } from '@/lib/theme'
 
@@ -200,9 +201,10 @@ function shuffle() {
 
     <Section
       title="More of SVG"
-      footer="pattern, marker, textPath, image, blur, and the shadows design tools export."
+      footer="pattern, marker, textPath, image, blur, the shadows design tools export, and an imported .svg with a <style>."
     >
       <View class="items-center rounded-xl bg-white py-4 dark:bg-slate-800">
+        <Badge width="48" height="48" />
         <svg viewBox="0 0 300 230" width="300" height="230">
           <defs>
             <pattern

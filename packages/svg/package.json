@@ -24,6 +24,9 @@
     "./plugin": {
       "types": "./plugin.d.mts",
       "default": "./plugin.mjs"
+    },
+    "./client": {
+      "types": "./client.d.ts"
     }
   },
   "scripts": {
@@ -49,7 +52,9 @@
     "android/build.gradle.kts",
     "android/src",
     "plugin.mjs",
-    "plugin.d.mts"
+    "plugin.d.mts",
+    "vite.mjs",
+    "client.d.ts"
   ],
   "publishConfig": {
     "access": "public"
