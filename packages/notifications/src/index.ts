@@ -17,8 +17,11 @@ export interface NotificationContent {
   body?: string
   /** Comes back in onResponse and onReceived, e.g. { orderId: 42 }: what the app opens on a tap. */
   data?: Record<string, unknown>
-  /** The system's sound. Defaults to true. */
-  sound?: boolean
+  /**
+   * true (the default): the system's sound; false: none; a file name: one of the plugin's `sounds`,
+   * e.g. 'chime.wav'. On Android 8+, the channel's sound plays instead (setChannel).
+   */
+  sound?: boolean | string
   /** Android: the channel it's posted to (setChannel). Defaults to "default". */
   channelId?: string
 }
@@ -59,6 +62,8 @@ export interface NotificationChannel {
   description?: string
   /** high: heads-up banner and sound; default: sound; low: silent; min: silent, collapsed. */
   importance?: 'high' | 'default' | 'low' | 'min'
+  /** One of the plugin's `sounds`, e.g. 'chime.wav', for every notification on it. */
+  sound?: string
 }
 
 // Native gets data as JSON: any shape, without a type per platform.
@@ -105,6 +110,17 @@ const native = {
 }
 
 let nextId = 0
+
+/** A sound is a file name the plugin's `sounds` copied, e.g. 'chime.wav', not its path. */
+function checkSound<Sound extends boolean | string>(sound: Sound): Sound {
+  if (typeof sound === 'string' && !/^[a-z][a-z0-9_]*\.wav$/.test(sound)) {
+    throw new RangeError(
+      `A sound is the file name of one of the plugin's sounds, e.g. 'chime.wav', not '${sound}'`,
+    )
+  }
+
+  return sound
+}
 const responseListeners = new Set<(response: NotificationResponse) => void>()
 const handledTaps = new Set<string>()
 
@@ -184,7 +200,7 @@ export const Notifications = {
       title: content.title,
       body: content.body ?? '',
       data: content.data === undefined ? null : JSON.stringify(content.data),
-      sound: content.sound ?? true,
+      sound: checkSound(content.sound ?? true),
       channelId: content.channelId ?? 'default',
     }
 
@@ -213,8 +229,14 @@ export const Notifications = {
     native.setForegroundPresentation(presentation),
 
   /** Android 8+: the channel a notification goes to, which the user can mute. iOS: nothing to do. */
-  setChannel: ({ id, name, description = '', importance = 'default' }: NotificationChannel) =>
-    native.setChannel({ id, name, description, importance }),
+  setChannel: ({
+    id,
+    name,
+    description = '',
+    importance = 'default',
+    sound = '',
+  }: NotificationChannel) =>
+    native.setChannel({ id, name, description, importance, sound: sound && checkSound(sound) }),
 
   /** A notification that arrived while the app was open. */
   onReceived(listener: (notification: Notification) => void): NativeSubscription {

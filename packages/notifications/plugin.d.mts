@@ -7,6 +7,8 @@ export interface NotificationsOptions {
   icon?: string
   /** Android: the small icon's tint, e.g. '#10B39B'. */
   iconColor?: string
+  /** Notification sounds, .wav files relative to the app, played by their file name: schedule({ sound: 'chime.wav' }). */
+  sounds?: string[]
 }
 
 export default function notifications(options?: NotificationsOptions): NativuePlugin

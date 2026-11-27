@@ -16,6 +16,17 @@ const SECRET_NAME = /^[A-Za-z_][A-Za-z0-9_.]*$/
 const GRADLE_PROPERTY = /^[A-Za-z_][A-Za-z0-9_.-]*$/
 // aapt2's rule for the files of res/: lowercase letters, digits and underscores.
 const ANDROID_RESOURCE_NAME = /^[a-z][a-z0-9_]*$/
+// aapt2 turns resource names into Java fields (R.raw.chime): it refuses Java's keywords.
+const JAVA_KEYWORDS = new Set(
+  `abstract assert boolean break byte case catch char class const continue default do double else enum
+  extends false final finally float for goto if implements import instanceof int interface long native
+  new null package private protected public return short static strictfp super switch synchronized this
+  throw throws transient true try void volatile while`.split(/\s+/),
+)
+
+function isAndroidResourceName(name) {
+  return ANDROID_RESOURCE_NAME.test(name) && !JAVA_KEYWORDS.has(name)
+}
 const ANDROID_RESOURCE_TYPES = ['raw', 'font', 'drawable', 'xml', 'assets']
 const APP_GROUP = /^group\.[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*$/
 const EXTENSION_NAME = /^[A-Za-z][A-Za-z0-9_]*$/
@@ -363,8 +374,8 @@ function resourceProblems(resource, field, appDirectory) {
       !android ||
         (android.type === 'assets'
           ? android.name.split('/').every((part) => part !== '' && part !== '.' && part !== '..')
-          : ANDROID_RESOURCE_NAME.test(android.name)),
-      `${field}.android.name: lowercase letters, digits and underscores, e.g. '${basename(
+          : isAndroidResourceName(android.name)),
+      `${field}.android.name: lowercase letters, digits and underscores, not a Java keyword, e.g. '${basename(
         source,
         extname(source),
       )

@@ -49,6 +49,25 @@ battery. For on-time ones, add the plugin with `exactAlarms`: it asks for `SCHED
 which Android 14+ leaves off until the user allows it in Settings (until then, they come as without
 it). Android clears alarms when the device restarts; they're scheduled again when it starts.
 
+## Sounds
+
+A notification plays the system's sound, none with `sound: false`, or one of the app's: a `.wav`
+listed in the plugin, named with lowercase letters, digits and underscores (Android's rule for
+resources). WAV is the format both platforms play; on iOS it's under 30 seconds.
+
+```ts
+// nativue.config.ts
+plugins: [notifications({ sounds: ['./assets/chime.wav'] })]
+```
+
+```ts
+await Notifications.setChannel({ id: 'orders', name: 'Orders', sound: 'chime.wav' }) // Android 8+
+await Notifications.schedule({ title: 'New order', sound: 'chime.wav', channelId: 'orders' })
+```
+
+On Android 8 and later the channel's sound plays, not the notification's, and it's fixed when the
+channel is made: give each sound its own channel. iOS has no channels and plays the notification's.
+
 ## Taps
 
 ```ts

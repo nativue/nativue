@@ -102,6 +102,9 @@ Import the runtime from `vue`: `ref`, `computed`, `StyleSheet`, `Animated`, `Lay
   after `usePermission(Notifications.getPermission, Notifications.requestPermission)` says granted.
   Handle taps with `Notifications.onResponse` and, on start, `Notifications.getLastResponse()` (the tap
   that opened the app); each tap reaches only one of them.
+  A custom sound is a `.wav` listed in `notifications({ sounds: [...] })`, played with
+  `schedule({ sound: 'chime.wav' })`; on Android 8+ it's the channel's: `setChannel({ id: 'orders', name, sound })`, then
+  `schedule({ ..., sound: 'chime.wav', channelId: 'orders' })`.
 - Copying: `const { copied, systemConfirmed } = await Clipboard.copy(text)`; show a "copied" toast
   only when `copied && !systemConfirmed` (Android 13+ shows its own).
 - Commands: `npm run ios` / `npm run android` build and open the app, then update it on save
