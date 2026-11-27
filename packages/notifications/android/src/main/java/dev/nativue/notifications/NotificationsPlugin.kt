@@ -96,6 +96,7 @@ class NotificationsPlugin : NativuePlugin, ActivityListener {
                 channel["name"] as String,
                 channel["description"] as? String ?: "",
                 channel["importance"] as? String ?: "default",
+                channel["sound"] as? String ?: "",
             )
             promise.resolve()
         }

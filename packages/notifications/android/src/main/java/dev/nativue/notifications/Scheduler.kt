@@ -5,10 +5,12 @@ import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.media.AudioAttributes
 import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
@@ -71,7 +73,8 @@ internal class Scheduler(private val context: Context) {
         else scheduled.edit().remove(id).apply()
     }
 
-    fun setChannel(id: String, name: String, description: String, importance: String) {
+    /** sound: one of the plugin's, e.g. "chime.wav"; fixed once the channel is made. */
+    fun setChannel(id: String, name: String, description: String, importance: String, sound: String = "") {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
         val level = when (importance) {
@@ -81,6 +84,15 @@ internal class Scheduler(private val context: Context) {
             else -> NotificationManager.IMPORTANCE_DEFAULT
         }
         val channel = NotificationChannel(id, name, level).apply { this.description = description }
+
+        if (sound.isNotEmpty()) {
+            val attributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+
+            channel.setSound(soundURI(sound), attributes)
+        }
 
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
@@ -94,15 +106,25 @@ internal class Scheduler(private val context: Context) {
 
         val channelId = notification.optString("channelId").takeIf(::channelExists) ?: DEFAULT_CHANNEL
 
-        if (channelId == DEFAULT_CHANNEL) setChannel(DEFAULT_CHANNEL, "Notifications", "", "default")
+        // Made on first use, unless the app made its own: setChannel again would rename it.
+        if (channelId == DEFAULT_CHANNEL && !channelExists(DEFAULT_CHANNEL)) {
+            setChannel(DEFAULT_CHANNEL, "Notifications", "", "default")
+        }
 
+        val sound = notification.opt("sound")
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(smallIcon())
             .setContentTitle(notification.optString("title"))
             .setContentText(notification.optString("body"))
             .setAutoCancel(true)
             .setContentIntent(tapIntent(notification))
-            .setSilent(!notification.optBoolean("sound", true) || (inFront && !foregroundSound))
+            .setSilent(sound == false || (inFront && !foregroundSound))
+
+        // Before Android 8 a notification has its own sound, the system's only when asked for; after, its channel's.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            if (sound is String) builder.setSound(soundURI(sound))
+            if (sound == true) builder.setDefaults(NotificationCompat.DEFAULT_SOUND)
+        }
 
         iconColor()?.let(builder::setColor)
         try {
@@ -177,6 +199,13 @@ internal class Scheduler(private val context: Context) {
 
         return requested?.contains("android.permission.SCHEDULE_EXACT_ALARM") == true
     }
+
+    /**
+     * By name, res/raw/<name>: NotificationChannel.setSound warns against resource ids, which can change
+     * when the app is updated.
+     */
+    private fun soundURI(fileName: String): Uri =
+        Uri.parse("${ContentResolver.SCHEME_ANDROID_RESOURCE}://${context.packageName}/raw/${fileName.substringBeforeLast('.')}")
 
     private fun smallIcon(): Int {
         val appIcon = context.resources.getIdentifier("notification_icon", "drawable", context.packageName)

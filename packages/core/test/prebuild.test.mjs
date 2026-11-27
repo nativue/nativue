@@ -586,7 +586,7 @@ try {
       },
     }
     const problems = [
-      "resources[0].android.name: lowercase letters, digits and underscores, e.g. 'inter_bold'",
+      "resources[0].android.name: lowercase letters, digits and underscores, not a Java keyword, e.g. 'inter_bold'",
       'resources[1].ios.destination:',
       'resources[2].android.name:',
       "sounds's resources[0].source: ./sounds/missing.wav isn't a file",

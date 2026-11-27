@@ -131,8 +131,18 @@ public final class NotificationsPlugin: NativuePlugin, NotificationCenterListene
 
         content.title = notification["title"] as? String ?? ""
         content.body = notification["body"] as? String ?? ""
-        if notification["sound"] as? Bool ?? true { content.sound = .default }
-        if let data = notification["data"] as? String { content.userInfo = ["data": data] }
+
+        var userInfo: [String: Any] = [:]
+
+        if let data = notification["data"] as? String { userInfo["data"] = data }
+        // A file name: one of the plugin's sounds, at the bundle's root. Kept for getScheduled.
+        if let sound = notification["sound"] as? String {
+            content.sound = UNNotificationSound(named: UNNotificationSoundName(sound))
+            userInfo["sound"] = sound
+        } else if notification["sound"] as? Bool ?? true {
+            content.sound = .default
+        }
+        content.userInfo = userInfo
 
         return content
     }
@@ -163,7 +173,7 @@ public final class NotificationsPlugin: NativuePlugin, NotificationCenterListene
             "title": content.title,
             "body": content.body,
             "data": content.userInfo["data"] as? String ?? NSNull(),
-            "sound": content.sound != nil,
+            "sound": content.userInfo["sound"] as? String ?? (content.sound != nil),
             "channelId": "default",
         ]
     }
