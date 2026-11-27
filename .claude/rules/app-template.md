@@ -2,8 +2,8 @@
 
 A new app is two parts, both generated:
 
-- `packages/create-nativue/template/`: the JS app, copied once by `npm create nativue` (`src`,
-  `package.json`, `tsconfig.json`, `nativue.config.ts`, `.gitignore` shipped as `template/gitignore`).
+- `packages/create-nativue/template/app/`: the JS app, copied once by `npm create nativue` (`src`,
+  `package.json`, `tsconfig.json`, `nativue.config.ts`, `.gitignore` shipped as `template/app/gitignore`).
 - `ios/` and `android/`: written by `nativue prebuild` (`packages/core/cli/prebuild.mjs`) on every
   `dev`, `build` and `run`, from `packages/core/template/{ios,android}` plus the files it builds from
   `nativue.config.ts` (the Xcode project, `Info.plist`, entitlements and assets in `cli/ios-project.mjs`;

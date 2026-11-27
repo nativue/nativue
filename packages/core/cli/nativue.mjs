@@ -220,10 +220,12 @@ function viteConfig({ mode, plugins = [] }) {
       finishBundle(mode),
       ...plugins,
     ],
-    // Compiled templates and app code import from 'vue': point them to the native renderer.
+    // Compiled templates and app code import from 'vue': point them to the native renderer. A package
+    // installed from a folder with its own node_modules gets the app's @nativue/core too, not a second one.
     resolve: {
       alias: [
         { find: /^vue$/, replacement: frameworkPath('src/renderer.ts') },
+        { find: /^@nativue\/core$/, replacement: frameworkPath('src/renderer.ts') },
         { find: /^@nativue\/core\/router$/, replacement: frameworkPath('src/router.ts') },
         { find: /^@\//, replacement: `${process.cwd()}/src/` },
       ],

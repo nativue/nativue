@@ -70,7 +70,7 @@ packages/tailwind/        Tailwind CSS classes, converted to native styles when 
 packages/haptics/         haptic feedback, an example of a package with native code
 packages/clipboard/       copying text to the clipboard
 packages/sqlite/          SQLite databases, on the SQLite that ships with iOS and Android
-packages/create-nativue/  `npm create nativue`: copies template/ and fills in the app's names
+packages/create-nativue/  `npm create nativue`: copies template/app (or template/package with --module) and fills in the names
 examples/demo/            the demo app, laid out like any nativue app
 docs/                     this documentation
 ```
@@ -108,7 +108,7 @@ Every app, the demo included, gets its `ios/` and `android/` from `nativue prebu
 from `nativue.config.ts` (`cli/ios-project.mjs`: the Xcode project, `Info.plist`, entitlements,
 icon and launch screen; `cli/android-project.mjs`: the manifest, `app/build.gradle.kts`, strings,
 icon and splash). Neither
-folder is committed. `packages/create-nativue/template` holds the rest of a new app: `src`,
+folder is committed. `packages/create-nativue/template/app` holds the rest of a new app: `src`,
 `package.json`, `tsconfig.json`, `nativue.config.ts`. When a change affects how an app is set up,
 update those in the same change.
 
