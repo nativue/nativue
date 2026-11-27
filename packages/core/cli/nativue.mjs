@@ -15,20 +15,12 @@ import { build, createServer, loadConfigFromFile, transformWithOxc } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import http from 'node:http'
 import net from 'node:net'
-import { execFileSync } from 'node:child_process'
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  renameSync,
-  watch,
-} from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, watch } from 'node:fs'
 import { randomUUID } from 'node:crypto'
 import { createRequire } from 'node:module'
-import { dirname, relative } from 'node:path'
+import { relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { compileToBytecode } from './hermes.mjs'
 import { resolvePlugins } from './plugins.mjs'
 import { linkNativePackages, PLATFORMS, prebuild } from './prebuild.mjs'
 import { runOnAndroid, runOnIOS } from './run.mjs'
@@ -62,31 +54,6 @@ function frameworkPath(relativePath) {
 }
 
 // hermesc ships with the hermes-compiler package, one binary per host system.
-const HERMESC_BY_PLATFORM = {
-  darwin: 'osx-bin/hermesc',
-  linux: 'linux64-bin/hermesc',
-  win32: 'win64-bin/hermesc.exe',
-}
-
-function hermescPath() {
-  const packageDirectory = dirname(
-    createRequire(import.meta.url).resolve('hermes-compiler/package.json'),
-  )
-
-  return `${packageDirectory}/hermesc/${HERMESC_BY_PLATFORM[process.platform]}`
-}
-
-// Hermes bytecode starts faster: no parsing when the app opens. The runtime tells bytecode from
-// source on its own, so the file keeps its name.
-function compileToBytecode(bundlePath) {
-  const bytecodePath = `${bundlePath}.hbc`
-
-  execFileSync(hermescPath(), ['-emit-binary', '-O', '-w', '-out', bytecodePath, bundlePath], {
-    stdio: 'inherit',
-  })
-  renameSync(bytecodePath, bundlePath)
-}
-
 // A production bundle becomes bytecode; the Android app packages its assets folder, so it gets a copy.
 function finishBundle(mode) {
   return {

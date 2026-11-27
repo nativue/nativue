@@ -463,7 +463,9 @@ extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void*) {
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_dev_nativue_JavaScriptRuntime_create(JNIEnv* env, jobject owner, jobjectArray functionNames) {
-  auto config = ::hermes::vm::RuntimeConfig::Builder().withMicrotaskQueue(true).build();
+  // Off by default: a let in a loop would be one variable for every iteration, so callbacks made
+  // in the loop would all see its last value. Bytecode gets the same from hermesc's -Xes6-block-scoping.
+  auto config = ::hermes::vm::RuntimeConfig::Builder().withMicrotaskQueue(true).withES6BlockScoping(true).build();
   auto runtime = new Runtime{facebook::hermes::makeHermesRuntime(config), env->NewGlobalRef(owner)};
   installNativeModule(*runtime, env, functionNames);
 
