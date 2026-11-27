@@ -40,6 +40,21 @@ public final class NativueAppDelegate: NSObject, UIApplicationDelegate, UNUserNo
     /// Set by App.swift before any of the app's events.
     public static var plugins: [NativuePlugin] = []
 
+    /// iOS warns at every launch about a delegate handling remote notifications without the
+    /// remote-notification background mode: with no plugin listening and no mode, it doesn't handle them.
+    override public func responds(to selector: Selector!) -> Bool {
+        guard selector == Self.remoteNotificationSelector else { return super.responds(to: selector) }
+
+        let isListened = Self.plugins.contains { $0 is AppLifecycleListener }
+
+        return (isListened || Self.hasRemoteNotificationMode) && super.responds(to: selector)
+    }
+
+    private static let remoteNotificationSelector =
+        NSSelectorFromString("application:didReceiveRemoteNotification:fetchCompletionHandler:")
+    private static let hasRemoteNotificationMode =
+        (Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String])?.contains("remote-notification") == true
+
     private var lifecycleListeners: [AppLifecycleListener] {
         Self.plugins.compactMap { $0 as? AppLifecycleListener }
     }
