@@ -1,6 +1,6 @@
 {
   "name": "@nativue/icons",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Icon sets for nativue apps, drawn natively",
   "keywords": [
     "vue",
