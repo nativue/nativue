@@ -82,6 +82,7 @@ To run on a phone, see [Getting started](docs/getting-started.md#run-on-a-phone)
 | [`@nativue/tailwind`](packages/tailwind)           | Tailwind CSS classes, turned into native styles |
 | [`@nativue/clipboard`](packages/clipboard)         | copying text to the clipboard                   |
 | [`@nativue/haptics`](packages/haptics)             | haptic feedback                                 |
+| [`@nativue/image-picker`](packages/image-picker)   | photos and videos from the library or camera    |
 | [`@nativue/notifications`](packages/notifications) | local notifications                             |
 | [`@nativue/sqlite`](packages/sqlite)               | SQLite databases                                |
 

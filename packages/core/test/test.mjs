@@ -31,6 +31,16 @@ const reportedErrors = []
 const hapticsCalls = []
 // The texts @nativue/clipboard copied.
 const copiedTexts = []
+// What @nativue/image-picker's native side hands back: two photos, as if the user chose them.
+const pickedMedia = [1, 2].map((index) => ({
+  uri: `file:///cache/nativue-image-picker/${index}.jpg`,
+  type: 'image',
+  width: 400,
+  height: 300,
+  mimeType: 'image/jpeg',
+  fileSize: 2048,
+}))
+const pickCalls = []
 // The statements @nativue/sqlite sent, as [sql, parameters]: it gets no rows back, and a COUNT gets zeros.
 const sqliteQueries = []
 
@@ -60,6 +70,22 @@ globalThis.__native = {
     copiedTexts.push(text)
     resolvesWith(false)(callId)
   },
+  'pluginAsync:imagePicker.pick': (callId, limit, mediaTypes) => {
+    pickCalls.push([limit, mediaTypes])
+    resolvesWith(pickedMedia.slice(0, limit === 1 ? 1 : 2))(callId)
+  },
+  'pluginAsync:imagePicker.takePhoto': resolvesWith(null),
+  'pluginAsync:imagePicker.getCameraPermission': resolvesWith({
+    status: 'granted',
+    granted: true,
+    canAskAgain: true,
+  }),
+  'pluginAsync:imagePicker.requestCameraPermission': resolvesWith({
+    status: 'granted',
+    granted: true,
+    canAskAgain: true,
+  }),
+  'pluginAsync:imagePicker.getPendingResult': resolvesWith(null),
   'pluginAsync:sqlite.query': fakeSqliteQuery,
   'pluginAsync:sqlite.batch': resolvesWith({ changes: 0, lastInsertId: 0 }),
   'pluginAsync:sqlite.iterate': resolvesWith({ cursorId: 1, columns: [], rows: [], done: true }),
@@ -1289,6 +1315,17 @@ globalThis.__dispatch(pressableContaining('Copy', clipboardId), 'press')
 await settle()
 assert.deepEqual(copiedTexts, ['Hello from nativue'])
 assert.ok(renderedTexts(clipboardId).includes('Copied'))
+
+// @nativue/image-picker: pick() passes its options on, and the chosen photos show.
+const imagePickerId = await open('explore/image-picker')
+press(pressableContaining('Up to 5', imagePickerId))
+await settle()
+assert.deepEqual(pickCalls, [[5, 'all']])
+assert.equal(
+  renderedViewIds(imagePickerId).filter((id) => viewsById[id].type === 'Image').length,
+  2,
+)
+assert.ok(renderedTexts(imagePickerId).includes('image 400×300, 2 KB'))
 
 // @nativue/sqlite: its async plugin function, and named parameters numbered before they're sent.
 const sqliteId = await open('explore/sqlite')

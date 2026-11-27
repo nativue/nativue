@@ -1,0 +1,14 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Its own provider class: the app's own FileProvider, if it has one, doesn't clash. -->
+        <provider
+            android:name="dev.nativue.imagepicker.ImagePickerFileProvider"
+            android:authorities="${applicationId}.nativue.imagepicker"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/nativue_image_picker_paths" />
+        </provider>
+    </application>
+</manifest>

@@ -14,6 +14,7 @@
     "@nativue/core": "*",
     "@nativue/haptics": "*",
     "@nativue/icons": "*",
+    "@nativue/image-picker": "*",
     "@nativue/notifications": "*",
     "@nativue/sqlite": "*",
     "@nativue/svg": "*",

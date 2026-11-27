@@ -1,0 +1,57 @@
+{
+  "name": "@nativue/image-picker",
+  "version": "0.1.0",
+  "description": "Pick photos and videos, or take a photo, in nativue apps",
+  "keywords": [
+    "vue",
+    "native",
+    "image-picker",
+    "photos",
+    "camera",
+    "nativue"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/nativue/nativue#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nativue/nativue.git",
+    "directory": "packages/image-picker"
+  },
+  "bugs": "https://github.com/nativue/nativue/issues",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./plugin": {
+      "types": "./plugin.d.mts",
+      "default": "./plugin.mjs"
+    }
+  },
+  "scripts": {
+    "typecheck": "vue-tsc"
+  },
+  "peerDependencies": {
+    "@nativue/core": ">=0.18.0"
+  },
+  "nativue": {
+    "plugin": "./plugin.mjs",
+    "ios": {
+      "sources": "ios",
+      "plugin": "ImagePickerPlugin"
+    },
+    "android": {
+      "sources": "android",
+      "plugin": "dev.nativue.imagepicker.ImagePickerPlugin"
+    }
+  },
+  "files": [
+    "src",
+    "ios",
+    "android/build.gradle.kts",
+    "android/src",
+    "plugin.mjs",
+    "plugin.d.mts"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

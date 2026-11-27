@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Where the camera writes photos: the app's cache, which MediaFiles also copies picked files into. -->
+<paths>
+    <cache-path name="photos" path="nativue-image-picker/" />
+</paths>

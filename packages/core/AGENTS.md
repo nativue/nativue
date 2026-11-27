@@ -109,7 +109,9 @@ Import the runtime from `vue`: `ref`, `computed`, `StyleSheet`, `Animated`, `Lay
 - Tab and header icons (`tabBarIcon`, a header item's `icon`): an `@nativue/icons` component,
   `svgIcon(viewBox, elements)` from `@nativue/svg`, an image `{ uri }`, or an SF Symbol name (iOS).
 - Official packages: `@nativue/svg`, `@nativue/icons` (icon components), `@nativue/tailwind`, `@nativue/haptics`,
-  `@nativue/clipboard` (copy text), `@nativue/notifications` (local notifications), `@nativue/sqlite`.
+  `@nativue/clipboard` (copy text), `@nativue/notifications` (local notifications), `@nativue/sqlite`,
+  `@nativue/image-picker` (`ImagePicker.pick({ limit, mediaTypes })`, `takePhoto()`; call
+  `getPendingResult()` on start, for a photo taken while Android closed the app).
   A package with native code needs the app
   rebuilt with `npm run ios` or `npm run android`, not just a reload.
 - Notifications: `Notifications.schedule({ title, body, data }, { seconds } | { date } | { hour, minute } | null)`

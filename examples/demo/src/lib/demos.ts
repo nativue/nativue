@@ -2,15 +2,16 @@
 import type { Component } from 'vue'
 import {
   BellIcon,
+  BlendIcon,
   BlocksIcon,
   BugIcon,
-  BlendIcon,
   ChartSplineIcon,
   ClipboardCopyIcon,
   CompassIcon,
   DatabaseIcon,
   HandIcon,
   HardDriveIcon,
+  ImagesIcon,
   ListChecksIcon,
   PaletteIcon,
   SparklesIcon,
@@ -133,6 +134,13 @@ export const demoSections: DemoSection[] = [
         subtitle: 'Copy text, with native code: @nativue/clipboard',
         icon: ClipboardCopyIcon,
         tint: colors.purple,
+      },
+      {
+        href: '/explore/image-picker',
+        title: 'Image picker',
+        subtitle: 'Photos, videos and the camera: @nativue/image-picker',
+        icon: ImagesIcon,
+        tint: colors.pink,
       },
       {
         href: '/explore/notifications',
