@@ -205,6 +205,24 @@ assert.equal(
 )
 assert.equal(gradients.ignored['bg-linear-to-r'], undefined)
 
+// The ! modifier, a color with an opacity under dark: (Tailwind writes two rules for it), and what
+// native can't draw: a conic gradient, the text's color.
+const edgeCases = await stylesOf([
+  '!bg-linear-to-r',
+  'dark:from-black/50',
+  'bg-conic',
+  'from-current',
+])
+assert.equal(
+  edgeCases.styles['!bg-linear-to-r'].backgroundImage,
+  'linear-gradient(var(--tw-gradient-stops))',
+)
+assert.equal(edgeCases.styles['!bg-linear-to-r']['--tw-gradient-position'], 'to right')
+assert.equal(edgeCases.styles['dark:from-black/50']['--tw-gradient-from'], '#00000080')
+assert.ok(edgeCases.styles['dark:from-black/50']['--tw-gradient-stops'])
+assert.match(edgeCases.ignored['bg-conic'], /background-image/)
+assert.match(edgeCases.ignored['from-current'], /--tw-gradient-from/)
+
 // ---------- Warnings ----------
 
 async function warningsFor(template) {

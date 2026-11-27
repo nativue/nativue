@@ -3,6 +3,8 @@
 // have (dark:, active:, focus:, disabled:, ios:, android:) become conditions; other variants, and CSS properties the
 // native views don't have, are reported instead.
 
+import { closingParenthesis, nextVariable, resolveVariables } from './variables.mjs'
+
 const ROOT_FONT_SIZE = 16 // rem, in points
 const INFINITE_LENGTH = 9999 // rounded-full is calc(infinity * 1px)
 
@@ -118,36 +120,6 @@ function splitTopLevel(value, separator) {
   if (current.trim()) parts.push(current.trim())
 
   return parts
-}
-
-/** The index of the parenthesis closing the one at `start`. */
-function closingParenthesis(text, start) {
-  let depth = 0
-
-  for (let index = start; index < text.length; index++) {
-    if (text[index] === '(') depth++
-    if (text[index] === ')' && --depth === 0) return index
-  }
-
-  return -1
-}
-
-/**
- * Replaces var(--name, fallback) with the variable's value: the rule's own, then the theme's, then
- * @property's initial value, then the fallback. null when one can't be resolved.
- */
-function resolveVariables(value, lookup) {
-  const start = value.indexOf('var(')
-  if (start === -1) return value
-
-  const end = closingParenthesis(value, start + 3)
-  const [name, ...fallbackParts] = splitTopLevel(value.slice(start + 4, end), ',')
-  const fallback = fallbackParts.length > 0 ? fallbackParts.join(',') : null
-  const replacement =
-    lookup(name.trim()) ?? (fallback === null ? null : resolveVariables(fallback, lookup))
-  if (replacement === null) return null
-
-  return resolveVariables(value.slice(0, start) + replacement + value.slice(end + 1), lookup)
 }
 
 // calc() and plain lengths, as { number, unit }: '', 'px' (rem converted), '%' or 'deg'.
@@ -709,35 +681,47 @@ function runTimeVariableNames(items, theme) {
   return names
 }
 
-/** var() of build-time variables replaced; run-time ones kept, with their fallback resolved. */
+/**
+ * var() of build-time variables replaced; run-time ones kept, with their fallback resolved. null when a
+ * build-time one can't be, or when a color stays one native can't read (currentcolor, hsl()...).
+ */
 function resolveBuildTimeVariables(value, lookup, runTimeNames) {
   let result = ''
-  let rest = value
+  let rest = value.replace(/\s*!important$/, '')
 
-  for (let start = rest.indexOf('var('); start !== -1; start = rest.indexOf('var(')) {
-    const end = closingParenthesis(rest, start + 3)
-    const [name, ...fallbackParts] = splitTopLevel(rest.slice(start + 4, end), ',')
-    const variable = name.trim()
-    const fallback = fallbackParts.length > 0 ? fallbackParts.join(',') : null
+  for (let variable = nextVariable(rest); variable; variable = nextVariable(rest)) {
+    const { start, end, name, fallback } = variable
 
-    if (runTimeNames.has(variable)) {
+    if (runTimeNames.has(name)) {
       const resolvedFallback =
-        fallback === null ? '' : `, ${resolveBuildTimeVariables(fallback, lookup, runTimeNames)}`
+        fallback === null ? '' : resolveBuildTimeVariables(fallback, lookup, runTimeNames)
+      if (resolvedFallback === null) return null
 
-      result += `${rest.slice(0, start)}var(${variable}${resolvedFallback})`
+      result += `${rest.slice(0, start)}var(${name}${resolvedFallback ? `, ${resolvedFallback}` : ''})`
       rest = rest.slice(end + 1)
     } else {
-      const replacement = lookup(variable) ?? fallback
-
+      const replacement = lookup(name) ?? fallback
       if (replacement === null) return null
+
       rest = rest.slice(0, start) + replacement + rest.slice(end + 1)
     }
   }
 
-  return withHexColors(result + rest)
+  const resolved = withHexColors(result + rest)
+
+  return hasUnreadableColor(resolved) ? null : resolved
+}
+
+/** What native can't read as a color: the text's color, inheritance, and the functions color() left. */
+function hasUnreadableColor(value) {
+  return /\b(currentcolor|inherit)\b/i.test(value) || UNREAD_COLOR_FUNCTION.test(value)
 }
 
 const COLOR_FUNCTION = /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color-mix|color)\(/g
+// Left after withHexColors: one color() couldn't convert.
+const UNREAD_COLOR_FUNCTION = /\b(?:hsla?|hwb|lab|lch|oklab|oklch|color-mix|color)\(/
+// What the native side draws as a background image.
+const DRAWN_BACKGROUND_IMAGE = /^(none|(linear|radial)-gradient\()/
 
 /** The color functions in a value (oklch from the theme...) as hex colors, which native reads. */
 function withHexColors(value) {
@@ -771,15 +755,23 @@ function convertRule(rule, globalLookup, runTimeNames) {
 
   for (const { property, value } of ruleDeclarations) {
     if (runTimeNames.has(property)) {
-      style[property] = resolveBuildTimeVariables(value, buildTimeLookup, runTimeNames)
+      // One it can't resolve leaves the whole class out, with a warning: its gradient would come out
+      // wrong without it.
+      const resolved = resolveBuildTimeVariables(value, buildTimeLookup, runTimeNames)
+      if (resolved === null) return { style: {}, unsupported: [property] }
+
+      style[property] = resolved
       continue
     }
     if (property.startsWith('--') || SILENTLY_IGNORED.has(property)) continue
     if (RUN_TIME_PROPERTIES[property]) {
       const template = resolveBuildTimeVariables(value, buildTimeLookup, runTimeNames)
+      // An image native doesn't draw (conic-gradient(), url()) leaves the class out, with a warning.
+      if (template === null || !DRAWN_BACKGROUND_IMAGE.test(template)) {
+        return { style: {}, unsupported: [property] }
+      }
 
-      if (template) style[RUN_TIME_PROPERTIES[property]] = template
-      else unsupported.push(property)
+      style[RUN_TIME_PROPERTIES[property]] = template
       continue
     }
 
@@ -832,8 +824,15 @@ export function stylesFromCss(css) {
     if (Object.keys(style).length === 0) {
       ignored[utility.className] = `${unsupported.join(', ') || 'nothing'} has no native equivalent`
     } else {
-      styles[utility.className] =
-        ruleConditions.length > 0 ? [order++, style, ruleConditions] : [order++, style]
+      // Tailwind can split a class into several rules (dark:from-black/50): they add up.
+      const existing = styles[utility.className]
+      const sameConditions = existing && String(existing[2] ?? []) === String(ruleConditions)
+
+      if (sameConditions) Object.assign(existing[1], style)
+      else {
+        styles[utility.className] =
+          ruleConditions.length > 0 ? [order++, style, ruleConditions] : [order++, style]
+      }
     }
   }
 

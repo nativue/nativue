@@ -7,6 +7,7 @@ import {
   type Style,
   type TransformStep,
 } from '@nativue/core'
+import { resolveVariables } from './variables.mjs'
 
 type Condition = 'dark' | 'pressed' | 'focused' | 'disabled' | 'ios' | 'android'
 /**
@@ -32,35 +33,13 @@ function mergeStyles(styles: Style[], initialVariables: Record<string, string>):
 
   if (transform.length > 0) merged.transform = transform
   if (typeof merged.backgroundImage === 'string') {
-    const backgroundImage = withVariables(merged.backgroundImage, variables)
+    const backgroundImage = resolveVariables(merged.backgroundImage, (name) => variables[name])
 
     if (backgroundImage === null) delete merged.backgroundImage
     else merged.backgroundImage = backgroundImage
   }
 
   return merged as Style
-}
-
-/** var(--name, fallback) replaced by the variable, else its fallback; null when neither is there. */
-function withVariables(value: string, variables: Record<string, string>): string | null {
-  const start = value.indexOf('var(')
-  if (start === -1) return value
-
-  let depth = 0
-  let end = start + 3
-
-  for (; end < value.length; end++) {
-    if (value[end] === '(') depth++
-    if (value[end] === ')' && --depth === 0) break
-  }
-
-  const inside = value.slice(start + 4, end)
-  const comma = inside.indexOf(',')
-  const name = (comma === -1 ? inside : inside.slice(0, comma)).trim()
-  const replacement = variables[name] ?? (comma === -1 ? null : inside.slice(comma + 1))
-  if (replacement === null) return null
-
-  return withVariables(value.slice(0, start) + replacement + value.slice(end + 1), variables)
 }
 
 /**
