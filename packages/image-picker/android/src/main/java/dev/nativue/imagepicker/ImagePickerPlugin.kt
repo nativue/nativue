@@ -31,10 +31,11 @@ class ImagePickerPlugin : NativuePlugin, ActivityListener {
     private val preferences by lazy { registry.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE) }
     private var pickLauncher: ActivityResultLauncher<PickRequest>? = null
     private var cameraLauncher: ActivityResultLauncher<CaptureRequest>? = null
-    /** The call the open picker or camera answers; null once the app was closed and opened again. */
+    /** The call the open picker or camera answers; null once its activity, and the JavaScript with it, is gone. */
     private var waiting: Waiting? = null
 
-    private class Waiting(val promise: Promise, val isCamera: Boolean)
+    /** [limit]: 0 for no limit. */
+    private class Waiting(val promise: Promise, val isCamera: Boolean, val limit: Int = 1)
 
     override fun register(registry: PluginRegistry) {
         this.registry = registry
@@ -43,7 +44,7 @@ class ImagePickerPlugin : NativuePlugin, ActivityListener {
             val request = PickRequest((arguments[0] as Number).toInt(), arguments[1] as String)
 
             mainThread.post {
-                launch(Waiting(promise, isCamera = false)) {
+                launch(Waiting(promise, isCamera = false, request.limit)) {
                     (pickLauncher ?: throw IllegalStateException("The app has no activity open")).launch(request)
                 }
             }
@@ -82,8 +83,16 @@ class ImagePickerPlugin : NativuePlugin, ActivityListener {
 
     // Registered on every creation, in the same order: a result for the activity Android closed reaches these.
     override fun onActivityCreated(activity: ComponentActivity) {
-        pickLauncher = activity.registerForActivityResult(PickMedia()) { uris -> finish(isCamera = false) { uris.mapNotNull(files::copy) } }
-        cameraLauncher = activity.registerForActivityResult(CaptureMedia()) { taken -> finish(isCamera = true) { takenMedia(taken) } }
+        pickLauncher = activity.registerForActivityResult(PickMedia()) { uris ->
+            // The documents screen, where there's no photo picker, takes no limit.
+            finish(isCamera = false) { limit -> uris.take(if (limit > 0) limit else uris.size).mapNotNull(files::copy) }
+        }
+        cameraLauncher = activity.registerForActivityResult(CaptureMedia()) { result -> finish(isCamera = true) { takenMedia(result) } }
+    }
+
+    // Its JavaScript goes with it: what the picker or camera returns is then kept for getPendingResult.
+    override fun onActivityDestroyed(activity: ComponentActivity) {
+        waiting = null
     }
 
     private fun launch(next: Waiting, open: () -> Unit) {
@@ -102,6 +111,7 @@ class ImagePickerPlugin : NativuePlugin, ActivityListener {
     private fun openCamera(isVideo: Boolean, videoMaxDuration: Int, isLowQuality: Boolean) {
         val context = registry.applicationContext
         val launcher = cameraLauncher
+
         if (launcher == null || !context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)) {
             throw IllegalStateException("This device has no camera")
         }
@@ -113,14 +123,17 @@ class ImagePickerPlugin : NativuePlugin, ActivityListener {
         launcher.launch(CaptureRequest(output, isVideo, videoMaxDuration, isLowQuality))
     }
 
-    private fun takenMedia(taken: Boolean): List<Map<String, Any>> {
-        val path = preferences.getString(CAMERA_FILE, null)
+    /** Some camera apps record videos where they like and only return where: then it's copied from there. */
+    private fun takenMedia(result: CaptureResult): List<Map<String, Any>> {
+        val file = preferences.getString(CAMERA_FILE, null)?.let(::File)
 
         preferences.edit().remove(CAMERA_FILE).commit()
+        if (!result.isTaken || file == null) return emptyList()
+        if (file.length() > 0) return listOf(files.describe(file, if (file.extension == "mp4") "video/mp4" else "image/jpeg"))
 
-        val file = path?.let(::File)?.takeIf { taken && it.length() > 0 } ?: return emptyList()
+        file.delete()
 
-        return listOf(files.describe(file, if (file.extension == "mp4") "video/mp4" else "image/jpeg"))
+        return listOfNotNull(result.elsewhere?.let(files::copy))
     }
 
     /**
@@ -136,13 +149,14 @@ class ImagePickerPlugin : NativuePlugin, ActivityListener {
         }
     }
 
-    private fun finish(isCamera: Boolean, result: () -> List<Map<String, Any>>) {
+    /** [result] gets the limit of the call it answers: 0 when none waits. */
+    private fun finish(isCamera: Boolean, result: (limit: Int) -> List<Map<String, Any>>) {
         val answering = waiting?.takeIf { it.isCamera == isCamera }
 
         waiting = null
         worker.execute {
             try {
-                val media = result()
+                val media = result(answering?.limit ?: 0)
 
                 when {
                     answering == null -> keepPending(media)

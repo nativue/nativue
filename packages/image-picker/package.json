@@ -1,7 +1,7 @@
 {
   "name": "@nativue/image-picker",
   "version": "0.1.0",
-  "description": "Pick photos and videos, or take a photo, in nativue apps",
+  "description": "Pick photos and videos, or take them with the camera, in nativue apps",
   "keywords": [
     "vue",
     "native",

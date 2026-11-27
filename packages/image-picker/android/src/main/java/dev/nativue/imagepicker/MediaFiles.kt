@@ -37,6 +37,7 @@ internal class MediaFiles(private val context: Context) {
     /** Its size as shown: EXIF orientations that turn it a quarter swap width and height. */
     private fun describeImage(file: File, mimeType: String): Map<String, Any> {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+
         BitmapFactory.decodeFile(file.path, bounds)
 
         val orientation = ExifInterface(file.path).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)

@@ -1,10 +1,12 @@
 package dev.nativue.imagepicker
 
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.ext.SdkExtensions
 import android.provider.MediaStore
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContract
@@ -42,7 +44,15 @@ internal class PickMedia : ActivityResultContract<PickRequest, List<Uri>>() {
         return (listOfNotNull(intent.data) + clipUris).distinct()
     }
 
-    /** The photo picker takes at most this many (Android 13+); asking for more throws. */
-    private fun systemLimit(): Int =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) MediaStore.getPickImagesMaxLimit() else Int.MAX_VALUE
+    /**
+     * The photo picker takes at most this many, and asking for more throws. It's Android's own on 13+, and
+     * on 11 and 12 through a system update; elsewhere androidx opens a picker with no limit.
+     */
+    @SuppressLint("NewApi")
+    private fun systemLimit(): Int {
+        val hasSystemPicker = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ||
+            (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && SdkExtensions.getExtensionVersion(Build.VERSION_CODES.R) >= 2)
+
+        return if (hasSystemPicker) MediaStore.getPickImagesMaxLimit() else Int.MAX_VALUE
+    }
 }

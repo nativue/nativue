@@ -21,8 +21,9 @@ public final class ImagePickerPlugin: NativuePlugin {
             let results = try await pick(limit: arguments[0] as! Int, mediaTypes: arguments[1] as! String)
             var picked: [[String: Any]] = []
 
+            // One that won't load (an iCloud photo, offline) leaves the others.
             for result in results {
-                if let media = try await MediaFile.copy(from: result.itemProvider) { picked.append(media) }
+                if let media = try? await MediaFile.copy(from: result.itemProvider) { picked.append(media) }
             }
 
             return picked
@@ -66,9 +67,7 @@ public final class ImagePickerPlugin: NativuePlugin {
 
     @MainActor
     private func pick(limit: Int, mediaTypes: String) async throws -> [PHPickerResult] {
-        guard let presenter = registry?.topViewController else {
-            throw PluginError(code: "ERR_UNAVAILABLE", message: "The app has no screen to show the picker on")
-        }
+        let presenter = try presenter()
 
         var configuration = PHPickerConfiguration()
         configuration.selectionLimit = limit
@@ -78,10 +77,8 @@ public final class ImagePickerPlugin: NativuePlugin {
 
         return await withCheckedContinuation { continuation in
             let picker = PHPickerViewController(configuration: configuration)
-            let delegate = PickerDelegate { [weak self] results in
-                picker.dismiss(animated: true)
-                self?.activeDelegate = nil
-                continuation.resume(returning: results)
+            let delegate = PickerDelegate { results in
+                self.close(picker) { continuation.resume(returning: results) }
             }
 
             picker.delegate = delegate
@@ -93,16 +90,12 @@ public final class ImagePickerPlugin: NativuePlugin {
 
     @MainActor
     private func openCamera(_ options: CameraOptions) async throws -> [UIImagePickerController.InfoKey: Any]? {
-        guard let presenter = registry?.topViewController else {
-            throw PluginError(code: "ERR_UNAVAILABLE", message: "The app has no screen to show the camera on")
-        }
+        let presenter = try presenter()
 
         return await withCheckedContinuation { continuation in
             let camera = UIImagePickerController()
-            let delegate = CameraDelegate { [weak self] taken in
-                camera.dismiss(animated: true)
-                self?.activeDelegate = nil
-                continuation.resume(returning: taken)
+            let delegate = CameraDelegate { taken in
+                self.close(camera) { continuation.resume(returning: taken) }
             }
 
             camera.sourceType = .camera
@@ -114,6 +107,32 @@ public final class ImagePickerPlugin: NativuePlugin {
             activeDelegate = delegate
             presenter.present(camera, animated: true)
         }
+    }
+
+    /// Where to show the picker or the camera: one at a time, as a second would leave the first's call unanswered.
+    @MainActor
+    private func presenter() throws -> UIViewController {
+        guard activeDelegate == nil else {
+            throw PluginError(code: "ERR_UNAVAILABLE", message: "The picker or the camera is already open")
+        }
+        guard let presenter = registry?.topViewController else {
+            throw PluginError(code: "ERR_UNAVAILABLE", message: "The app has no screen to show it on")
+        }
+
+        return presenter
+    }
+
+    /// Answers once it's gone: what the app shows next would fail while it's still leaving.
+    @MainActor
+    private func close(_ controller: UIViewController, then answer: @escaping () -> Void) {
+        let finish = {
+            self.activeDelegate = nil
+            answer()
+        }
+
+        guard controller.presentingViewController != nil else { return finish() }
+
+        controller.dismiss(animated: true, completion: finish)
     }
 
     /// The asked-for types this device's camera takes: setting one it doesn't (video on a simulator) throws.
@@ -231,6 +250,7 @@ private enum MediaFile {
         }
 
         let file = try newFile(extension: "jpg")
+
         try data.write(to: file)
 
         return try imageDescription(of: file)

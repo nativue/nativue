@@ -7,7 +7,7 @@
 | [`@nativue/tailwind`](../packages/tailwind/README.md)           | Tailwind CSS classes, turned into native styles when the app is built        |
 | [`@nativue/clipboard`](../packages/clipboard/README.md)         | copying text to the clipboard                                                |
 | [`@nativue/haptics`](../packages/haptics/README.md)             | haptic feedback                                                              |
-| [`@nativue/image-picker`](../packages/image-picker/README.md)   | photos and videos from the library, and photos from the camera               |
+| [`@nativue/image-picker`](../packages/image-picker/README.md)   | photos and videos from the library or the camera                             |
 | [`@nativue/notifications`](../packages/notifications/README.md) | local notifications                                                          |
 | [`@nativue/sqlite`](../packages/sqlite/README.md)               | SQLite databases                                                             |
 

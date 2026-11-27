@@ -15,6 +15,7 @@ async function run(choose: () => Promise<PickedMedia[]>) {
   error.value = ''
   try {
     const chosen = await choose()
+
     if (chosen.length > 0) media.value = chosen
   } catch (failure) {
     error.value = (failure as Error).message
@@ -39,6 +40,7 @@ function describe({ type, width, height, fileSize, duration }: PickedMedia) {
 // What came back after Android closed the app while the picker or the camera was open.
 onMounted(async () => {
   const pending = await ImagePicker.getPendingResult()
+
   if (pending) media.value = pending
 })
 </script>

@@ -9,8 +9,11 @@ import androidx.activity.result.contract.ActivityResultContract
 
 internal class CaptureRequest(val output: Uri, val isVideo: Boolean, val videoMaxDuration: Int, val isLowQuality: Boolean)
 
-/** The camera app, for a photo or a video written into the file the app lends it. true when it was taken. */
-internal class CaptureMedia : ActivityResultContract<CaptureRequest, Boolean>() {
+/** [elsewhere]: where the camera app saved it, when it didn't write into the file it was lent. */
+internal class CaptureResult(val isTaken: Boolean, val elsewhere: Uri?)
+
+/** The camera app, for a photo or a video written into the file the app lends it. */
+internal class CaptureMedia : ActivityResultContract<CaptureRequest, CaptureResult>() {
     override fun createIntent(context: Context, input: CaptureRequest): Intent {
         if (!input.isVideo) return Intent(MediaStore.ACTION_IMAGE_CAPTURE).putExtra(MediaStore.EXTRA_OUTPUT, input.output)
 
@@ -20,5 +23,5 @@ internal class CaptureMedia : ActivityResultContract<CaptureRequest, Boolean>() 
             .apply { if (input.videoMaxDuration > 0) putExtra(MediaStore.EXTRA_DURATION_LIMIT, input.videoMaxDuration) }
     }
 
-    override fun parseResult(resultCode: Int, intent: Intent?): Boolean = resultCode == Activity.RESULT_OK
+    override fun parseResult(resultCode: Int, intent: Intent?) = CaptureResult(resultCode == Activity.RESULT_OK, intent?.data)
 }

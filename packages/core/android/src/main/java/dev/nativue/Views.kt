@@ -5,7 +5,9 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
+import android.graphics.Matrix
 import android.graphics.Rect
+import android.media.ExifInterface
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -629,7 +631,7 @@ class RemoteImageView(context: Context) : ImageView(context) {
                 val cachedBytes = if (readsDisk) diskCache.read(source) else null
                 val downloadedBytes = if (cachedBytes == null) runCatching { download(source) }.getOrNull() else null
                 val bytes = cachedBytes ?: downloadedBytes
-                val bitmap = bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
+                val bitmap = bytes?.let(::decodeUpright)
                 if (bitmap == null) {
                     mainThread.post(onFailed)
                     return@execute
@@ -640,6 +642,29 @@ class RemoteImageView(context: Context) : ImageView(context) {
                     onLoaded(bitmap)
                 }
             }
+        }
+
+        /** Turned as its EXIF orientation says, as cameras save photos sideways and leave the turn to the viewer. */
+        private fun decodeUpright(bytes: ByteArray): Bitmap? {
+            val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+            val orientation = runCatching {
+                ExifInterface(bytes.inputStream()).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
+            }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+            val turn = Matrix().apply {
+                when (orientation) {
+                    ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> postScale(-1f, 1f)
+                    ExifInterface.ORIENTATION_ROTATE_180 -> postRotate(180f)
+                    ExifInterface.ORIENTATION_FLIP_VERTICAL -> postScale(1f, -1f)
+                    ExifInterface.ORIENTATION_TRANSPOSE -> postRotate(90f).also { postScale(-1f, 1f) }
+                    ExifInterface.ORIENTATION_ROTATE_90 -> postRotate(90f)
+                    ExifInterface.ORIENTATION_TRANSVERSE -> postRotate(270f).also { postScale(-1f, 1f) }
+                    ExifInterface.ORIENTATION_ROTATE_270 -> postRotate(270f)
+                }
+            }
+
+            if (turn.isIdentity) return bitmap
+
+            return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, turn, true)
         }
 
         private fun store(bitmap: Bitmap, downloadedBytes: ByteArray?, source: String, diskCache: ImageDiskCache, cachePolicy: String) {
