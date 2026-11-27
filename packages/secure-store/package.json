@@ -1,0 +1,50 @@
+{
+  "name": "@nativue/secure-store",
+  "version": "0.1.0",
+  "description": "Keep secrets in nativue apps: the Keychain on iOS, the Android Keystore on Android",
+  "keywords": [
+    "vue",
+    "native",
+    "keychain",
+    "keystore",
+    "secure-storage",
+    "nativue"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/nativue/nativue#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nativue/nativue.git",
+    "directory": "packages/secure-store"
+  },
+  "bugs": "https://github.com/nativue/nativue/issues",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "vue-tsc"
+  },
+  "peerDependencies": {
+    "@nativue/core": ">=0.14.0"
+  },
+  "nativue": {
+    "ios": {
+      "sources": "ios",
+      "plugin": "SecureStorePlugin"
+    },
+    "android": {
+      "sources": "android",
+      "plugin": "dev.nativue.securestore.SecureStorePlugin"
+    }
+  },
+  "files": [
+    "src",
+    "ios",
+    "android/build.gradle.kts",
+    "android/src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

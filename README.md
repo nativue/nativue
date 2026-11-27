@@ -83,6 +83,7 @@ To run on a phone, see [Getting started](docs/getting-started.md#run-on-a-phone)
 | [`@nativue/clipboard`](packages/clipboard)         | copying text to the clipboard                   |
 | [`@nativue/haptics`](packages/haptics)             | haptic feedback                                 |
 | [`@nativue/notifications`](packages/notifications) | local notifications                             |
+| [`@nativue/secure-store`](packages/secure-store)   | secrets in the Keychain and the Keystore        |
 | [`@nativue/sqlite`](packages/sqlite)               | SQLite databases                                |
 
 ## Not affiliated

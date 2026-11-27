@@ -15,6 +15,7 @@
     "@nativue/haptics": "*",
     "@nativue/icons": "*",
     "@nativue/notifications": "*",
+    "@nativue/secure-store": "*",
     "@nativue/sqlite": "*",
     "@nativue/svg": "*",
     "@nativue/tailwind": "*"

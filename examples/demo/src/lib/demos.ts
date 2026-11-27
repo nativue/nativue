@@ -2,15 +2,16 @@
 import type { Component } from 'vue'
 import {
   BellIcon,
+  BlendIcon,
   BlocksIcon,
   BugIcon,
-  BlendIcon,
   ChartSplineIcon,
   ClipboardCopyIcon,
   CompassIcon,
   DatabaseIcon,
   HandIcon,
   HardDriveIcon,
+  KeyRoundIcon,
   ListChecksIcon,
   PaletteIcon,
   SparklesIcon,
@@ -133,6 +134,13 @@ export const demoSections: DemoSection[] = [
         subtitle: 'Copy text, with native code: @nativue/clipboard',
         icon: ClipboardCopyIcon,
         tint: colors.purple,
+      },
+      {
+        href: '/explore/secure-store',
+        title: 'Secure store',
+        subtitle: 'Secrets in the Keychain and the Keystore: @nativue/secure-store',
+        icon: KeyRoundIcon,
+        tint: colors.orange,
       },
       {
         href: '/explore/notifications',

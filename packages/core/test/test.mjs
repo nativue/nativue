@@ -31,6 +31,8 @@ const reportedErrors = []
 const hapticsCalls = []
 // The texts @nativue/clipboard copied.
 const copiedTexts = []
+// What @nativue/secure-store's native side keeps, by key.
+const secureItems = new Map()
 // The statements @nativue/sqlite sent, as [sql, parameters]: it gets no rows back, and a COUNT gets zeros.
 const sqliteQueries = []
 
@@ -59,6 +61,16 @@ globalThis.__native = {
   'pluginAsync:clipboard.copy': (callId, text) => {
     copiedTexts.push(text)
     resolvesWith(false)(callId)
+  },
+  'pluginAsync:secureStore.setItem': (callId, key, value) => {
+    secureItems.set(key, value)
+    resolvesWith(null)(callId)
+  },
+  'pluginAsync:secureStore.getItem': (callId, key) =>
+    resolvesWith(secureItems.get(key) ?? null)(callId),
+  'pluginAsync:secureStore.deleteItem': (callId, key) => {
+    secureItems.delete(key)
+    resolvesWith(null)(callId)
   },
   'pluginAsync:sqlite.query': fakeSqliteQuery,
   'pluginAsync:sqlite.batch': resolvesWith({ changes: 0, lastInsertId: 0 }),
@@ -1289,6 +1301,19 @@ globalThis.__dispatch(pressableContaining('Copy', clipboardId), 'press')
 await settle()
 assert.deepEqual(copiedTexts, ['Hello from nativue'])
 assert.ok(renderedTexts(clipboardId).includes('Copied'))
+
+// @nativue/secure-store: saves, reads and deletes through its native side.
+const secureStoreId = await open('explore/secure-store')
+press(pressableContaining('Save', secureStoreId))
+await settle()
+await settle() // saved, then read back
+assert.deepEqual([...secureItems], [['demo-token', 's3cr3t-t0ken']])
+assert.ok(renderedTexts(secureStoreId).includes('Stored: s3cr3t-t0ken'))
+press(pressableContaining('Delete', secureStoreId))
+await settle()
+await settle()
+assert.equal(secureItems.size, 0)
+assert.ok(renderedTexts(secureStoreId).includes('Nothing stored'))
 
 // @nativue/sqlite: its async plugin function, and named parameters numbered before they're sent.
 const sqliteId = await open('explore/sqlite')

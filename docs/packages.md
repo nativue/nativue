@@ -8,6 +8,7 @@
 | [`@nativue/clipboard`](../packages/clipboard/README.md)         | copying text to the clipboard                                                |
 | [`@nativue/haptics`](../packages/haptics/README.md)             | haptic feedback                                                              |
 | [`@nativue/notifications`](../packages/notifications/README.md) | local notifications                                                          |
+| [`@nativue/secure-store`](../packages/secure-store/README.md)   | small secrets (tokens, passwords), in the Keychain and the Android Keystore  |
 | [`@nativue/sqlite`](../packages/sqlite/README.md)               | SQLite databases                                                             |
 
 Any npm package written in plain JavaScript or Vue works too, as long as it doesn't use the browser's
