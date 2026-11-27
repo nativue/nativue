@@ -37,7 +37,7 @@ function shuffle() {
 
 <template>
   <Page>
-    <Stack.Screen :options="{ title: 'SVG' }" />
+    <Stack.Screen :options="{ title: 'Svg' }" />
 
     <Section title="Chart" footer="<svg> as on the web: tap a point. Drawn by one native view.">
       <View class="items-center rounded-xl bg-white py-3 dark:bg-slate-800">

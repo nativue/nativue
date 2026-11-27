@@ -50,7 +50,7 @@ export const demoSections: DemoSection[] = [
       },
       {
         href: '/explore/svg',
-        title: 'SVG',
+        title: 'Svg',
         subtitle: 'Charts and drawings with <svg>, tappable',
         icon: ChartSplineIcon,
         tint: colors.green,
