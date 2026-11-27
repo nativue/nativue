@@ -135,6 +135,7 @@ globalThis.__native = {
   },
   'pluginAsync:fileSystem.upload': resolvesWith({ status: 200, headers: {}, body: '{}' }),
   'plugin:fileSystem.cancel': () => null,
+  'pluginAsync:fileSystem.discardDownload': resolvesWith(null),
   'pluginAsync:secureStore.setItem': (callId, key, value) => {
     secureItems.set(key, value)
     resolvesWith(null)(callId)

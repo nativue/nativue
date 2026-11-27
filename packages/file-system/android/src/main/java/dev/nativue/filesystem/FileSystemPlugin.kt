@@ -8,6 +8,8 @@ import dev.nativue.PluginRegistry
 import dev.nativue.Promise
 import java.io.ByteArrayInputStream
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
@@ -20,6 +22,8 @@ import java.nio.charset.CodingErrorAction
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import org.json.JSONException
+import org.json.JSONObject
 
 /**
  * FileSystem (src/index.ts): files under file:// URIs, and downloads and uploads that report their progress
@@ -32,9 +36,12 @@ class FileSystemPlugin : NativuePlugin {
 
     private class Transfer {
         @Volatile var isCanceled = false
+        /** A pause: what a download received stays for the next one to resume. */
+        @Volatile var keepsWhatArrived = false
         @Volatile var connection: HttpURLConnection? = null
 
-        fun cancel() {
+        fun cancel(keepingWhatArrived: Boolean = false) {
+            keepsWhatArrived = keepingWhatArrived
             isCanceled = true
             connection?.disconnect()
         }
@@ -119,18 +126,26 @@ class FileSystemPlugin : NativuePlugin {
             val taskId = (arguments[0] as Number).toLong()
 
             transfer(taskId, promise) { transfer ->
+                val source = file(arguments[2])
+
                 @Suppress("UNCHECKED_CAST")
                 upload(
-                    registry, taskId, transfer, arguments[1] as String, file(arguments[2]),
+                    registry, taskId, transfer, arguments[1] as String, source,
                     method = arguments[3] as String,
                     headers = headers(arguments[4]),
                     form = arguments[5] as Map<String, Any>?,
+                    range = byteRange(source, (arguments[6] as Number).toLong(), (arguments[7] as Number).toLong()),
                 )
             }
         }
 
         registry.addFunction("fileSystem.cancel") { arguments ->
-            runningTransfers[(arguments[0] as Number).toLong()]?.cancel()
+            runningTransfers[(arguments[0] as Number).toLong()]?.cancel(keepingWhatArrived = arguments[1] as? Boolean ?: false)
+            null
+        }
+
+        addFileFunction(registry, "fileSystem.discardDownload") { arguments ->
+            PartialDownload(file(arguments[0])).discard()
             null
         }
     }
@@ -262,6 +277,11 @@ class FileSystemPlugin : NativuePlugin {
         return connection
     }
 
+    /**
+     * Into a partial file beside the destination, renamed over it at the end. What a cut-off download left there
+     * is asked for no more (Range, If-Range): a 206 continues it, anything else starts over, and a 416 (what's
+     * there can't be continued) asks again for the whole file.
+     */
     private fun download(
         registry: PluginRegistry,
         taskId: Long,
@@ -269,22 +289,46 @@ class FileSystemPlugin : NativuePlugin {
         url: String,
         destination: File,
         headers: Map<String, String>,
+        isRetry: Boolean = false,
     ): Map<String, Any> {
-        val connection = open(transfer, url, "GET", headers)
+        val partial = PartialDownload(destination)
+        val resumption = partial.resumption(url)
+        val rangeHeaders = resumption?.let { mapOf("Range" to "bytes=${it.offset}-", "If-Range" to it.validator) }.orEmpty()
+        val connection = open(transfer, url, "GET", headers + rangeHeaders)
 
         try {
             val status = connection.responseCode
-            val totalBytes = connection.contentLengthLong
-            val progress = ProgressReporter(registry, taskId, totalBytes)
+            // The cache folder can be emptied meanwhile: the rest only goes after what was asked for.
+            val hasLostWhatArrived = status == 206 && resumption != null && partial.file.length() != resumption.offset
 
-            destination.parentFile?.mkdirs()
-            writeAtomically(destination) { output ->
-                // A 404's body is saved too, as fetch would hand it over.
-                responseBody(connection, status).use { input -> copy(input, output, transfer, progress) }
+            if ((status == 416 || hasLostWhatArrived) && !isRetry) {
+                partial.discard()
+
+                return download(registry, taskId, transfer, url, destination, headers, isRetry = true)
             }
+
+            val resumes = status == 206 && resumption != null
+
+            if (!resumes) partial.discard()
+            partial.prepareFile()
+            partial.remember(connection, url)
+
+            val offset = partial.file.length()
+            val contentLength = connection.contentLengthLong
+            val progress = ProgressReporter(registry, taskId, if (contentLength < 0) -1 else offset + contentLength)
+
+            // A 404's body is saved too, as fetch would hand it over.
+            FileOutputStream(partial.file, true).use { output ->
+                responseBody(connection, status).use { input -> copy(input, output, transfer, progress, startingAt = offset) }
+            }
+            partial.finish()
             progress.report(destination.length(), isLast = true)
 
             return mapOf("uri" to Uri.fromFile(destination).toString(), "status" to status, "headers" to responseHeaders(connection))
+        } catch (error: Exception) {
+            // Kept for the next download to resume, unless canceled for good or the server can't resume it.
+            if ((transfer.isCanceled && !transfer.keepsWhatArrived) || partial.resumption(url) == null) partial.discard()
+            throw error
         } finally {
             connection.disconnect()
         }
@@ -299,13 +343,13 @@ class FileSystemPlugin : NativuePlugin {
         method: String,
         headers: Map<String, String>,
         form: Map<String, Any>?,
+        range: LongRange,
     ): Map<String, Any> {
-        if (!source.isFile) throw FileError("ERR_NOT_FOUND", "${source.path} doesn't exist")
-
         val connection = open(transfer, url, method, headers)
         val boundary = "nativue-${UUID.randomUUID()}"
         val (head, tail) = form?.let { formParts(it, boundary) } ?: (ByteArray(0) to ByteArray(0))
-        val totalBytes = head.size + source.length() + tail.size
+        val length = range.last - range.first + 1
+        val totalBytes = head.size + length + tail.size
         val progress = ProgressReporter(registry, taskId, totalBytes)
 
         try {
@@ -316,7 +360,10 @@ class FileSystemPlugin : NativuePlugin {
 
             connection.outputStream.use { output ->
                 output.write(head)
-                source.inputStream().use { input -> copy(input, output, transfer, progress, startingAt = head.size.toLong()) }
+                FileInputStream(source).use { input ->
+                    input.channel.position(range.first)
+                    copy(input, output, transfer, progress, startingAt = head.size.toLong(), limit = length)
+                }
                 output.write(tail)
             }
             progress.report(totalBytes, isLast = true)
@@ -328,6 +375,16 @@ class FileSystemPlugin : NativuePlugin {
         } finally {
             connection.disconnect()
         }
+    }
+
+    /** The bytes to send, from offset: length of them, or to the end when it's -1. */
+    private fun byteRange(source: File, offset: Long, length: Long): LongRange {
+        if (!source.isFile) throw FileError("ERR_NOT_FOUND", "${source.path} doesn't exist")
+        if (offset > source.length()) throw FileError("ERR_INVALID_ARGUMENT", "offset is past the end of the file")
+
+        val end = if (length < 0) source.length() else minOf(source.length(), offset + length)
+
+        return offset until end
     }
 
     private fun formParts(form: Map<String, Any>, boundary: String): Pair<ByteArray, ByteArray> {
@@ -345,18 +402,28 @@ class FileSystemPlugin : NativuePlugin {
 
     private fun quoted(value: String) = value.replace("\"", "%22").replace('\r', ' ').replace('\n', ' ')
 
-    private fun copy(input: InputStream, output: OutputStream, transfer: Transfer, progress: ProgressReporter, startingAt: Long = 0) {
+    /** At most limit bytes, reporting the total from startingAt. */
+    private fun copy(
+        input: InputStream,
+        output: OutputStream,
+        transfer: Transfer,
+        progress: ProgressReporter,
+        startingAt: Long = 0,
+        limit: Long = Long.MAX_VALUE,
+    ) {
         val buffer = ByteArray(64 * 1024)
         var bytes = startingAt
+        var remaining = limit
 
-        while (true) {
+        while (remaining > 0) {
             if (transfer.isCanceled) throw IOException("Canceled")
 
-            val read = input.read(buffer)
+            val read = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
 
             if (read < 0) break
             output.write(buffer, 0, read)
             bytes += read
+            remaining -= read
             progress.report(bytes)
         }
     }
@@ -387,5 +454,59 @@ class FileSystemPlugin : NativuePlugin {
     private companion object {
         const val PROGRESS_INTERVAL_MS = 100L
         const val TIMEOUT_MS = 60_000
+    }
+}
+
+/**
+ * What a download has received so far, beside its destination, and what names the server's file (its ETag, or
+ * else Last-Modified): the next download to the same place asks only for the rest, if the file hasn't changed.
+ */
+private class PartialDownload(val destination: File) {
+    class Resumption(val offset: Long, val validator: String)
+
+    val file = File(destination.parentFile, ".${destination.name}.partial")
+    private val record = File(destination.parentFile, ".${destination.name}.partial.json")
+
+    /** null when it can't resume: nothing here, another URL's, or no validator. */
+    fun resumption(url: String): Resumption? {
+        if (!record.isFile || file.length() == 0L) return null
+
+        val saved = try {
+            JSONObject(record.readText())
+        } catch (error: JSONException) {
+            return null
+        }
+
+        if (saved.optString("url") != url) return null
+
+        return saved.optString("validator").takeIf { it.isNotEmpty() }?.let { Resumption(file.length(), it) }
+    }
+
+    fun remember(connection: HttpURLConnection, url: String) {
+        val validator = connection.getHeaderField("ETag") ?: connection.getHeaderField("Last-Modified")
+
+        if (validator == null) {
+            record.delete()
+
+            return
+        }
+
+        record.writeText(JSONObject(mapOf("url" to url, "validator" to validator)).toString())
+    }
+
+    fun prepareFile() {
+        file.parentFile?.mkdirs()
+        file.createNewFile()
+    }
+
+    fun finish() {
+        if (destination.exists() && !destination.deleteRecursively()) throw IOException("Couldn't replace ${destination.path}")
+        if (!file.renameTo(destination)) throw IOException("Couldn't save ${destination.path}")
+        record.delete()
+    }
+
+    fun discard() {
+        file.delete()
+        record.delete()
     }
 }

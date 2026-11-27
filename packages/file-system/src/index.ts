@@ -1,4 +1,4 @@
-import { addNativeListener, requireNativeFunction } from '@nativue/core'
+import { addNativeListener, NativeError, requireNativeFunction } from '@nativue/core'
 
 /** file:// URIs of the app's folders, ending in '/': `Paths.document + 'notes.txt'`. */
 export interface AppPaths {
@@ -34,7 +34,7 @@ export interface DownloadOptions {
 }
 
 export interface DownloadResult {
-  /** Where it was saved: the `to` it was given. */
+  /** The `to` it was given. */
   uri: string
   /** As fetch's: a 404 still saves its body and resolves, so check it. */
   status: number
@@ -55,6 +55,10 @@ export interface UploadOptions {
     /** Other form fields, sent before the file. */
     fields?: Record<string, string>
   }
+  /** Only part of the file, for uploads in parts (S3 multipart, tus): from this byte... */
+  offset?: number
+  /** ...this many bytes, or to the end. */
+  length?: number
   onProgress?: (progress: TransferProgress) => void
 }
 
@@ -65,8 +69,17 @@ export interface UploadResult {
   body: string
 }
 
-/** A download or upload: a promise that also cancels, rejecting with ERR_CANCELED. */
-export type Transfer<Result> = Promise<Result> & { cancel(): void }
+/** An upload: a promise that also cancels, rejecting with ERR_CANCELED. */
+export type Upload = Promise<UploadResult> & { cancel(): void }
+
+/** A download: a promise that pauses, resumes and cancels. */
+export type Download = Promise<DownloadResult> & {
+  /** Stops it, keeping what arrived; resume() asks the server for the rest. */
+  pause(): void
+  resume(): void
+  /** Stops it and throws away what arrived: the promise rejects with ERR_CANCELED. */
+  cancel(): void
+}
 
 type NativeProgress = { taskId: number; bytes: number; totalBytes: number }
 
@@ -112,9 +125,15 @@ const nativeUpload =
       method: string,
       headers: Record<string, string>,
       multipart: Required<NonNullable<UploadOptions['multipart']>> | null,
+      offset: number,
+      length: number,
     ) => Promise<UploadResult>
   >('fileSystem.upload')
-const nativeCancel = requireNativeFunction<(taskId: number) => void>('fileSystem.cancel')
+const nativeCancel =
+  requireNativeFunction<(taskId: number, keepingWhatArrived: boolean) => void>('fileSystem.cancel')
+const nativeDiscardDownload = requireNativeFunction<(to: string) => Promise<void>>(
+  'fileSystem.discardDownload',
+)
 
 // Unique across runtimes: a reload's transfers never take the ids of the ones still running.
 let nextTaskId = Date.now()
@@ -150,20 +169,77 @@ export const FileSystem = {
   /** Replaces what's at `to`. */
   move: async (from: string, to: string) => nativeMove(fileURI(from), fileURI(to)),
 
-  /** Saves url's body at `to`, replacing what's there, once it has all arrived. */
-  download(url: string, to: string, { headers = {}, onProgress }: DownloadOptions = {}) {
-    return transfer(onProgress, (taskId) =>
-      nativeDownload(taskId, webURL(url), fileURI(to), headers).then((result) => ({
-        ...result,
-        uri: to,
-      })),
-    )
+  /**
+   * Saves url's body at `to`, replacing what's there, once it has all arrived. One cut off (paused, failed,
+   * the app closed) continues where it stopped the next time it's downloaded to the same `to`.
+   */
+  download(url: string, to: string, { headers = {}, onProgress }: DownloadOptions = {}): Download {
+    let taskId = 0
+    let state: 'running' | 'paused' | 'done' = 'running'
+    let settle: { resolve(result: DownloadResult): void; reject(error: unknown): void }
+    const promise = new Promise<DownloadResult>((resolve, reject) => (settle = { resolve, reject }))
+    const subscription = onProgress && listenToProgress(() => taskId, onProgress)
+
+    function finish() {
+      state = 'done'
+      subscription?.remove()
+    }
+
+    // Each resume is a new native download, asking for the rest: only the latest one settles the promise.
+    function run() {
+      const thisTaskId = nextTaskId++
+
+      taskId = thisTaskId
+      startSafely(() => nativeDownload(thisTaskId, webURL(url), fileURI(to), headers)).then(
+        (result) => {
+          if (thisTaskId !== taskId) return
+
+          finish()
+          settle.resolve({ ...result, uri: to })
+        },
+        (error) => {
+          if (thisTaskId !== taskId || state === 'paused') return
+
+          finish()
+          settle.reject(error)
+        },
+      )
+    }
+
+    run()
+
+    return Object.assign(promise, {
+      pause() {
+        if (state !== 'running') return
+
+        state = 'paused'
+        nativeCancel(taskId, true)
+      },
+
+      resume() {
+        if (state !== 'paused') return
+
+        state = 'running'
+        run()
+      },
+
+      cancel() {
+        if (state === 'running') return nativeCancel(taskId, false)
+        if (state !== 'paused') return
+
+        finish()
+        nativeDiscardDownload(fileURI(to))
+          .catch(() => {})
+          .then(() => settle.reject(new NativeError('The transfer was canceled', 'ERR_CANCELED')))
+      },
+    })
   },
 
-  upload(url: string, from: string, options: UploadOptions = {}) {
-    const { method = 'POST', headers = {}, multipart, onProgress } = options
-
-    return transfer(onProgress, (taskId) => {
+  upload(url: string, from: string, options: UploadOptions = {}): Upload {
+    const { method = 'POST', headers = {}, multipart, offset = 0, length, onProgress } = options
+    const taskId = nextTaskId++
+    const subscription = onProgress && listenToProgress(() => taskId, onProgress)
+    const promise = startSafely(() => {
       const source = fileURI(from)
       const form = multipart && {
         field: multipart.field ?? 'file',
@@ -172,30 +248,40 @@ export const FileSystem = {
         fields: multipart.fields ?? {},
       }
 
-      return nativeUpload(taskId, webURL(url), source, method, headers, form ?? null)
-    })
+      return nativeUpload(
+        taskId,
+        webURL(url),
+        source,
+        method,
+        headers,
+        form ?? null,
+        byteCount('offset', offset),
+        length === undefined ? -1 : byteCount('length', length),
+      )
+    }).finally(() => subscription?.remove())
+
+    return Object.assign(promise, { cancel: () => nativeCancel(taskId, false) })
   },
 }
 
-/** start runs at once: its errors reject the transfer, which can be canceled right after. */
-function transfer<Result>(
-  onProgress: ((progress: TransferProgress) => void) | undefined,
-  start: (taskId: number) => Promise<Result>,
-): Transfer<Result> {
-  const taskId = nextTaskId++
-  const subscription =
-    onProgress &&
-    addNativeListener<NativeProgress>('fileSystem.progress', (progress) => {
-      if (progress.taskId !== taskId) return
+/** taskId is read on each event: a resumed download has a new one. */
+function listenToProgress(taskId: () => number, onProgress: (progress: TransferProgress) => void) {
+  return addNativeListener<NativeProgress>('fileSystem.progress', (progress) => {
+    if (progress.taskId !== taskId()) return
 
-      onProgress({
-        bytes: progress.bytes,
-        totalBytes: progress.totalBytes < 0 ? null : progress.totalBytes,
-      })
+    onProgress({
+      bytes: progress.bytes,
+      totalBytes: progress.totalBytes < 0 ? null : progress.totalBytes,
     })
-  const promise = startSafely(() => start(taskId)).finally(() => subscription?.remove())
+  })
+}
 
-  return Object.assign(promise, { cancel: () => nativeCancel(taskId) })
+function byteCount(name: string, value: number) {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new TypeError(`@nativue/file-system: ${name} is a whole number of bytes, 0 or more`)
+  }
+
+  return value
 }
 
 function startSafely<Result>(start: () => Promise<Result>) {

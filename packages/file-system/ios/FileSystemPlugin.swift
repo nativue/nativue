@@ -117,31 +117,39 @@ public final class FileSystemPlugin: NativuePlugin {
 
         registry.addAsyncFunction("fileSystem.upload") { [transfers] arguments in
             let source = try fileURL(arguments[2])
+            let form = arguments[5] as? [String: Any]
+            let range = try byteRange(of: source, offset: arguments[6], length: arguments[7])
             var request = URLRequest(url: try webURL(arguments[1]))
-
-            guard FileManager.default.fileExists(atPath: source.path) else {
-                throw PluginError(code: "ERR_NOT_FOUND", message: "\(source.path) doesn't exist")
-            }
 
             request.httpMethod = arguments[3] as? String
             setHeaders(arguments[4], on: &request)
 
-            guard let form = arguments[5] as? [String: Any] else {
+            guard form != nil || range != nil else {
                 return try await transfers.upload(taskId: taskId(arguments[0]), request: request, body: source, isTemporary: false)
             }
 
             let boundary = "nativue-\(UUID().uuidString)"
-            let body = try fileOperation { try multipartBody(form, file: source, boundary: boundary) }
+            let body = try fileOperation { try uploadBody(form: form, file: source, range: range, boundary: boundary) }
 
-            request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+            if form != nil {
+                request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+            }
 
             return try await transfers.upload(taskId: taskId(arguments[0]), request: request, body: body, isTemporary: true)
         }
 
         registry.addFunction("fileSystem.cancel") { [transfers] arguments in
-            transfers.cancel(taskId: taskId(arguments[0]))
+            transfers.cancel(taskId: taskId(arguments[0]), keepingWhatArrived: arguments[1] as? Bool ?? false)
 
             return nil
+        }
+
+        registry.addAsyncFunction("fileSystem.discardDownload") { arguments in
+            try fileOperation {
+                try PartialDownload(destination: fileURL(arguments[0])).discard()
+
+                return nil
+            }
         }
     }
 }
@@ -247,19 +255,33 @@ private func setHeaders(_ argument: Any, on request: inout URLRequest) {
     }
 }
 
-/// The form in a temporary file, so a large upload streams from disk: fields, then the file.
-private func multipartBody(_ form: [String: Any], file: URL, boundary: String) throws -> URL {
+/// nil for the whole file. A length of -1 runs to the end.
+private func byteRange(of file: URL, offset: Any, length: Any) throws -> Range<Int64>? {
+    let attributes = try fileOperation { try FileManager.default.attributesOfItem(atPath: file.path) }
+    let size = Int64(attributes[.size] as? Int ?? 0)
+    let start = Int64(taskId(offset))
+    let requested = Int64(taskId(length))
+
+    guard start > 0 || requested >= 0 else { return nil }
+    guard start <= size else {
+        throw PluginError(code: "ERR_INVALID_ARGUMENT", message: "offset is past the end of the file")
+    }
+
+    return start..<(requested < 0 ? size : min(size, start + requested))
+}
+
+/// The body in a temporary file, so a large upload streams from disk: a form's fields, then the file or its range.
+private func uploadBody(form: [String: Any]?, file: URL, range: Range<Int64>?, boundary: String) throws -> URL {
     let body = FileManager.default.temporaryDirectory.appendingPathComponent("nativue-upload-\(UUID().uuidString)")
-    let field = form["field"] as! String
-    let fileName = form["fileName"] as! String
-    let mimeType = form["mimeType"] as! String
     var head = ""
 
-    for (name, value) in form["fields"] as? [String: Any] ?? [:] {
-        head += "--\(boundary)\r\nContent-Disposition: form-data; name=\"\(quoted(name))\"\r\n\r\n\(value)\r\n"
+    if let form {
+        for (name, value) in form["fields"] as? [String: Any] ?? [:] {
+            head += "--\(boundary)\r\nContent-Disposition: form-data; name=\"\(quoted(name))\"\r\n\r\n\(value)\r\n"
+        }
+        head += "--\(boundary)\r\nContent-Disposition: form-data; name=\"\(quoted(form["field"] as! String))\"; "
+        head += "filename=\"\(quoted(form["fileName"] as! String))\"\r\nContent-Type: \(form["mimeType"] as! String)\r\n\r\n"
     }
-    head += "--\(boundary)\r\nContent-Disposition: form-data; name=\"\(quoted(field))\"; filename=\"\(quoted(fileName))\"\r\n"
-    head += "Content-Type: \(mimeType)\r\n\r\n"
 
     FileManager.default.createFile(atPath: body.path, contents: Data(head.utf8))
 
@@ -272,10 +294,15 @@ private func multipartBody(_ form: [String: Any], file: URL, boundary: String) t
             try? input.close()
         }
         try output.seekToEnd()
-        while let chunk = try input.read(upToCount: 1 << 20), !chunk.isEmpty {
+        try input.seek(toOffset: UInt64(range?.lowerBound ?? 0))
+
+        var remaining = range.map { $0.upperBound - $0.lowerBound } ?? Int64.max
+
+        while remaining > 0, let chunk = try input.read(upToCount: Int(min(remaining, 1 << 20))), !chunk.isEmpty {
             try output.write(contentsOf: chunk)
+            remaining -= Int64(chunk.count)
         }
-        try output.write(contentsOf: Data("\r\n--\(boundary)--\r\n".utf8))
+        if form != nil { try output.write(contentsOf: Data("\r\n--\(boundary)--\r\n".utf8)) }
     } catch {
         try? FileManager.default.removeItem(at: body)
         throw error
@@ -290,22 +317,97 @@ private func quoted(_ value: String) -> String {
         .replacingOccurrences(of: "\n", with: " ")
 }
 
-/// Every download and upload, on one session whose delegate reports progress. Its state lives on the session's
-/// serial queue.
-private final class Transfers: NSObject, URLSessionDownloadDelegate, URLSessionDataDelegate {
+/// What a download has received so far, beside its destination, and what names the server's file: the next
+/// download to the same place asks only for the rest, if the file hasn't changed.
+private struct PartialDownload {
+    let destination: URL
+    let file: URL
+    private let record: URL
+
+    init(destination: URL) {
+        self.destination = destination
+        file = destination.deletingLastPathComponent().appendingPathComponent(".\(destination.lastPathComponent).partial")
+        record = file.appendingPathExtension("json")
+    }
+
+    /// Bytes already here, and the If-Range to ask for the rest with: nil when it can't resume.
+    func resumption(for url: URL) -> (offset: Int64, validator: String)? {
+        guard let data = try? Data(contentsOf: record),
+              let saved = try? JSONSerialization.jsonObject(with: data) as? [String: String],
+              saved["url"] == url.absoluteString,
+              let validator = saved["validator"],
+              let size = (try? FileManager.default.attributesOfItem(atPath: file.path))?[.size] as? Int,
+              size > 0 else { return nil }
+
+        return (Int64(size), validator)
+    }
+
+    /// The ETag, or else Last-Modified: without either the server can't say its file is the same.
+    func remember(_ response: HTTPURLResponse, for url: URL) {
+        guard let validator = response.value(forHTTPHeaderField: "ETag") ?? response.value(forHTTPHeaderField: "Last-Modified"),
+              let data = try? JSONSerialization.data(withJSONObject: ["url": url.absoluteString, "validator": validator])
+        else {
+            try? FileManager.default.removeItem(at: record)
+
+            return
+        }
+
+        try? data.write(to: record)
+    }
+
+    func prepareFile() throws {
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if !FileManager.default.fileExists(atPath: file.path) {
+            FileManager.default.createFile(atPath: file.path, contents: nil)
+        }
+    }
+
+    func finish() throws {
+        try prepare(destination)
+        try FileManager.default.moveItem(at: file, to: destination)
+        try? FileManager.default.removeItem(at: record)
+    }
+
+    func discard() throws {
+        for url in [file, record] where FileManager.default.fileExists(atPath: url.path) {
+            try FileManager.default.removeItem(at: url)
+        }
+    }
+}
+
+/// Every download and upload, on one session whose delegate writes downloads and reports progress. Its state
+/// lives on the session's serial queue.
+private final class Transfers: NSObject, URLSessionDataDelegate {
     /// At most this many progress events a second for each transfer.
     private static let progressInterval: TimeInterval = 0.1
 
-    private struct Running {
+    private final class Running {
         let taskId: Int
         let continuation: CheckedContinuation<Any?, Error>
-        /// A download's file, once saved.
-        let destination: URL?
-        /// An upload's form, deleted when it's done.
+        /// A download's request as JavaScript made it, without the range asked for.
+        let request: URLRequest
+        let partial: PartialDownload?
+        /// Where the range asked for starts: what must already be in the partial file.
+        var resumedAt: Int64 = 0
+        /// An upload's body made for it, deleted when it's done.
         let temporaryBody: URL?
+        var output: FileHandle?
         var responseBody = Data()
-        var savingError: Error?
+        var bytes: Int64 = 0
+        var totalBytes: Int64 = -1
+        var writingError: Error?
+        var keepsWhatArrived = false
+        var restartsWithoutRange = false
         var lastProgress: TimeInterval = 0
+
+        init(taskId: Int, continuation: CheckedContinuation<Any?, Error>, request: URLRequest,
+             partial: PartialDownload?, temporaryBody: URL?) {
+            self.taskId = taskId
+            self.continuation = continuation
+            self.request = request
+            self.partial = partial
+            self.temporaryBody = temporaryBody
+        }
     }
 
     private let queue: OperationQueue = {
@@ -320,7 +422,7 @@ private final class Transfers: NSObject, URLSessionDownloadDelegate, URLSessionD
     private var runningByTask: [Int: Running] = [:]
     private var tasksById: [Int: URLSessionTask] = [:]
     /// Canceled before they started: a cancel can arrive first.
-    private var canceledIds: Set<Int> = []
+    private var canceledIds: [Int: Bool] = [:]
 
     func attach(to registry: PluginRegistry) {
         queue.addOperation { [self] in
@@ -332,9 +434,12 @@ private final class Transfers: NSObject, URLSessionDownloadDelegate, URLSessionD
     func download(taskId: Int, request: URLRequest, to destination: URL) async throws -> Any? {
         try await withCheckedThrowingContinuation { continuation in
             queue.addOperation { [self] in
-                start(session.downloadTask(with: request), Running(
-                    taskId: taskId, continuation: continuation, destination: destination, temporaryBody: nil
-                ))
+                let running = Running(
+                    taskId: taskId, continuation: continuation, request: request,
+                    partial: PartialDownload(destination: destination), temporaryBody: nil
+                )
+
+                start(session.dataTask(with: rangeRequest(for: running)), running)
             }
         }
     }
@@ -343,28 +448,45 @@ private final class Transfers: NSObject, URLSessionDownloadDelegate, URLSessionD
         try await withCheckedThrowingContinuation { continuation in
             queue.addOperation { [self] in
                 start(session.uploadTask(with: request, fromFile: body), Running(
-                    taskId: taskId, continuation: continuation, destination: nil, temporaryBody: isTemporary ? body : nil
+                    taskId: taskId, continuation: continuation, request: request,
+                    partial: nil, temporaryBody: isTemporary ? body : nil
                 ))
             }
         }
     }
 
-    func cancel(taskId: Int) {
+    /// keepingWhatArrived: a pause, which the next download to the same place resumes.
+    func cancel(taskId: Int, keepingWhatArrived: Bool) {
         queue.addOperation { [self] in
             guard let task = tasksById[taskId] else {
-                canceledIds.insert(taskId)
+                canceledIds[taskId] = keepingWhatArrived
 
                 return
             }
 
+            runningByTask[task.taskIdentifier]?.keepsWhatArrived = keepingWhatArrived
             task.cancel()
         }
     }
 
+    private func rangeRequest(for running: Running) -> URLRequest {
+        var request = running.request
+
+        running.resumedAt = 0
+        if let url = request.url, let (offset, validator) = running.partial?.resumption(for: url) {
+            running.resumedAt = offset
+            request.setValue("bytes=\(offset)-", forHTTPHeaderField: "Range")
+            request.setValue(validator, forHTTPHeaderField: "If-Range")
+        }
+
+        return request
+    }
+
     private func start(_ task: URLSessionTask, _ running: Running) {
-        guard canceledIds.remove(running.taskId) == nil else {
+        if let keepsWhatArrived = canceledIds.removeValue(forKey: running.taskId) {
             task.cancel()
             if let body = running.temporaryBody { try? FileManager.default.removeItem(at: body) }
+            if !keepsWhatArrived { try? running.partial?.discard() }
 
             return running.continuation.resume(throwing: transferError(URLError(.cancelled)))
         }
@@ -374,51 +496,101 @@ private final class Transfers: NSObject, URLSessionDownloadDelegate, URLSessionD
         task.resume()
     }
 
-    private func reportProgress(of task: URLSessionTask, bytes: Int64, totalBytes: Int64) {
-        guard var running = runningByTask[task.taskIdentifier] else { return }
-
+    private func reportProgress(of running: Running, bytes: Int64, totalBytes: Int64) {
         let now = Date.timeIntervalSinceReferenceDate
 
         guard now - running.lastProgress >= Self.progressInterval || bytes == totalBytes else { return }
 
         running.lastProgress = now
-        runningByTask[task.taskIdentifier] = running
         registry?.sendEvent("fileSystem.progress", ["taskId": running.taskId, "bytes": bytes, "totalBytes": totalBytes])
     }
 
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64,
-                    totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
-        reportProgress(of: downloadTask, bytes: totalBytesWritten, totalBytes: totalBytesExpectedToWrite)
-    }
+    /// 206: the rest of what's here. Anything else starts over; a 416 (what's here can't be continued) asks again,
+    /// for the whole file.
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
+                    completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        guard let running = runningByTask[dataTask.taskIdentifier], let partial = running.partial,
+              let response = response as? HTTPURLResponse, let url = running.request.url else {
+            return completionHandler(.allow)
+        }
 
-    /// The system deletes location when this returns: the file is moved now.
-    func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
-        guard let destination = runningByTask[downloadTask.taskIdentifier]?.destination else { return }
+        if response.statusCode == 416 {
+            running.restartsWithoutRange = true
+
+            return completionHandler(.cancel)
+        }
 
         do {
-            try prepare(destination)
-            try FileManager.default.moveItem(at: location, to: destination)
+            let resumes = response.statusCode == 206
+
+            if !resumes { try partial.discard() }
+            try partial.prepareFile()
+
+            let output = try FileHandle(forWritingTo: partial.file)
+
+            running.bytes = try output.seekToEnd().asInt64
+
+            // The cache folder can be emptied meanwhile: the rest only goes after what was asked for.
+            if resumes && running.bytes != running.resumedAt {
+                try? output.close()
+                running.restartsWithoutRange = true
+
+                return completionHandler(.cancel)
+            }
+            running.totalBytes = response.expectedContentLength < 0 ? -1 : running.bytes + response.expectedContentLength
+            running.output = output
+            partial.remember(response, for: url)
+            completionHandler(.allow)
         } catch {
-            runningByTask[downloadTask.taskIdentifier]?.savingError = error
+            running.writingError = error
+            completionHandler(.cancel)
+        }
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        guard let running = runningByTask[dataTask.taskIdentifier] else { return }
+        guard let output = running.output else { return running.responseBody.append(data) }
+
+        do {
+            try output.write(contentsOf: data)
+            running.bytes += Int64(data.count)
+            reportProgress(of: running, bytes: running.bytes, totalBytes: running.totalBytes)
+        } catch {
+            running.writingError = error
+            dataTask.cancel()
         }
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64,
                     totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
-        reportProgress(of: task, bytes: totalBytesSent, totalBytes: totalBytesExpectedToSend)
-    }
+        guard let running = runningByTask[task.taskIdentifier] else { return }
 
-    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
-        runningByTask[dataTask.taskIdentifier]?.responseBody.append(data)
+        reportProgress(of: running, bytes: totalBytesSent, totalBytes: totalBytesExpectedToSend)
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let running = runningByTask.removeValue(forKey: task.taskIdentifier) else { return }
 
         tasksById.removeValue(forKey: running.taskId)
+        try? running.output?.close()
         if let body = running.temporaryBody { try? FileManager.default.removeItem(at: body) }
 
-        if let error = error ?? running.savingError {
+        if running.restartsWithoutRange, let partial = running.partial {
+            running.restartsWithoutRange = false
+            try? partial.discard()
+
+            return start(session.dataTask(with: running.request), running)
+        }
+
+        if let error = running.writingError ?? error {
+            // Kept for the next download to resume, unless canceled for good or the server can't resume it.
+            let isThrownAway = (error as? URLError)?.code == .cancelled && !running.keepsWhatArrived
+
+            if let partial = running.partial, let url = running.request.url,
+               isThrownAway || partial.resumption(for: url) == nil {
+                try? partial.discard()
+            }
+
             return running.continuation.resume(throwing: transferError(error))
         }
 
@@ -431,8 +603,13 @@ private final class Transfers: NSObject, URLSessionDownloadDelegate, URLSessionD
             ),
         ]
 
-        if let destination = running.destination {
-            result["uri"] = destination.absoluteString
+        if let partial = running.partial {
+            do {
+                try partial.finish()
+            } catch {
+                return running.continuation.resume(throwing: transferError(error))
+            }
+            reportProgress(of: running, bytes: running.bytes, totalBytes: running.bytes)
         } else {
             result["body"] = String(decoding: running.responseBody, as: UTF8.self)
         }
@@ -446,4 +623,8 @@ private final class Transfers: NSObject, URLSessionDownloadDelegate, URLSessionD
 
         return PluginError(code: "ERR_UNAVAILABLE", message: error.localizedDescription)
     }
+}
+
+private extension UInt64 {
+    var asInt64: Int64 { Int64(self) }
 }

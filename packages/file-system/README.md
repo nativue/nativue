@@ -56,7 +56,7 @@ const download = FileSystem.download(url, `${Paths.cache}report.pdf`, {
   headers: { Authorization: `Bearer ${token}` },
   onProgress: ({ bytes, totalBytes }) => (progress.value = totalBytes ? bytes / totalBytes : 0),
 })
-const { status, uri } = await download // or download.cancel()
+const { status, uri } = await download
 
 const { status, body } = await FileSystem.upload('https://api.example.com/photos', photo.uri, {
   multipart: { field: 'photo', mimeType: 'image/jpeg', fields: { caption: 'Beach' } },
@@ -65,23 +65,62 @@ const { status, body } = await FileSystem.upload('https://api.example.com/photos
 
 - `download` saves the body once it has all arrived, replacing what's at `to`.
 - `upload` sends the file's bytes alone, or as a form with `multipart` (`field`, `fileName`,
-  `mimeType`, and other `fields`). `method` is `'POST'` (the default), `'PUT'` or `'PATCH'`. The file
-  streams from disk, so a large one never sits in memory.
+  `mimeType`, and other `fields`). `method` is `'POST'` (the default), `'PUT'` or `'PATCH'`.
 - As with `fetch`, an HTTP error resolves: check `status`. The response's `headers` have lowercase
   names, and an upload's `body` is its text.
 - `onProgress` gets `{ bytes, totalBytes }` about ten times a second; `totalBytes` is `null` when the
   server doesn't say.
-- `cancel()` rejects the transfer with `ERR_CANCELED`.
-- Transfers run while the app is open: closing it stops them.
+- `cancel()` stops it and rejects with `ERR_CANCELED`.
+
+### Large files
+
+Files of any size stream between the disk and the network in small pieces: a 4 GB video never sits
+in memory.
+
+**A download continues where it stopped.** What has arrived waits beside `to` (as `.name.partial`),
+with the server's name for its file (`ETag`, or else `Last-Modified`). Downloading to the same `to`
+again asks only for the rest (`Range`, with `If-Range`), whether it stopped because of a pause, a lost
+connection or the app closing:
+
+```ts
+download.pause() // keeps what arrived
+download.resume() // asks for the rest
+download.cancel() // throws away what arrived
+```
+
+The whole file is downloaded again when the server's file changed, when it doesn't send ranges, or
+when the server named nothing to compare. A partial file in `Paths.cache` can be emptied by the
+system like the rest of it: the download then starts over.
+
+**An upload goes in parts**, for services that put a large file together from pieces (S3 multipart
+uploads, tus): `offset` and `length` send only that slice of the file. When the connection drops,
+only the part that was going is sent again:
+
+```ts
+const PART = 8 * 1024 * 1024
+
+for (let offset = 0; offset < size; offset += PART) {
+  const { headers } = await FileSystem.upload(partURLs[offset / PART], video.uri, {
+    method: 'PUT',
+    offset,
+    length: PART,
+  })
+
+  etags.push(headers.etag)
+}
+```
+
+Transfers run while the app is open: closing it stops them, and a download picks up from there the
+next time.
 
 ## Errors
 
-| `code`                 | When                                                    |
-| ---------------------- | ------------------------------------------------------- |
-| `ERR_NOT_FOUND`        | reading, listing, copying or uploading what isn't there |
-| `ERR_INVALID_ARGUMENT` | not a `file://` URI, text that isn't UTF-8, bad base64  |
-| `ERR_CANCELED`         | a transfer was canceled                                 |
-| `ERR_UNAVAILABLE`      | anything else: no space, no connection, no permission   |
+| `code`                 | When                                                                             |
+| ---------------------- | -------------------------------------------------------------------------------- |
+| `ERR_NOT_FOUND`        | reading, listing, copying or uploading what isn't there                          |
+| `ERR_INVALID_ARGUMENT` | not a `file://` URI, text that isn't UTF-8, bad base64, an `offset` past the end |
+| `ERR_CANCELED`         | a transfer was canceled                                                          |
+| `ERR_UNAVAILABLE`      | anything else: no space, no connection, no permission                            |
 
 ## Permissions
 
