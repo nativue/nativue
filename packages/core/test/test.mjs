@@ -41,6 +41,7 @@ const pickedMedia = [1, 2].map((index) => ({
   fileSize: 2048,
 }))
 const pickCalls = []
+const cameraCalls = []
 // The statements @nativue/sqlite sent, as [sql, parameters]: it gets no rows back, and a COUNT gets zeros.
 const sqliteQueries = []
 
@@ -74,7 +75,10 @@ globalThis.__native = {
     pickCalls.push([limit, mediaTypes])
     resolvesWith(pickedMedia.slice(0, limit === 1 ? 1 : 2))(callId)
   },
-  'pluginAsync:imagePicker.takePhoto': resolvesWith(null),
+  'pluginAsync:imagePicker.openCamera': (callId, ...options) => {
+    cameraCalls.push(options)
+    resolvesWith({ ...pickedMedia[0], type: 'video', duration: 4.25 })(callId)
+  },
   'pluginAsync:imagePicker.getCameraPermission': resolvesWith({
     status: 'granted',
     granted: true,
@@ -1316,7 +1320,7 @@ await settle()
 assert.deepEqual(copiedTexts, ['Hello from nativue'])
 assert.ok(renderedTexts(clipboardId).includes('Copied'))
 
-// @nativue/image-picker: pick() passes its options on, and the chosen photos show.
+// @nativue/image-picker: pick() and openCamera() pass their options on, and what comes back shows.
 const imagePickerId = await open('explore/image-picker')
 press(pressableContaining('Up to 5', imagePickerId))
 await settle()
@@ -1326,6 +1330,10 @@ assert.equal(
   2,
 )
 assert.ok(renderedTexts(imagePickerId).includes('image 400×300, 2 KB'))
+press(pressableContaining('Video', imagePickerId))
+await settle()
+assert.deepEqual(cameraCalls, [['videos', 30, 'high']])
+assert.ok(renderedTexts(imagePickerId).includes('video 400×300, 2 KB, 4.3 s'))
 
 // @nativue/sqlite: its async plugin function, and named parameters numbered before they're sent.
 const sqliteId = await open('explore/sqlite')

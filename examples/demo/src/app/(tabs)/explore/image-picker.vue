@@ -23,8 +23,18 @@ async function run(choose: () => Promise<PickedMedia[]>) {
 
 const pickOne = () => run(() => ImagePicker.pick())
 const pickSeveral = () => run(() => ImagePicker.pick({ limit: 5, mediaTypes: 'all' }))
-const takePhoto = () =>
-  run(async () => [await ImagePicker.takePhoto()].filter((photo) => photo !== null))
+const openCamera = (mediaTypes: 'images' | 'videos') =>
+  run(async () => {
+    const taken = await ImagePicker.openCamera({ mediaTypes, videoMaxDuration: 30 })
+
+    return taken ? [taken] : []
+  })
+
+function describe({ type, width, height, fileSize, duration }: PickedMedia) {
+  const size = `${type} ${width}×${height}, ${Math.round(fileSize / 1024)} KB`
+
+  return duration === undefined ? size : `${size}, ${duration.toFixed(1)} s`
+}
 
 // What came back after Android closed the app while the picker or the camera was open.
 onMounted(async () => {
@@ -48,8 +58,11 @@ onMounted(async () => {
         <Pressable :class="BUTTON_CLASS" @press="pickSeveral">
           <Text class="font-semibold text-slate-900 dark:text-white">Up to 5</Text>
         </Pressable>
-        <Pressable :class="BUTTON_CLASS" @press="takePhoto">
-          <Text class="font-semibold text-slate-900 dark:text-white">Camera</Text>
+        <Pressable :class="BUTTON_CLASS" @press="openCamera('images')">
+          <Text class="font-semibold text-slate-900 dark:text-white">Photo</Text>
+        </Pressable>
+        <Pressable :class="BUTTON_CLASS" @press="openCamera('videos')">
+          <Text class="font-semibold text-slate-900 dark:text-white">Video</Text>
         </Pressable>
       </View>
       <Text v-if="error" class="text-red-500">{{ error }}</Text>
@@ -64,10 +77,7 @@ onMounted(async () => {
             class="w-full rounded-xl"
             :style="{ aspectRatio: item.width / item.height }"
           />
-          <Text class="text-xs text-slate-500 dark:text-slate-400">
-            {{ item.type }} {{ item.width }}×{{ item.height }},
-            {{ Math.round(item.fileSize / 1024) }} KB
-          </Text>
+          <Text class="text-xs text-slate-500 dark:text-slate-400">{{ describe(item) }}</Text>
         </View>
       </View>
     </Section>

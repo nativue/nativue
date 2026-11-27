@@ -1,14 +1,28 @@
 import { requireNativeFunction, type PermissionResponse } from '@nativue/core'
 
 const MEDIA_TYPES = ['images', 'videos', 'all'] as const
+const VIDEO_QUALITIES = ['high', 'low'] as const
 
 export type MediaType = (typeof MEDIA_TYPES)[number]
+export type VideoQuality = (typeof VIDEO_QUALITIES)[number]
 
 export interface PickOptions {
   /** How many can be chosen: 1 (the default), more, or 0 for as many as the system allows. */
   limit?: number
   /** 'images' (the default), 'videos' or 'all'. */
   mediaTypes?: MediaType
+}
+
+export interface CameraOptions {
+  /**
+   * 'images' (the default), 'videos' or 'all'. Android's camera app does one or the other, so 'all'
+   * takes a photo there.
+   */
+  mediaTypes?: MediaType
+  /** Videos: the longest they can be, in whole seconds; 0 (the default) for no limit. */
+  videoMaxDuration?: number
+  /** Videos: 'high' (the default) or 'low', smaller to send. */
+  videoQuality?: VideoQuality
 }
 
 /** A photo or a video, copied into the app's cache: show it with <Image :source="media.uri" />. */
@@ -30,8 +44,14 @@ const nativePick =
   requireNativeFunction<(limit: number, mediaTypes: MediaType) => Promise<PickedMedia[]>>(
     'imagePicker.pick',
   )
-const nativeTakePhoto =
-  requireNativeFunction<() => Promise<PickedMedia | null>>('imagePicker.takePhoto')
+const nativeOpenCamera =
+  requireNativeFunction<
+    (
+      mediaTypes: MediaType,
+      videoMaxDuration: number,
+      videoQuality: VideoQuality,
+    ) => Promise<PickedMedia | null>
+  >('imagePicker.openCamera')
 const nativeGetPendingResult = requireNativeFunction<() => Promise<PickedMedia[] | null>>(
   'imagePicker.getPendingResult',
 )
@@ -45,21 +65,31 @@ export const ImagePicker = {
     if (!Number.isInteger(limit) || limit < 0) {
       throw new TypeError('ImagePicker.pick: limit is 0 or more, a whole number')
     }
-    if (!MEDIA_TYPES.includes(mediaTypes)) {
-      throw new TypeError(`ImagePicker.pick: mediaTypes is one of ${MEDIA_TYPES.join(', ')}`)
-    }
+    checkOneOf('ImagePicker.pick', 'mediaTypes', mediaTypes, MEDIA_TYPES)
 
     return nativePick(limit, mediaTypes)
   },
 
   /**
-   * The camera, for one photo; null when the user cancels. Asks for the camera permission when it
-   * needs to, and rejects with ERR_PERMISSION_DENIED when it's refused, ERR_UNAVAILABLE without a
-   * camera (a simulator).
+   * The camera, for one photo or video; null when the user cancels. Asks for the camera permission
+   * (and the microphone's, for videos on iOS) when it needs to, and rejects with ERR_PERMISSION_DENIED
+   * when it's refused, ERR_UNAVAILABLE without a camera that takes them (a simulator's takes no videos).
    */
-  takePhoto: nativeTakePhoto,
+  async openCamera({
+    mediaTypes = 'images',
+    videoMaxDuration = 0,
+    videoQuality = 'high',
+  }: CameraOptions = {}): Promise<PickedMedia | null> {
+    checkOneOf('ImagePicker.openCamera', 'mediaTypes', mediaTypes, MEDIA_TYPES)
+    checkOneOf('ImagePicker.openCamera', 'videoQuality', videoQuality, VIDEO_QUALITIES)
+    if (!Number.isInteger(videoMaxDuration) || videoMaxDuration < 0) {
+      throw new TypeError('ImagePicker.openCamera: videoMaxDuration is a whole number of seconds')
+    }
 
-  /** For usePermission: the camera's, which takePhoto asks for itself. */
+    return nativeOpenCamera(mediaTypes, videoMaxDuration, videoQuality)
+  },
+
+  /** For usePermission: the camera's, which openCamera asks for itself. */
   getCameraPermission: requireNativeFunction<() => Promise<PermissionResponse>>(
     'imagePicker.getCameraPermission',
   ),
@@ -73,4 +103,15 @@ export const ImagePicker = {
    * none; always null on iOS.
    */
   getPendingResult: nativeGetPendingResult,
+}
+
+function checkOneOf<Value extends string>(
+  name: string,
+  option: string,
+  value: Value,
+  allowed: readonly Value[],
+) {
+  if (!allowed.includes(value)) {
+    throw new TypeError(`${name}: ${option} is one of ${allowed.join(', ')}`)
+  }
 }

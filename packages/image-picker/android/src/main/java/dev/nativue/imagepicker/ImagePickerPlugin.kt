@@ -3,13 +3,11 @@ package dev.nativue.imagepicker
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.contract.ActivityResultContracts.TakePicture
 import androidx.core.content.FileProvider
 import dev.nativue.ActivityListener
 import dev.nativue.NativuePlugin
@@ -22,7 +20,7 @@ import org.json.JSONObject
 
 /**
  * ImagePicker (src/index.ts): the system's photo picker, which needs no permission, and the camera app
- * (ACTION_IMAGE_CAPTURE), which writes into a file the app lends it. Android may close the app while
+ * (ACTION_IMAGE_CAPTURE, ACTION_VIDEO_CAPTURE), which writes into a file the app lends it. Android may close the app while
  * either is open: what comes back then is kept until getPendingResult reads it.
  */
 class ImagePickerPlugin : NativuePlugin, ActivityListener {
@@ -32,7 +30,7 @@ class ImagePickerPlugin : NativuePlugin, ActivityListener {
     private val files by lazy { MediaFiles(registry.applicationContext) }
     private val preferences by lazy { registry.applicationContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE) }
     private var pickLauncher: ActivityResultLauncher<PickRequest>? = null
-    private var cameraLauncher: ActivityResultLauncher<Uri>? = null
+    private var cameraLauncher: ActivityResultLauncher<CaptureRequest>? = null
     /** The call the open picker or camera answers; null once the app was closed and opened again. */
     private var waiting: Waiting? = null
 
@@ -51,8 +49,17 @@ class ImagePickerPlugin : NativuePlugin, ActivityListener {
             }
         }
 
-        registry.addAsyncFunction("imagePicker.takePhoto") { _, promise ->
-            mainThread.post { withCameraPermission(promise) { launch(Waiting(promise, isCamera = true), ::openCamera) } }
+        // Android's camera app takes a photo or a video, never a choice of both: 'all' takes a photo.
+        registry.addAsyncFunction("imagePicker.openCamera") { arguments, promise ->
+            val isVideo = arguments[0] == "videos"
+            val videoMaxDuration = (arguments[1] as Number).toInt()
+            val isLowQuality = arguments[2] == "low"
+
+            mainThread.post {
+                withCameraPermission(promise) {
+                    launch(Waiting(promise, isCamera = true)) { openCamera(isVideo, videoMaxDuration, isLowQuality) }
+                }
+            }
         }
 
         registry.addAsyncFunction("imagePicker.getCameraPermission") { _, promise ->
@@ -76,7 +83,7 @@ class ImagePickerPlugin : NativuePlugin, ActivityListener {
     // Registered on every creation, in the same order: a result for the activity Android closed reaches these.
     override fun onActivityCreated(activity: ComponentActivity) {
         pickLauncher = activity.registerForActivityResult(PickMedia()) { uris -> finish(isCamera = false) { uris.mapNotNull(files::copy) } }
-        cameraLauncher = activity.registerForActivityResult(TakePicture()) { taken -> finish(isCamera = true) { takenPhoto(taken) } }
+        cameraLauncher = activity.registerForActivityResult(CaptureMedia()) { taken -> finish(isCamera = true) { takenMedia(taken) } }
     }
 
     private fun launch(next: Waiting, open: () -> Unit) {
@@ -91,28 +98,29 @@ class ImagePickerPlugin : NativuePlugin, ActivityListener {
         }
     }
 
-    /** The photo's file is kept first: if Android closes the app meanwhile, the result still finds it. */
-    private fun openCamera() {
+    /** The file's path is kept first: if Android closes the app meanwhile, the result still finds it. */
+    private fun openCamera(isVideo: Boolean, videoMaxDuration: Int, isLowQuality: Boolean) {
         val context = registry.applicationContext
         val launcher = cameraLauncher
         if (launcher == null || !context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)) {
             throw IllegalStateException("This device has no camera")
         }
 
-        val file = files.newFile("jpg")
+        val file = files.newFile(if (isVideo) "mp4" else "jpg")
+        val output = FileProvider.getUriForFile(context, "${context.packageName}.nativue.imagepicker", file)
 
-        preferences.edit().putString(PHOTO_FILE, file.path).commit()
-        launcher.launch(FileProvider.getUriForFile(context, "${context.packageName}.nativue.imagepicker", file))
+        preferences.edit().putString(CAMERA_FILE, file.path).commit()
+        launcher.launch(CaptureRequest(output, isVideo, videoMaxDuration, isLowQuality))
     }
 
-    private fun takenPhoto(taken: Boolean): List<Map<String, Any>> {
-        val path = preferences.getString(PHOTO_FILE, null)
+    private fun takenMedia(taken: Boolean): List<Map<String, Any>> {
+        val path = preferences.getString(CAMERA_FILE, null)
 
-        preferences.edit().remove(PHOTO_FILE).commit()
+        preferences.edit().remove(CAMERA_FILE).commit()
 
         val file = path?.let(::File)?.takeIf { taken && it.length() > 0 } ?: return emptyList()
 
-        return listOf(files.describe(file, "image/jpeg"))
+        return listOf(files.describe(file, if (file.extension == "mp4") "video/mp4" else "image/jpeg"))
     }
 
     /**
@@ -179,7 +187,7 @@ class ImagePickerPlugin : NativuePlugin, ActivityListener {
 
     private companion object {
         const val PREFERENCES = "nativue.image-picker"
-        const val PHOTO_FILE = "photoFile"
+        const val CAMERA_FILE = "cameraFile"
         const val PENDING_RESULT = "pendingResult"
         val CAMERA = listOf(Manifest.permission.CAMERA)
         val GRANTED = mapOf("status" to "granted", "granted" to true, "canAskAgain" to true)

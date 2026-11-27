@@ -5,7 +5,7 @@ import UIKit
 import UniformTypeIdentifiers
 
 /// ImagePicker (src/index.ts): the system's photo picker (PHPicker, no permission needed) and the camera
-/// (UIImagePickerController). What's chosen is copied into the app's caches, as the picker's files are
+/// (UIImagePickerController), for photos and videos. What's chosen is copied into the app's caches, as the picker's files are
 /// only lent.
 public final class ImagePickerPlugin: NativuePlugin {
     private weak var registry: PluginRegistry?
@@ -28,14 +28,26 @@ public final class ImagePickerPlugin: NativuePlugin {
             return picked
         }
 
-        registry.addAsyncFunction("imagePicker.takePhoto") { [unowned self] _ in
-            guard await UIImagePickerController.isSourceTypeAvailable(.camera) else {
-                throw PluginError(code: "ERR_UNAVAILABLE", message: "This device has no camera")
+        registry.addAsyncFunction("imagePicker.openCamera") { [unowned self] arguments in
+            let options = CameraOptions(
+                mediaTypes: await Self.cameraMediaTypes(arguments[0] as! String),
+                videoMaxDuration: arguments[1] as! Int,
+                isLowQuality: arguments[2] as! String == "low"
+            )
+
+            guard !options.mediaTypes.isEmpty else {
+                throw PluginError(code: "ERR_UNAVAILABLE", message: "This device has no camera for these media types")
             }
             guard await AVCaptureDevice.requestAccess(for: .video) else {
                 throw PluginError(code: "ERR_PERMISSION_DENIED", message: "The camera permission was refused")
             }
-            guard let image = try await takePhoto() else { return nil }
+            // Asked before the camera opens, rather than in the middle of a recording.
+            if options.mediaTypes.contains(UTType.movie.identifier) { _ = await AVCaptureDevice.requestAccess(for: .audio) }
+
+            guard let taken = try await openCamera(options) else { return nil }
+
+            if let video = taken[.mediaURL] as? URL { return try await MediaFile.saveVideo(at: video) }
+            guard let image = taken[.originalImage] as? UIImage else { return nil }
 
             return try MediaFile.save(image)
         }
@@ -80,25 +92,41 @@ public final class ImagePickerPlugin: NativuePlugin {
     }
 
     @MainActor
-    private func takePhoto() async throws -> UIImage? {
+    private func openCamera(_ options: CameraOptions) async throws -> [UIImagePickerController.InfoKey: Any]? {
         guard let presenter = registry?.topViewController else {
             throw PluginError(code: "ERR_UNAVAILABLE", message: "The app has no screen to show the camera on")
         }
 
         return await withCheckedContinuation { continuation in
             let camera = UIImagePickerController()
-            let delegate = CameraDelegate { [weak self] image in
+            let delegate = CameraDelegate { [weak self] taken in
                 camera.dismiss(animated: true)
                 self?.activeDelegate = nil
-                continuation.resume(returning: image)
+                continuation.resume(returning: taken)
             }
 
             camera.sourceType = .camera
+            camera.mediaTypes = options.mediaTypes
+            camera.videoQuality = options.isLowQuality ? .typeLow : .typeHigh
+            if options.videoMaxDuration > 0 { camera.videoMaximumDuration = TimeInterval(options.videoMaxDuration) }
             camera.delegate = delegate
             camera.presentationController?.delegate = delegate
             activeDelegate = delegate
             presenter.present(camera, animated: true)
         }
+    }
+
+    /// The asked-for types this device's camera takes: setting one it doesn't (video on a simulator) throws.
+    @MainActor
+    private static func cameraMediaTypes(_ mediaTypes: String) -> [String] {
+        let asked: [UTType] = switch mediaTypes {
+        case "images": [.image]
+        case "videos": [.movie]
+        default: [.image, .movie]
+        }
+        let available = UIImagePickerController.availableMediaTypes(for: .camera) ?? []
+
+        return asked.map(\.identifier).filter(available.contains)
     }
 
     private static func cameraPermission() -> [String: Any] {
@@ -108,6 +136,14 @@ public final class ImagePickerPlugin: NativuePlugin {
         default: permissionResponse(.denied)
         }
     }
+}
+
+private struct CameraOptions {
+    /// Uniform type identifiers.
+    let mediaTypes: [String]
+    /// In seconds; 0 for no limit.
+    let videoMaxDuration: Int
+    let isLowQuality: Bool
 }
 
 /// Reports once: when the user chooses or cancels, or swipes the picker away.
@@ -132,17 +168,17 @@ private final class PickerDelegate: NSObject, PHPickerViewControllerDelegate, UI
     }
 }
 
-/// Reports once: the photo taken, or nil when the user cancels or swipes the camera away.
+/// Reports once: what was taken, or nil when the user cancels or swipes the camera away.
 private final class CameraDelegate: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate,
     UIAdaptivePresentationControllerDelegate {
-    private var onFinish: ((UIImage?) -> Void)?
+    private var onFinish: (([UIImagePickerController.InfoKey: Any]?) -> Void)?
 
-    init(onFinish: @escaping (UIImage?) -> Void) {
+    init(onFinish: @escaping ([UIImagePickerController.InfoKey: Any]?) -> Void) {
         self.onFinish = onFinish
     }
 
     func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-        finish(info[.originalImage] as? UIImage)
+        finish(info)
     }
 
     func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
@@ -153,8 +189,8 @@ private final class CameraDelegate: NSObject, UIImagePickerControllerDelegate, U
         finish(nil)
     }
 
-    private func finish(_ image: UIImage?) {
-        onFinish?(image)
+    private func finish(_ taken: [UIImagePickerController.InfoKey: Any]?) {
+        onFinish?(taken)
         onFinish = nil
     }
 }
@@ -198,6 +234,15 @@ private enum MediaFile {
         try data.write(to: file)
 
         return try imageDescription(of: file)
+    }
+
+    /// The camera's recording, moved out of the temporary folder the system clears.
+    static func saveVideo(at recording: URL) async throws -> [String: Any] {
+        let file = try newFile(extension: recording.pathExtension)
+
+        try FileManager.default.moveItem(at: recording, to: file)
+
+        return try await videoDescription(of: file)
     }
 
     private static func newFile(extension fileExtension: String) throws -> URL {

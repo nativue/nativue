@@ -110,7 +110,7 @@ Import the runtime from `vue`: `ref`, `computed`, `StyleSheet`, `Animated`, `Lay
   `svgIcon(viewBox, elements)` from `@nativue/svg`, an image `{ uri }`, or an SF Symbol name (iOS).
 - Official packages: `@nativue/svg`, `@nativue/icons` (icon components), `@nativue/tailwind`, `@nativue/haptics`,
   `@nativue/clipboard` (copy text), `@nativue/notifications` (local notifications), `@nativue/sqlite`,
-  `@nativue/image-picker` (`ImagePicker.pick({ limit, mediaTypes })`, `takePhoto()`; call
+  `@nativue/image-picker` (`ImagePicker.pick({ limit, mediaTypes })`, `openCamera({ mediaTypes })`; call
   `getPendingResult()` on start, for a photo taken while Android closed the app).
   A package with native code needs the app
   rebuilt with `npm run ios` or `npm run android`, not just a reload.
