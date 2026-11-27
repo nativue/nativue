@@ -651,9 +651,9 @@ function declarations(item) {
   return item.children.filter((child) => !child.children)
 }
 
-/** Theme variables (:root) and @property initial values. */
+/** Theme variables (:root), and @property initial values. */
 function globalVariables(items) {
-  const variables = new Map()
+  const theme = new Map()
   const initialValues = new Map()
 
   for (const { item } of walk(items)) {
@@ -661,14 +661,103 @@ function globalVariables(items) {
       const initialValue = declarations(item).find((child) => child.property === 'initial-value')
       if (initialValue) initialValues.set(item.prelude.slice(10).trim(), initialValue.value)
     } else if (item.prelude.split(',').some((selector) => selector.trim() === ':root')) {
-      for (const { property, value } of declarations(item)) variables.set(property, value)
+      for (const { property, value } of declarations(item)) theme.set(property, value)
     }
   }
 
-  return (name) => variables.get(name) ?? initialValues.get(name) ?? null
+  return {
+    theme,
+    initialValues,
+    lookup: (name) => theme.get(name) ?? initialValues.get(name) ?? null,
+  }
 }
 
-function convertRule(rule, globalLookup) {
+// ---------- Variables resolved at run time ----------
+
+// Properties whose value can come from variables other utilities set on the same element
+// (bg-linear-to-r with from-red-500 and to-green-500): kept with their var(), resolved per element at
+// run time (runtime.ts), as CSS resolves them.
+const RUN_TIME_PROPERTIES = { 'background-image': 'backgroundImage' }
+const VARIABLE_REFERENCE = /var\(\s*(--[\w-]+)/g
+
+/** The variables run-time properties read, directly or through other variables, the theme's left out. */
+function runTimeVariableNames(items, theme) {
+  const valuesByVariable = new Map()
+  const pending = []
+
+  for (const { item } of walk(items)) {
+    if (item.prelude.startsWith('@')) continue
+
+    for (const { property, value } of declarations(item)) {
+      if (property.startsWith('--'))
+        valuesByVariable.set(property, [...(valuesByVariable.get(property) ?? []), value])
+      if (RUN_TIME_PROPERTIES[property]) pending.push(value)
+    }
+  }
+
+  const names = new Set()
+
+  while (pending.length > 0) {
+    for (const [, name] of pending.pop().matchAll(VARIABLE_REFERENCE)) {
+      if (names.has(name) || theme.has(name)) continue
+
+      names.add(name)
+      pending.push(...(valuesByVariable.get(name) ?? []))
+    }
+  }
+
+  return names
+}
+
+/** var() of build-time variables replaced; run-time ones kept, with their fallback resolved. */
+function resolveBuildTimeVariables(value, lookup, runTimeNames) {
+  let result = ''
+  let rest = value
+
+  for (let start = rest.indexOf('var('); start !== -1; start = rest.indexOf('var(')) {
+    const end = closingParenthesis(rest, start + 3)
+    const [name, ...fallbackParts] = splitTopLevel(rest.slice(start + 4, end), ',')
+    const variable = name.trim()
+    const fallback = fallbackParts.length > 0 ? fallbackParts.join(',') : null
+
+    if (runTimeNames.has(variable)) {
+      const resolvedFallback =
+        fallback === null ? '' : `, ${resolveBuildTimeVariables(fallback, lookup, runTimeNames)}`
+
+      result += `${rest.slice(0, start)}var(${variable}${resolvedFallback})`
+      rest = rest.slice(end + 1)
+    } else {
+      const replacement = lookup(variable) ?? fallback
+
+      if (replacement === null) return null
+      rest = rest.slice(0, start) + replacement + rest.slice(end + 1)
+    }
+  }
+
+  return withHexColors(result + rest)
+}
+
+const COLOR_FUNCTION = /\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color-mix|color)\(/g
+
+/** The color functions in a value (oklch from the theme...) as hex colors, which native reads. */
+function withHexColors(value) {
+  let result = ''
+  let index = 0
+
+  for (const match of value.matchAll(COLOR_FUNCTION)) {
+    if (match.index < index) continue
+
+    const end = closingParenthesis(value, match.index + match[0].length - 1)
+    const text = value.slice(match.index, end + 1)
+
+    result += value.slice(index, match.index) + (color(text) ?? text)
+    index = end + 1
+  }
+
+  return result + value.slice(index)
+}
+
+function convertRule(rule, globalLookup, runTimeNames) {
   const ruleDeclarations = declarations(rule)
   const localVariables = new Map(
     ruleDeclarations
@@ -676,11 +765,23 @@ function convertRule(rule, globalLookup) {
       .map(({ property, value }) => [property, value]),
   )
   const lookup = (name) => localVariables.get(name) ?? globalLookup(name)
+  const buildTimeLookup = (name) => (runTimeNames.has(name) ? null : lookup(name))
   const style = {}
   const unsupported = []
 
   for (const { property, value } of ruleDeclarations) {
+    if (runTimeNames.has(property)) {
+      style[property] = resolveBuildTimeVariables(value, buildTimeLookup, runTimeNames)
+      continue
+    }
     if (property.startsWith('--') || SILENTLY_IGNORED.has(property)) continue
+    if (RUN_TIME_PROPERTIES[property]) {
+      const template = resolveBuildTimeVariables(value, buildTimeLookup, runTimeNames)
+
+      if (template) style[RUN_TIME_PROPERTIES[property]] = template
+      else unsupported.push(property)
+      continue
+    }
 
     const resolvedValue = resolveVariables(value.replace(/\s*!important$/, ''), lookup)
     const converted = resolvedValue === null ? null : convertDeclaration(property, resolvedValue)
@@ -696,11 +797,19 @@ function convertRule(rule, globalLookup) {
  * The styles of every utility in `css`, keyed by class name: [order, style] or, for variants,
  * [order, style, conditions] ('dark', 'pressed', 'focused', 'disabled', 'ios', 'android', all of
  * which must hold). order is the rule's place in the stylesheet: later rules win, as in CSS.
+ * A style can hold variables ('--tw-gradient-from') and a backgroundImage reading them, resolved per
+ * element at run time, with `variables` (their initial values) for those no class sets.
  * `ignored` explains the classes that produced nothing.
  */
 export function stylesFromCss(css) {
   const { items } = parseBlock(stripComments(css))
-  const globalLookup = globalVariables(items)
+  const { theme, initialValues, lookup: globalLookup } = globalVariables(items)
+  const runTimeNames = runTimeVariableNames(items, theme)
+  const variables = Object.fromEntries(
+    [...runTimeNames]
+      .filter((name) => initialValues.has(name))
+      .map((name) => [name, withHexColors(initialValues.get(name))]),
+  )
   const styles = {}
   const ignored = {}
   let order = 0
@@ -717,7 +826,7 @@ export function stylesFromCss(css) {
       continue
     }
 
-    const { style, unsupported } = convertRule(item, globalLookup)
+    const { style, unsupported } = convertRule(item, globalLookup, runTimeNames)
     const ruleConditions = [...conditions, ...utility.states]
 
     if (Object.keys(style).length === 0) {
@@ -730,5 +839,5 @@ export function stylesFromCss(css) {
 
   for (const className of Object.keys(styles)) delete ignored[className]
 
-  return { styles, ignored }
+  return { styles, variables, ignored }
 }

@@ -66,11 +66,13 @@ Spacing (`p-*`, `m-*`, `gap-*`, negative margins), sizing (`w-*`, `h-*`, `size-*
 `justify-*`, `self-*`, `content-*`), position (`absolute`, `inset-*`, `top-*`...), `hidden`,
 `overflow-*`, colors with opacity modifiers (`bg-*`, `text-*`, `border-*`), `border`,
 `rounded-*`, `opacity-*`, `text-{size}`, `font-{weight}`, `text-{align}`, `underline`,
-`line-through`, `no-underline`, `rotate-*`, `scale-*`, `translate-*`, `shadow-*` (its first shadow) and arbitrary values (`bg-[#ff0000]`, `w-[72px]`).
+`line-through`, `no-underline`, `rotate-*`, `scale-*`, `translate-*`, `shadow-*` (its first shadow),
+gradients (`bg-linear-*`, `bg-radial`, `from-*`, `via-*`, `to-*` and their positions, `bg-[linear-gradient(â€¦)]`)
+and arbitrary values (`bg-[#ff0000]`, `w-[72px]`).
 
 What native views have no equivalent for is left out, with a warning when the app is built: other
 variants (`hover:`, `md:`, `group-*`...), `space-*` and `divide-*` (they style children),
-`z-*`, `leading-*`, `tracking-*`, per-corner radius and per-side borders.
+`z-*`, `leading-*`, `tracking-*`, `bg-conic`, per-corner radius and per-side borders.
 
 ## How it works
 
@@ -79,6 +81,7 @@ scanned for class names. Tailwind generates CSS for them, and every `.class { â€
 style object with its theme variables, `calc()` and colors (oklch included) resolved. Variants become
 conditions. At run time, a class string is resolved once per state (color scheme, pressed, focused, disabled): the
 utilities whose conditions hold, merged in Tailwind's order, so `p-4 px-2` keeps
-`px-2`'s horizontal padding, as in CSS.
+`px-2`'s horizontal padding, as in CSS. Variables one class sets for another (`from-red-500` for
+`bg-linear-to-r`) are kept until then, and resolved for the element.
 
 Without Tailwind, see [Styling](https://github.com/nativue/nativue/blob/main/docs/styling.md).

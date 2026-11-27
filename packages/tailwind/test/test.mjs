@@ -181,6 +181,30 @@ assert.deepEqual(themedStyles, {
   'p-18': { padding: 36 },
 })
 
+// ---------- Gradients ----------
+
+// bg-linear-to-r, from-*, via-* and to-* each set variables; the backgroundImage reads them, and is
+// resolved per element at run time (runtime.ts), from the variables of its classes.
+const gradients = await stylesOf([
+  'bg-linear-to-r',
+  'from-red-500',
+  'to-90%',
+  'bg-[linear-gradient(45deg,red,blue)]',
+])
+assert.deepEqual(gradients.styles['bg-linear-to-r'], {
+  '--tw-gradient-position': 'to right',
+  backgroundImage: 'linear-gradient(var(--tw-gradient-stops))',
+})
+// Theme colors (oklch) arrive as hex, which native reads.
+assert.equal(gradients.styles['from-red-500']['--tw-gradient-from'], '#fb2c36')
+assert.equal(gradients.styles['to-90%']['--tw-gradient-to-position'], '90%')
+// An arbitrary gradient needs no variable.
+assert.equal(
+  gradients.styles['bg-[linear-gradient(45deg,red,blue)]'].backgroundImage,
+  'linear-gradient(45deg,red,blue)',
+)
+assert.equal(gradients.ignored['bg-linear-to-r'], undefined)
+
 // ---------- Warnings ----------
 
 async function warningsFor(template) {
