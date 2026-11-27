@@ -88,16 +88,18 @@ class Bridge(private val activity: ComponentActivity, private val rootView: Root
     /** Set by LayoutAnimation.configureNext in JS; animates the batch it's sent with. */
     private var nextLayoutAnimation: Map<*, *>? = null
 
+    /** Thread-safe: used from the JS thread (requests, and clearing them in run) and the requests' own. */
+    private val blobStore = BlobStore.shared
+    private val networking = Networking(activity, blobStore) { owner, requestId, eventName, payload ->
+        callIfStillRunning(owner, "__networkEvent", requestId, eventName, payload)
+    }
+
     // Only touched on the main thread.
     private val nodesById = HashMap<Int, NativeNode>()
     private val animatedGraph = AnimatedGraph()
     private val modalHostsByNodeId = HashMap<Int, ModalHost>()
     private val gestureReportersByNodeId = HashMap<Int, GestureReporter>()
     /** Views with @layout, and the box they last reported. */
-    private val blobStore = BlobStore.shared
-    private val networking = Networking(activity, blobStore) { owner, requestId, eventName, payload ->
-        callIfStillRunning(owner, "__networkEvent", requestId, eventName, payload)
-    }
     private val reportedLayoutsByNodeId = mutableMapOf<Int, Map<String, Float>?>()
 
     /** The latest window insets, mid-animation while the keyboard moves. */
@@ -262,6 +264,10 @@ class Bridge(private val activity: ComponentActivity, private val rootView: Root
         errorOverlay.hide()
 
         evaluate {
+            // Here, not in resetNodeTree: that runs on the main thread after the new bundle has started
+            // its own requests, which it would abort, and their responses' blobs.
+            networking.abortAll()
+            blobStore.removeAll()
             enqueue(::resetNodeTree)
 
             runtime?.destroy()
@@ -670,8 +676,6 @@ class Bridge(private val activity: ComponentActivity, private val rootView: Root
         }
         modalHostsByNodeId.clear()
         gestureReportersByNodeId.clear() // node ids start over
-        networking.abortAll() // and so do request ids
-        blobStore.removeAll() // and the Blobs that held them are gone
         reportedLayoutsByNodeId.clear()
         animatedGraph.reset()
         animatedGraph.onAnimationEnd = { animationId, finished ->

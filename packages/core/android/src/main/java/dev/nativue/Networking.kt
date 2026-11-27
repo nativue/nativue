@@ -242,7 +242,12 @@ class Networking(
         "bytes" -> bytes
         "blob" -> {
             val type = contentType?.substringBefore(";")?.trim().orEmpty()
-            mapOf("blobId" to blobStore.store(bytes), "offset" to 0, "size" to bytes.size, "type" to type)
+            val blobId = blobStore.store(bytes)
+
+            // A reload aborts the request before clearing the store: stored after that, nothing would release it.
+            if (request.aborted) blobStore.remove(blobId)
+
+            mapOf("blobId" to blobId, "offset" to 0, "size" to bytes.size, "type" to type)
         }
         else -> String(bytes, Charsets.UTF_8)
     }

@@ -42,6 +42,10 @@ final class Bridge {
     /// Kept on the JS queue: the router's screens, reopened after a reload in development.
     private var savedNavigation: String?
 
+    /// Thread-safe: used from the JS queue (requests, and clearing them in run) and Networking's own.
+    private let blobStore = BlobStore.shared
+    private lazy var networking = Networking(blobStore: blobStore)
+
     // Only touched on the main thread.
     var rootView: RootView!
     private var gestureReportersByNodeId: [Int: GestureReporter] = [:]
@@ -49,8 +53,6 @@ final class Bridge {
     var nodesById: [Int: NativeNode] = [:]
     /// Views with @layout, and the box they last reported.
     private var reportedLayoutsByNodeId: [Int: CGRect] = [:]
-    private let blobStore = BlobStore.shared
-    private lazy var networking = Networking(blobStore: blobStore)
     /// Modals and screens: their content is laid out as a separate Yoga root.
     private var contentRootsByNodeId: [Int: ContentRoot] = [:]
     /// For Dimensions.get('window'): the screen's at start, then the root view's, kept on the JS queue.
@@ -144,6 +146,10 @@ final class Bridge {
         errorOverlay.hide()
 
         evaluate { [unowned self] in
+            // Here, not in resetNodeTree: that runs on the main thread after the new bundle has started
+            // its own requests, which it would abort, and their responses' blobs.
+            networking.abortAll()
+            blobStore.removeAll()
             enqueue { [unowned self] in resetNodeTree() }
 
             runtime = makeRuntime()
@@ -491,8 +497,6 @@ final class Bridge {
         contentRootsByNodeId.values.forEach { ($0 as? ModalController)?.setVisible(false) }
         contentRootsByNodeId = [:]
         gestureReportersByNodeId = [:] // node ids start over
-        networking.abortAll() // and so do request ids
-        blobStore.removeAll() // and the Blobs that held them are gone
         reportedLayoutsByNodeId = [:]
         animatedGraph.reset()
         animatedGraph.onAnimationEnd = { [unowned self] animationId, finished in

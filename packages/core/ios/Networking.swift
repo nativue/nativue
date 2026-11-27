@@ -95,14 +95,17 @@ final class Networking: NSObject, URLSessionDataDelegate {
         }
     }
 
-    /// On reload: the requests' JS is gone.
+    /// On reload: the requests' JS is gone. Waits, so no response finishing meanwhile stores a blob after
+    /// the bridge clears them. This queue never waits on the JS one.
     func abortAll() {
-        queue.addOperation { [self] in
+        let abort = BlockOperation { [self] in
             tasksByRequestId.values.forEach { $0.cancel() }
             statesByTaskId.values.forEach { $0.deleteTemporaryFile() }
             tasksByRequestId = [:]
             statesByTaskId = [:]
         }
+
+        queue.addOperations([abort], waitUntilFinished: true)
     }
 
     // MARK: URLSessionDataDelegate
