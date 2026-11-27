@@ -73,15 +73,16 @@ To run on a phone, see [Getting started](docs/getting-started.md#run-on-a-phone)
 
 ## Packages
 
-| Package                                     | What it is                                      |
-| ------------------------------------------- | ----------------------------------------------- |
-| [`@nativue/core`](packages/core)            | the framework: runtime, native side and CLI     |
-| [`create-nativue`](packages/create-nativue) | `npm create nativue`, creates an app            |
-| [`@nativue/icons`](packages/icons)          | icon sets as components                         |
-| [`@nativue/tailwind`](packages/tailwind)    | Tailwind CSS classes, turned into native styles |
-| [`@nativue/clipboard`](packages/clipboard)  | copying text to the clipboard                   |
-| [`@nativue/haptics`](packages/haptics)      | haptic feedback                                 |
-| [`@nativue/sqlite`](packages/sqlite)        | SQLite databases                                |
+| Package                                            | What it is                                      |
+| -------------------------------------------------- | ----------------------------------------------- |
+| [`@nativue/core`](packages/core)                   | the framework: runtime, native side and CLI     |
+| [`create-nativue`](packages/create-nativue)        | `npm create nativue`, creates an app            |
+| [`@nativue/icons`](packages/icons)                 | icon sets as components                         |
+| [`@nativue/tailwind`](packages/tailwind)           | Tailwind CSS classes, turned into native styles |
+| [`@nativue/clipboard`](packages/clipboard)         | copying text to the clipboard                   |
+| [`@nativue/haptics`](packages/haptics)             | haptic feedback                                 |
+| [`@nativue/notifications`](packages/notifications) | local notifications                             |
+| [`@nativue/sqlite`](packages/sqlite)               | SQLite databases                                |
 
 ## License
 

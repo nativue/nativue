@@ -1,0 +1,55 @@
+{
+  "name": "@nativue/notifications",
+  "version": "0.1.0",
+  "description": "Local notifications in nativue apps",
+  "keywords": [
+    "vue",
+    "native",
+    "notifications",
+    "nativue"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/nativue/nativue#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nativue/nativue.git",
+    "directory": "packages/notifications"
+  },
+  "bugs": "https://github.com/nativue/nativue/issues",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./plugin": {
+      "types": "./plugin.d.mts",
+      "default": "./plugin.mjs"
+    }
+  },
+  "scripts": {
+    "typecheck": "vue-tsc"
+  },
+  "peerDependencies": {
+    "@nativue/core": ">=0.14.0"
+  },
+  "nativue": {
+    "plugin": "./plugin.mjs",
+    "ios": {
+      "sources": "ios",
+      "plugin": "NotificationsPlugin"
+    },
+    "android": {
+      "sources": "android",
+      "plugin": "dev.nativue.notifications.NotificationsPlugin"
+    }
+  },
+  "files": [
+    "src",
+    "ios",
+    "android/build.gradle.kts",
+    "android/src",
+    "plugin.mjs",
+    "plugin.d.mts"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
