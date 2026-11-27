@@ -1,13 +1,6 @@
-// Registers <svg> with nativue's renderer before the app starts: what's inside it stays in JS (svg.ts
-// makes the drawing), and the elements are also global components, <Path> for <path>.
-import {
-  camelize,
-  h,
-  registerDrawnView,
-  type DrawnElement,
-  type FunctionalComponent,
-  type Style,
-} from '@nativue/core'
+// Registers <svg> with nativue's renderer before the app starts: what's inside it stays in JS, and
+// svg.ts makes the drawing.
+import { camelize, registerDrawnView, type DrawnElement, type Style } from '@nativue/core'
 import { attributeName, drawingAttribute, drawingOf, PART_TAGS, styleAttributes } from './svg'
 import type { SvgNode } from './svg'
 
@@ -18,16 +11,9 @@ type SvgView = SvgNode & {
   drawsElements?: boolean
 }
 
-// <Text> and <Image> are nativue's: an SVG's are <SvgText> and <SvgImage>.
-const COMPONENT_NAMES: Record<string, string> = { text: 'SvgText', image: 'SvgImage' }
 // An icon's props, which its native view reads as they are; viewBox and stroke-width also draw.
 const ICON_PROPS = new Set(['elements', 'color'])
 const SHARED_PROPS = new Set(['viewBox', 'strokeWidth'])
-
-/** <Path> for <path>, and so on: it renders the element with what it's given. */
-function component(tag: string): FunctionalComponent {
-  return (_props, { attrs, slots }) => h(tag, attrs, slots.default?.())
-}
 
 function setAttribute(node: SvgNode, key: string, value: unknown) {
   const attribute = drawingAttribute(key, value)
@@ -45,20 +31,10 @@ function sizeValue(value: unknown): number | string | undefined {
     : String(value)
 }
 
-// Global, so an app's own component of the same name (imported, or registered) still wins.
-const components = Object.fromEntries([
-  ['Svg', component('svg')],
-  ...PART_TAGS.map((tag) => [
-    COMPONENT_NAMES[tag] ?? tag[0].toUpperCase() + tag.slice(1),
-    component(tag),
-  ]),
-])
-
 registerDrawnView({
   type: 'Svg',
   tags: ['svg'],
   partTags: PART_TAGS,
-  components,
 
   setPartProp(element, key, value) {
     const node = element as SvgNode

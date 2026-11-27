@@ -23,8 +23,9 @@ Global, with no import: `View`, `Text`, `Image`, `ImageBackground`, `Pressable`,
 - Charts and drawings: `<svg>` as on the web, with `@nativue/svg` installed (`@nativue/icons` brings
   it): shapes, `text`/`tspan`/`textPath`, gradients and `pattern`s in `defs` (`fill="url(#id)"`),
   `clipPath`, `mask`, `use`/`symbol`, `marker`, `image`, drop shadows and blur filters, and `@press`
-  on an element. As components too: `<Svg>`, `<Path>`, `<Circle>`... `<SvgText>` and `<SvgImage>`.
-  Without the package, `<svg>` shows nothing.
+  on an element. Also as components to import: `import { Svg, Path, Text as SvgText } from
+  '@nativue/svg'` (rename `Text` and `Image`, which are nativue's). Without the package, `<svg>`
+  shows nothing.
 
 - Text must be inside a `<Text>`, never directly in a `<View>`.
 - Taps: `<Pressable @press="save">` (also `@long-press`, and `v-slot="{ pressed }"`), or

@@ -9,12 +9,7 @@ npm install @nativue/svg
 ```
 
 Installing it is all: its plugin registers `<svg>` before the app starts. Rebuild the app
-(`npm run ios`, `npm run android`), as for any package with native code. For the components' types
-in templates, add to `src/env.d.ts`:
-
-```ts
-/// <reference types="@nativue/svg" />
-```
+(`npm run ios`, `npm run android`), as for any package with native code.
 
 ```vue
 <svg viewBox="0 0 200 100" width="300" height="150">
@@ -36,16 +31,22 @@ chart with a thousand points stays light, and changing a value redraws it.
 
 ## Components
 
-The same elements are also components, for those who prefer them: `Svg`, `G`, `Path`, `Circle`,
-`Ellipse`, `Rect`, `Line`, `Polyline`, `Polygon`, `SvgText` (`<Text>` is nativue's text), `Tspan`,
-`Defs`, `LinearGradient`, `RadialGradient` and `Stop`. They're global and render the lowercase
-element: an app's own component with one of these names (a `Line.vue` it imports) is used instead.
+Every element is also a component, named after it (`Svg`, `G`, `Path`, `Circle`, `Text`, `Image`,
+`LinearGradient`, `ClipPath`, `FeDropShadow`...), which renders the lowercase element. Import the ones
+you use; `Text` and `Image` are nativue's too, so rename them:
 
 ```vue
-<Svg viewBox="0 0 24 24" width="48" height="48">
-  <Circle cx="12" cy="12" r="10" fill="#4AF2AE" />
-  <Path d="M8 12h8" stroke="#0B1220" stroke-width="2" stroke-linecap="round" />
-</Svg>
+<script setup lang="ts">
+import { Circle, Path, Svg, Text as SvgText } from '@nativue/svg'
+</script>
+
+<template>
+  <Svg viewBox="0 0 24 24" width="48" height="48">
+    <Circle cx="12" cy="12" r="10" fill="#4AF2AE" />
+    <Path d="M8 12h8" stroke="#0B1220" stroke-width="2" stroke-linecap="round" />
+    <SvgText x="12" y="22" text-anchor="middle" font-size="4">Go</SvgText>
+  </Svg>
+</template>
 ```
 
 ## What it draws

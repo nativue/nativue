@@ -1,5 +1,3 @@
-/// <reference types="@nativue/svg" />
-
 // Asset imports (import logo from './assets/logo.png').
 declare module '*.png' {
   const source: string

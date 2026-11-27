@@ -1,6 +1,13 @@
-// <svg> drawn natively: its plugin registers it before the app starts (runtime.ts). These are the
-// components' types, and svgIcon for tab bar and header icons.
-import type { AccessibilityProps, DefineComponent, LayoutEvent, Style } from '@nativue/core'
+// <svg> drawn natively: its plugin registers the tags before the app starts (runtime.ts). Here are the
+// elements as components, <Path> for <path>, and svgIcon for tab bar and header icons.
+import {
+  h,
+  type AccessibilityProps,
+  type DefineComponent,
+  type FunctionalComponent,
+  type LayoutEvent,
+  type Style,
+} from '@nativue/core'
 import type { DrawnIcon } from '@nativue/core/router'
 
 type SvgLength = number | string
@@ -68,90 +75,126 @@ export function svgIcon(viewBox: ViewBox, elements: SvgElement[]): DrawnIcon {
   return { drawnIcon: { drawer: 'svg', viewBox, elements } }
 }
 
-declare module '@vue/runtime-core' {
-  export interface GlobalComponents {
-    Svg: DefineComponent<
-      SvgPresentationAttributes &
-        AccessibilityProps & {
-          viewBox?: string | ViewBox
-          width?: number | string
-          height?: number | string
-          preserveAspectRatio?: string
-          /** An icon's shapes (@nativue/icons): drawn instead of what's inside, stroked with `color`. */
-          elements?: SvgElement[]
-          color?: string
-          style?: Style
-          onLayout?: (event: LayoutEvent) => void
-        }
-    >
-    G: SvgComponent
-    Path: SvgComponent<{ d?: string }>
-    Circle: SvgComponent<{ cx?: SvgLength; cy?: SvgLength; r?: SvgLength }>
-    Ellipse: SvgComponent<{ cx?: SvgLength; cy?: SvgLength; rx?: SvgLength; ry?: SvgLength }>
-    Rect: SvgComponent<Box & { rx?: SvgLength; ry?: SvgLength }>
-    Line: SvgComponent<{ x1?: SvgLength; y1?: SvgLength; x2?: SvgLength; y2?: SvgLength }>
-    Polyline: SvgComponent<{ points?: string }>
-    Polygon: SvgComponent<{ points?: string }>
-    SvgText: SvgComponent<TextAttributes>
-    Tspan: SvgComponent<TextAttributes>
-    TextPath: SvgComponent<TextAttributes & { href?: string; startOffset?: SvgLength }>
-    SvgImage: SvgComponent<Box & { href?: string | { uri: string }; preserveAspectRatio?: string }>
-    Defs: SvgComponent
-    Use: SvgComponent<Box & { href?: string }>
-    Symbol: SvgComponent<{ viewBox?: string; preserveAspectRatio?: string }>
-    LinearGradient: SvgComponent<
+/** Renders the element with what it's given: <Path d="..."> is <path d="...">. */
+function component<Component>(tag: string): Component {
+  const render: FunctionalComponent = (_props, { attrs, slots }) => h(tag, attrs, slots.default?.())
+
+  return render as Component
+}
+
+export const Svg = component<
+  DefineComponent<
+    SvgPresentationAttributes &
+      AccessibilityProps & {
+        viewBox?: string | ViewBox
+        width?: number | string
+        height?: number | string
+        preserveAspectRatio?: string
+        /** An icon's shapes (@nativue/icons): drawn instead of what's inside, stroked with `color`. */
+        elements?: SvgElement[]
+        color?: string
+        style?: Style
+        onLayout?: (event: LayoutEvent) => void
+      }
+  >
+>('svg')
+export const G = component<SvgComponent>('g')
+export const Path = component<SvgComponent<{ d?: string }>>('path')
+export const Circle =
+  component<SvgComponent<{ cx?: SvgLength; cy?: SvgLength; r?: SvgLength }>>('circle')
+export const Ellipse =
+  component<SvgComponent<{ cx?: SvgLength; cy?: SvgLength; rx?: SvgLength; ry?: SvgLength }>>(
+    'ellipse',
+  )
+export const Rect = component<SvgComponent<Box & { rx?: SvgLength; ry?: SvgLength }>>('rect')
+export const Line =
+  component<SvgComponent<{ x1?: SvgLength; y1?: SvgLength; x2?: SvgLength; y2?: SvgLength }>>(
+    'line',
+  )
+export const Polyline = component<SvgComponent<{ points?: string }>>('polyline')
+export const Polygon = component<SvgComponent<{ points?: string }>>('polygon')
+export const Text = component<SvgComponent<TextAttributes>>('text')
+export const Tspan = component<SvgComponent<TextAttributes>>('tspan')
+export const TextPath =
+  component<SvgComponent<TextAttributes & { href?: string; startOffset?: SvgLength }>>('textPath')
+export const Image =
+  component<SvgComponent<Box & { href?: string | { uri: string }; preserveAspectRatio?: string }>>(
+    'image',
+  )
+export const Defs = component<SvgComponent>('defs')
+export const Use = component<SvgComponent<Box & { href?: string }>>('use')
+export const Symbol =
+  component<SvgComponent<{ viewBox?: string; preserveAspectRatio?: string }>>('symbol')
+export const LinearGradient =
+  component<
+    SvgComponent<
       GradientAttributes & { x1?: SvgLength; y1?: SvgLength; x2?: SvgLength; y2?: SvgLength }
     >
-    RadialGradient: SvgComponent<
-      GradientAttributes & {
-        cx?: SvgLength
-        cy?: SvgLength
-        r?: SvgLength
-        fx?: SvgLength
-        fy?: SvgLength
-      }
-    >
-    Stop: SvgComponent<{ offset?: SvgLength; stopColor?: string; stopOpacity?: number | string }>
-    Pattern: SvgComponent<
-      Box & {
-        patternUnits?: 'objectBoundingBox' | 'userSpaceOnUse'
-        patternContentUnits?: 'objectBoundingBox' | 'userSpaceOnUse'
-        patternTransform?: string
-        viewBox?: string
-        preserveAspectRatio?: string
-        href?: string
-      }
-    >
-    Marker: SvgComponent<{
-      markerWidth?: SvgLength
-      markerHeight?: SvgLength
-      markerUnits?: 'strokeWidth' | 'userSpaceOnUse'
-      refX?: SvgLength
-      refY?: SvgLength
-      orient?: 'auto' | 'auto-start-reverse' | number | string
+  >('linearGradient')
+export const RadialGradient = component<
+  SvgComponent<
+    GradientAttributes & {
+      cx?: SvgLength
+      cy?: SvgLength
+      r?: SvgLength
+      fx?: SvgLength
+      fy?: SvgLength
+    }
+  >
+>('radialGradient')
+export const Stop =
+  component<
+    SvgComponent<{ offset?: SvgLength; stopColor?: string; stopOpacity?: number | string }>
+  >('stop')
+export const Pattern = component<
+  SvgComponent<
+    Box & {
+      patternUnits?: 'objectBoundingBox' | 'userSpaceOnUse'
+      patternContentUnits?: 'objectBoundingBox' | 'userSpaceOnUse'
+      patternTransform?: string
       viewBox?: string
       preserveAspectRatio?: string
-    }>
-    ClipPath: SvgComponent<{ clipPathUnits?: 'objectBoundingBox' | 'userSpaceOnUse' }>
-    Mask: SvgComponent
-    Filter: SvgComponent
-    FeDropShadow: SvgComponent<{
-      dx?: number | string
-      dy?: number | string
-      stdDeviation?: number | string
-      floodColor?: string
-      floodOpacity?: number | string
-    }>
-    FeGaussianBlur: SvgComponent<{ stdDeviation?: number | string; in?: string }>
-    FeOffset: SvgComponent<{ dx?: number | string; dy?: number | string; in?: string }>
-    FeFlood: SvgComponent<{ floodColor?: string; floodOpacity?: number | string }>
-    FeColorMatrix: SvgComponent<{ type?: string; values?: string; in?: string }>
-    FeComposite: SvgComponent
-    FeBlend: SvgComponent
-    FeMerge: SvgComponent
-    FeMergeNode: SvgComponent<{ in?: string }>
-    Title: SvgComponent
-    Desc: SvgComponent
-    Metadata: SvgComponent
-  }
-}
+      href?: string
+    }
+  >
+>('pattern')
+export const Marker = component<
+  SvgComponent<{
+    markerWidth?: SvgLength
+    markerHeight?: SvgLength
+    markerUnits?: 'strokeWidth' | 'userSpaceOnUse'
+    refX?: SvgLength
+    refY?: SvgLength
+    orient?: 'auto' | 'auto-start-reverse' | number | string
+    viewBox?: string
+    preserveAspectRatio?: string
+  }>
+>('marker')
+export const ClipPath =
+  component<SvgComponent<{ clipPathUnits?: 'objectBoundingBox' | 'userSpaceOnUse' }>>('clipPath')
+export const Mask = component<SvgComponent>('mask')
+export const Filter = component<SvgComponent>('filter')
+export const FeDropShadow = component<
+  SvgComponent<{
+    dx?: number | string
+    dy?: number | string
+    stdDeviation?: number | string
+    floodColor?: string
+    floodOpacity?: number | string
+  }>
+>('feDropShadow')
+export const FeGaussianBlur =
+  component<SvgComponent<{ stdDeviation?: number | string; in?: string }>>('feGaussianBlur')
+export const FeOffset =
+  component<SvgComponent<{ dx?: number | string; dy?: number | string; in?: string }>>('feOffset')
+export const FeFlood =
+  component<SvgComponent<{ floodColor?: string; floodOpacity?: number | string }>>('feFlood')
+export const FeColorMatrix =
+  component<SvgComponent<{ type?: string; values?: string; in?: string }>>('feColorMatrix')
+export const FeComposite = component<SvgComponent>('feComposite')
+export const FeBlend = component<SvgComponent>('feBlend')
+export const FeMerge = component<SvgComponent>('feMerge')
+export const FeMergeNode = component<SvgComponent<{ in?: string }>>('feMergeNode')
+export const Title = component<SvgComponent>('title')
+export const Desc = component<SvgComponent>('desc')
+export const Metadata = component<SvgComponent>('metadata')

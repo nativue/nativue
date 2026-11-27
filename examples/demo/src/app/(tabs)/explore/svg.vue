@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Stack } from '@nativue/core/router'
+import { Circle, Defs, G, Path, RadialGradient, Rect, Stop, Svg } from '@nativue/svg'
 import Page from '@/components/Page.vue'
 import Section from '@/components/Section.vue'
 import logoMark from '@/assets/logo-mark.png'
@@ -172,7 +173,7 @@ function shuffle() {
 
     <Section
       title="Components"
-      footer="<Svg>, <Circle>, <Path>... draw the same as the lowercase tags."
+      footer="Svg, Circle, Path... from @nativue/svg draw the same as the lowercase tags."
     >
       <View class="items-center rounded-xl bg-white py-4 dark:bg-slate-800">
         <Svg viewBox="0 0 120 60" width="240" height="120">

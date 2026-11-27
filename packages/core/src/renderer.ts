@@ -89,8 +89,6 @@ export interface DrawnView {
   tags: string[]
   /** The tags of the elements drawn inside it, e.g. 'path'. */
   partTags: string[]
-  /** Global components, e.g. <Path> for <path>. */
-  components?: Record<string, Component>
   /** A part's prop (an @event's handler excepted, which nativue keeps). */
   setPartProp(element: DrawnElement, key: string, value: unknown): void
   /**
@@ -164,7 +162,6 @@ function isNativeNode(node: Node): boolean {
 const drawnViewsByTag = new Map<string, DrawnView>()
 const drawnViewsByPartTag = new Map<string, DrawnView>()
 const drawnViewsByType = new Map<string, DrawnView>()
-const drawnViewComponents: Record<string, Component> = {}
 const drawnViewsToRedraw = new Set<Node>()
 
 /** For a package's runtime module, before the app starts: see DrawnView. */
@@ -172,7 +169,6 @@ export function registerDrawnView(view: DrawnView): void {
   for (const tag of [...view.tags, view.type]) drawnViewsByTag.set(tag, view)
   for (const tag of view.partTags) drawnViewsByPartTag.set(tag, view)
   drawnViewsByType.set(view.type, view)
-  Object.assign(drawnViewComponents, view.components)
 }
 
 function drawnViewOf(node: Node | null): Node | null {
@@ -686,8 +682,6 @@ export function createApp(rootComponent: Component) {
   app.component('FlatList', FlatListComponent)
   app.component('Swipeable', Swipeable)
   app.component('ImageBackground', ImageBackground)
-  for (const [name, component] of Object.entries(drawnViewComponents))
-    app.component(name, component)
 
   return Object.assign(app, { mount: () => mountOnContainer(rootNode) })
 }
