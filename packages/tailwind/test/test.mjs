@@ -181,6 +181,33 @@ assert.deepEqual(themedStyles, {
   'p-18': { padding: 36 },
 })
 
+// ---------- Text and corners ----------
+
+const text = await stylesOf([
+  'italic',
+  'uppercase',
+  'tracking-wide',
+  'leading-6',
+  'leading-tight',
+  'text-sm',
+  'line-clamp-2',
+  'truncate',
+  'rounded-t-lg',
+  'rounded-ee-lg',
+])
+assert.deepEqual(text.styles.italic, { fontStyle: 'italic' })
+assert.deepEqual(text.styles.uppercase, { textTransform: 'uppercase' })
+// Ems stay ems, multiplied by the font size natively; a unitless line height is in ems too.
+assert.deepEqual(text.styles['tracking-wide'], { letterSpacing: '0.025em' })
+assert.deepEqual(text.styles['leading-6'], { lineHeight: 24 })
+assert.deepEqual(text.styles['leading-tight'], { lineHeight: '1.25em' })
+// text-sm's own line height is left out: text keeps the platform's unless leading-* sets one.
+assert.deepEqual(text.styles['text-sm'], { fontSize: 14 })
+assert.equal(text.styles['line-clamp-2'].lineClamp, 2)
+assert.equal(text.styles.truncate.lineClamp, 1)
+assert.deepEqual(text.styles['rounded-t-lg'], { borderTopLeftRadius: 8, borderTopRightRadius: 8 })
+assert.deepEqual(text.styles['rounded-ee-lg'], { borderBottomRightRadius: 8 })
+
 // ---------- Gradients ----------
 
 // bg-linear-to-r, from-*, via-* and to-* each set variables; the backgroundImage reads them, and is

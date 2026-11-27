@@ -898,7 +898,7 @@ final class Bridge {
         guard let node = nodesById[id] else { return }
 
         (node.view as? UILabel)?.text = text
-        if node.textDecorationLine != "none" { node.updateTextDecoration() }
+        if node.hasTextAttributes { node.updateTextAttributes() }
         node.markContentChanged()
     }
 

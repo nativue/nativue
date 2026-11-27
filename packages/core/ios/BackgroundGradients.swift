@@ -80,6 +80,7 @@ extension UIView {
         CATransaction.setAnimationDuration(animationDuration)
         gradientsLayer.frame = bounds
         gradientsLayer.cornerRadius = layer.cornerRadius
+        gradientsLayer.maskedCorners = layer.maskedCorners
         gradientsLayer.masksToBounds = true
         gradientsLayer.layoutGradients()
         CATransaction.commit()

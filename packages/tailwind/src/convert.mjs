@@ -397,6 +397,15 @@ const POINT_PROPERTIES = {
   'column-gap': 'columnGap',
   'border-width': 'borderWidth',
   'border-radius': 'borderRadius',
+  'border-top-left-radius': 'borderTopLeftRadius',
+  'border-top-right-radius': 'borderTopRightRadius',
+  'border-bottom-right-radius': 'borderBottomRightRadius',
+  'border-bottom-left-radius': 'borderBottomLeftRadius',
+  // Left to right: start is left, end is right.
+  'border-start-start-radius': 'borderTopLeftRadius',
+  'border-start-end-radius': 'borderTopRightRadius',
+  'border-end-end-radius': 'borderBottomRightRadius',
+  'border-end-start-radius': 'borderBottomLeftRadius',
   'font-size': 'fontSize',
 }
 
@@ -414,7 +423,10 @@ const FLEX_START_END = {
 }
 
 const KEYWORD_PROPERTIES = {
-  display: ['display', { flex: 'flex', 'inline-flex': 'flex', none: 'none' }],
+  display: [
+    'display',
+    { flex: 'flex', 'inline-flex': 'flex', '-webkit-box': 'flex', none: 'none' },
+  ],
   position: ['position', { relative: 'relative', absolute: 'absolute', static: 'static' }],
   'flex-direction': [
     'flexDirection',
@@ -470,10 +482,18 @@ const KEYWORD_PROPERTIES = {
     'textDecorationLine',
     { none: 'none', underline: 'underline', 'line-through': 'line-through' },
   ],
+  'font-style': ['fontStyle', { normal: 'normal', italic: 'italic' }],
+  'text-transform': [
+    'textTransform',
+    { none: 'none', uppercase: 'uppercase', lowercase: 'lowercase', capitalize: 'capitalize' },
+  ],
+  // truncate: one line ending in an ellipsis.
+  'text-overflow': ['lineClamp', { ellipsis: 1 }],
 }
 
-// Declarations Tailwind adds next to the ones that matter (border-style: solid with border-2).
-const SILENTLY_IGNORED = new Set(['border-style'])
+// Declarations Tailwind adds next to the ones that matter (border-style: solid with border-2, the
+// -webkit-box line-clamp-2 needs on the web).
+const SILENTLY_IGNORED = new Set(['border-style', '-webkit-box-orient'])
 
 function flex(value) {
   if (value === 'auto') return { flexGrow: 1, flexShrink: 1, flexBasis: 'auto' }
@@ -558,6 +578,31 @@ function boxShadow(value) {
   }
 }
 
+/** '0.025em' stays in ems, which native multiplies by the font size; lengths are points. */
+function emsOrPoints(value) {
+  if (/^-?[\d.]+em$/.test(value)) return value
+
+  return points(value)
+}
+
+/** 1.25, a multiple of the font size, is in ems; lengths are points. */
+function lineHeight(value) {
+  if (/^-?[\d.]+$/.test(value)) return { lineHeight: `${Number(value)}em` }
+
+  const converted = emsOrPoints(value)
+
+  return converted === null ? null : { lineHeight: converted }
+}
+
+/** line-clamp-2's lines; unset (line-clamp-none) lifts the limit. */
+function lineClamp(value) {
+  if (value === 'unset' || value === 'none') return { lineClamp: 0 }
+
+  const lines = Number.parseInt(value, 10)
+
+  return Number.isNaN(lines) ? null : { lineClamp: lines }
+}
+
 const CONVERTERS = {
   flex,
   'flex-grow': (value) => ({ flexGrow: Number(value) }),
@@ -572,6 +617,13 @@ const CONVERTERS = {
   scale,
   translate,
   'box-shadow': boxShadow,
+  'letter-spacing': (value) => {
+    const converted = emsOrPoints(value)
+    return converted === null ? null : { letterSpacing: converted }
+  },
+  'line-height': lineHeight,
+  '-webkit-line-clamp': lineClamp,
+  'line-clamp': lineClamp,
 }
 
 /** The style for one declaration, or null when native views have nothing like it. */
@@ -770,6 +822,8 @@ function convertRule(rule, globalLookup, runTimeNames) {
       continue
     }
     if (property.startsWith('--') || SILENTLY_IGNORED.has(property)) continue
+    // text-sm's own line height, which leading-* overrides: text keeps the platform's.
+    if (property === 'line-height' && value.includes('--tw-leading')) continue
     if (RUN_TIME_PROPERTIES[property]) {
       const template = resolveBuildTimeVariables(value, buildTimeLookup, runTimeNames)
       // An image native doesn't draw (conic-gradient(), url()) leaves the class out, with a warning.

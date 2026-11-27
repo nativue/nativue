@@ -260,7 +260,24 @@ function syncTextContent(parent: Node | null) {
     .map((child) => child.text)
     .join('')
     .trim()
-  native.setText(parent.id, text)
+  native.setText(parent.id, transformedText(text, combinedStyle(parent)?.textTransform))
+}
+
+/** textTransform, applied to what's sent: the same on both platforms. */
+function transformedText(text: string, textTransform: Style['textTransform']): string {
+  switch (textTransform) {
+    case 'uppercase':
+      return text.toUpperCase()
+    case 'lowercase':
+      return text.toLowerCase()
+    case 'capitalize':
+      return text.replace(
+        /(^|\s)(\p{L})/gu,
+        (_, space: string, letter: string) => space + letter.toUpperCase(),
+      )
+    default:
+      return text
+  }
 }
 
 function detachFromParent(node: Node): Node | null {
@@ -348,7 +365,10 @@ function updateStyle(
   if (element.className) nodesWithClass.add(element)
   else nodesWithClass.delete(element)
 
-  patchStyle(element, previousStyle, combinedStyle(element))
+  const nextStyle = combinedStyle(element)
+
+  patchStyle(element, previousStyle, nextStyle)
+  if (previousStyle?.textTransform !== nextStyle?.textTransform) syncTextContent(element)
 }
 
 Appearance.addChangeListener(() => nodesWithClass.forEach((node) => updateStyle(node, {})))
@@ -459,12 +479,14 @@ const { createApp: createBaseApp } = createRenderer<Node, Node>({
   },
 
   setElementText(element, text) {
-    element.children = []
-    if (element.type === 'Text') native.setText(element.id, text.trim())
-    if (drawnViewsByPartTag.has(element.type)) {
-      element.children = [{ ...createNode('#text'), text, parent: element }]
-      redraw(element)
-    }
+    const isText = element.type === 'Text'
+    const isDrawnPart = drawnViewsByPartTag.has(element.type)
+
+    // Kept as a child: a later textTransform, or a drawing, reads it again.
+    element.children =
+      isText || isDrawnPart ? [{ ...createNode('#text'), text, parent: element }] : []
+    if (isText) syncTextContent(element)
+    if (isDrawnPart) redraw(element)
   },
 
   insert(child, parent, anchor) {

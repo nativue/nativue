@@ -4,9 +4,11 @@ import android.graphics.Canvas
 import android.graphics.ColorFilter
 import android.graphics.Outline
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.RectF
 import android.graphics.drawable.Drawable
+import android.os.Build
 import kotlin.math.max
 
 /**
@@ -19,6 +21,8 @@ class BoxDrawable : Drawable() {
     var gradients: List<Map<*, *>> = emptyList()
     var density = 1f
     var cornerRadius = 0f
+    /** Corners with their own radius, over cornerRadius: top left, top right, bottom right, bottom left. */
+    val cornerRadii = arrayOfNulls<Float>(4)
     var borderWidth = 0f
     var borderColor = 0
 
@@ -34,18 +38,19 @@ class BoxDrawable : Drawable() {
 
     override fun draw(canvas: Canvas) {
         rect.set(bounds)
+        val box = roundedPath(rect, inset = 0f)
 
         fillPaint.shader = null
         fillPaint.color = backgroundColor
         applyShadow(castsShadow = backgroundColor ushr 24 != 0)
-        if (backgroundColor ushr 24 != 0) canvas.drawRoundRect(rect, cornerRadius, cornerRadius, fillPaint)
+        if (backgroundColor ushr 24 != 0) canvas.drawPath(box, fillPaint)
 
         // The bottom one casts the shadow when there's no background color.
         gradients.asReversed().forEachIndexed { index, gradient ->
             fillPaint.shader = BackgroundGradients.shader(gradient, rect.width(), rect.height(), density) ?: return@forEachIndexed
             fillPaint.color = 0xFF000000.toInt()
             applyShadow(castsShadow = index == 0 && backgroundColor ushr 24 == 0)
-            canvas.drawRoundRect(rect, cornerRadius, cornerRadius, fillPaint)
+            canvas.drawPath(box, fillPaint)
         }
         fillPaint.shader = null
 
@@ -54,9 +59,15 @@ class BoxDrawable : Drawable() {
             rect.inset(borderWidth / 2, borderWidth / 2)
             borderPaint.color = borderColor
             borderPaint.strokeWidth = borderWidth
-            val radius = max(0f, cornerRadius - borderWidth / 2)
-            canvas.drawRoundRect(rect, radius, radius, borderPaint)
+            canvas.drawPath(roundedPath(rect, inset = borderWidth / 2), borderPaint)
         }
+    }
+
+    /** [bounds] with its corners rounded, each radius less [inset]. */
+    private fun roundedPath(bounds: RectF, inset: Float): Path {
+        val radii = FloatArray(8) { index -> max(0f, (cornerRadii[index / 2] ?: cornerRadius) - inset) }
+
+        return Path().apply { addRoundRect(bounds, radii, Path.Direction.CW) }
     }
 
     /**
@@ -78,7 +89,11 @@ class BoxDrawable : Drawable() {
 
     /** `overflow: 'hidden'` clips to this outline, so rounded corners clip their content. */
     override fun getOutline(outline: Outline) {
-        outline.setRoundRect(bounds, cornerRadius)
+        if (cornerRadii.all { it == null }) return outline.setRoundRect(bounds, cornerRadius)
+
+        val path = roundedPath(RectF(bounds), inset = 0f)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) outline.setPath(path) else @Suppress("DEPRECATION") outline.setConvexPath(path)
     }
 
     override fun setAlpha(alpha: Int) {}

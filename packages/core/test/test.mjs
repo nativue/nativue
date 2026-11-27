@@ -1088,6 +1088,18 @@ await settle()
 assert.equal(viewsById[darkCardId].style.backgroundColor, processColor('#ffffff'))
 assert.equal(viewsById[pageId].style.backgroundColor, processColor('#f1f5f9'))
 
+// Text styles and one side's corners; uppercase changes the text sent, the same on both platforms.
+const roundedTopId = findViewId((view) => view.style?.borderTopLeftRadius === 16, tailwindId)
+assert.equal(viewsById[roundedTopId].style.borderTopRightRadius, 16)
+assert.equal(viewsById[roundedTopId].style.borderBottomLeftRadius, undefined)
+const shoutingId = findViewId((view) => view.text === 'ROUNDED ON TOP', tailwindId)
+assert.equal(viewsById[shoutingId].style.letterSpacing, '0.1em')
+const italicId = findViewId((view) => view.text === 'and italic below', tailwindId)
+assert.equal(viewsById[italicId].style.fontStyle, 'italic')
+const clampedId = findViewId((view) => view.style?.lineClamp === 2, tailwindId)
+assert.equal(viewsById[clampedId].style.lineHeight, 24)
+findViewId((view) => view.style?.lineClamp === 1, tailwindId)
+
 const platformCardId = findViewId(
   (view) => view.children.some((childId) => viewsById[childId].text === 'Blue on iOS'),
   tailwindId,

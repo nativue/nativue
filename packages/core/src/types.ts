@@ -55,6 +55,11 @@ export type Style = {
   borderColor?: ColorValue
   borderWidth?: number
   borderRadius?: number
+  /** One corner's radius, over borderRadius. On iOS, the rounded corners share the largest radius. */
+  borderTopLeftRadius?: number
+  borderTopRightRadius?: number
+  borderBottomLeftRadius?: number
+  borderBottomRightRadius?: number
   opacity?: number | AnimatedNode
   transform?: TransformStep[]
   shadowColor?: ColorValue
@@ -68,6 +73,14 @@ export type Style = {
     'normal' | 'bold' | '100' | '200' | '300' | '400' | '500' | '600' | '700' | '800' | '900'
   textAlign?: 'auto' | 'left' | 'right' | 'center' | 'justify'
   textDecorationLine?: 'none' | 'underline' | 'line-through' | 'underline line-through'
+  fontStyle?: 'normal' | 'italic'
+  textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize'
+  /** In points, or in ems of the font size: '0.05em'. */
+  letterSpacing?: number | `${number}em`
+  /** The height of a line, in points, or in ems of the font size: '1.5em'. */
+  lineHeight?: number | `${number}em`
+  /** At most this many lines, the last one ending in an ellipsis. */
+  lineClamp?: number
 }
 
 export type GestureState = 'began' | 'changed' | 'ended' | 'cancelled' | 'failed'

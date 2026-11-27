@@ -69,15 +69,15 @@ Sizes are numbers (points), percentages (`'50%'`) or `'auto'`:
 
 ## Appearance
 
-| Property                                                       |                                                                                                                                                          |
-| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `backgroundColor`                                              | a color                                                                                                                                                  |
-| `backgroundImage`                                              | CSS gradients over the background color, see below                                                                                                       |
-| `borderWidth`, `borderColor`                                   | the same on every side                                                                                                                                   |
-| `borderRadius`                                                 | the same on every corner                                                                                                                                 |
-| `opacity`                                                      | `0` to `1`                                                                                                                                               |
-| `transform`                                                    | a list of steps: `[{ translateX: 10 }, { scale: 1.1 }, { rotate: '45deg' }]`; also `translateY`, `scaleX`, `scaleY`, and `rotate` in radians as a number |
-| `shadowColor`, `shadowOpacity`, `shadowRadius`, `shadowOffset` | a shadow: `{ shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }`                                         |
+| Property                                                       |                                                                                                                                                                                   |
+| -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `backgroundColor`                                              | a color                                                                                                                                                                           |
+| `backgroundImage`                                              | CSS gradients over the background color, see below                                                                                                                                |
+| `borderWidth`, `borderColor`                                   | the same on every side                                                                                                                                                            |
+| `borderRadius`                                                 | every corner; `borderTopLeftRadius`, `borderTopRightRadius`, `borderBottomLeftRadius` and `borderBottomRightRadius` set one (on iOS the rounded corners share the largest radius) |
+| `opacity`                                                      | `0` to `1`                                                                                                                                                                        |
+| `transform`                                                    | a list of steps: `[{ translateX: 10 }, { scale: 1.1 }, { rotate: '45deg' }]`; also `translateY`, `scaleX`, `scaleY`, and `rotate` in radians as a number                          |
+| `shadowColor`, `shadowOpacity`, `shadowRadius`, `shadowOffset` | a shadow: `{ shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }`                                                                  |
 
 ### Gradients
 
@@ -122,6 +122,11 @@ inherit them from their parents.
 | `fontWeight`         | `'normal'`, `'bold'`, `'100'` to `'900'`                                             |
 | `textAlign`          | `'auto'`, `'left'`, `'right'`, `'center'`, `'justify'`                               |
 | `textDecorationLine` | `'none'`, `'underline'`, `'line-through'`, `'underline line-through'`; `<Text>` only |
+| `fontStyle`          | `'normal'`, `'italic'`                                                               |
+| `textTransform`      | `'none'`, `'uppercase'`, `'lowercase'`, `'capitalize'`; `<Text>` only                |
+| `letterSpacing`      | points, or ems of the font size: `'0.05em'`                                          |
+| `lineHeight`         | the height of a line, in points, or ems of the font size: `'1.5em'`                  |
+| `lineClamp`          | at most this many lines, the last one ending in an ellipsis; `<Text>` only           |
 
 ## Colors
 
