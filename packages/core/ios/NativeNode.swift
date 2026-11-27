@@ -241,5 +241,7 @@ private func measureView(
         ? attributedText.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
         : nil
 
-    return CGSize(width: width, height: ceil(max(label.font.lineHeight, paragraphStyle?.minimumLineHeight ?? 0)))
+    let lineHeight = paragraphStyle.map(\.minimumLineHeight).flatMap { $0 > 0 ? $0 : nil } ?? label.font.lineHeight
+
+    return CGSize(width: width, height: ceil(lineHeight))
 }

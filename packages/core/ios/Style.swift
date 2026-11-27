@@ -104,8 +104,8 @@ extension NativeNode {
 
         case "lineClamp":
             let lines = Int(number(value) ?? 0)
+
             (view as? UILabel)?.numberOfLines = lines
-            (view as? UILabel)?.lineBreakMode = lines > 0 ? .byTruncatingTail : .byWordWrapping
             markContentChanged()
 
         default:

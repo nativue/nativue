@@ -205,6 +205,9 @@ assert.deepEqual(text.styles['leading-tight'], { lineHeight: '1.25em' })
 assert.deepEqual(text.styles['text-sm'], { fontSize: 14 })
 assert.equal(text.styles['line-clamp-2'].lineClamp, 2)
 assert.equal(text.styles.truncate.lineClamp, 1)
+// text-ellipsis alone doesn't cut text to one line, as on the web.
+const ellipsis = await stylesOf(['text-ellipsis'])
+assert.equal(ellipsis.styles['text-ellipsis'], undefined)
 assert.deepEqual(text.styles['rounded-t-lg'], { borderTopLeftRadius: 8, borderTopRightRadius: 8 })
 assert.deepEqual(text.styles['rounded-ee-lg'], { borderBottomRightRadius: 8 })
 

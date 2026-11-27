@@ -880,7 +880,7 @@ class Bridge(private val activity: ComponentActivity, private val rootView: Root
     private fun setText(text: String, id: Int) {
         val node = nodesById[id] ?: return
 
-        (node.view as? TextView)?.text = text
+        (node.view as? TextView)?.text = node.withLineHeight(text)
         node.markContentChanged()
     }
 

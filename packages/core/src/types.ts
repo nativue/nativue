@@ -75,9 +75,9 @@ export type Style = {
   textDecorationLine?: 'none' | 'underline' | 'line-through' | 'underline line-through'
   fontStyle?: 'normal' | 'italic'
   textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize'
-  /** In points, or in ems of the font size: '0.05em'. */
+  /** In points, or in ems of the font size: '0.05em'. <Text> only. */
   letterSpacing?: number | `${number}em`
-  /** The height of a line, in points, or in ems of the font size: '1.5em'. */
+  /** The height of a line, in points, or in ems of the font size: '1.5em'. <Text> only. */
   lineHeight?: number | `${number}em`
   /** At most this many lines, the last one ending in an ellipsis. */
   lineClamp?: number

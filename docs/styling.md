@@ -115,18 +115,18 @@ which would cover them: put it on a `<View>` around them.
 These go on the [`<Text>`](components/text.md) (or the `<TextInput>`) itself: native views don't
 inherit them from their parents.
 
-| Property             |                                                                                      |
-| -------------------- | ------------------------------------------------------------------------------------ |
-| `color`              | a color                                                                              |
-| `fontSize`           | a number, scaled by the system's text size                                           |
-| `fontWeight`         | `'normal'`, `'bold'`, `'100'` to `'900'`                                             |
-| `textAlign`          | `'auto'`, `'left'`, `'right'`, `'center'`, `'justify'`                               |
-| `textDecorationLine` | `'none'`, `'underline'`, `'line-through'`, `'underline line-through'`; `<Text>` only |
-| `fontStyle`          | `'normal'`, `'italic'`                                                               |
-| `textTransform`      | `'none'`, `'uppercase'`, `'lowercase'`, `'capitalize'`; `<Text>` only                |
-| `letterSpacing`      | points, or ems of the font size: `'0.05em'`                                          |
-| `lineHeight`         | the height of a line, in points, or ems of the font size: `'1.5em'`                  |
-| `lineClamp`          | at most this many lines, the last one ending in an ellipsis; `<Text>` only           |
+| Property             |                                                                                                             |
+| -------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `color`              | a color                                                                                                     |
+| `fontSize`           | a number, scaled by the system's text size                                                                  |
+| `fontWeight`         | `'normal'`, `'bold'`, `'100'` to `'900'`                                                                    |
+| `textAlign`          | `'auto'`, `'left'`, `'right'`, `'center'`, `'justify'`                                                      |
+| `textDecorationLine` | `'none'`, `'underline'`, `'line-through'`, `'underline line-through'`; `<Text>` only                        |
+| `fontStyle`          | `'normal'`, `'italic'`                                                                                      |
+| `textTransform`      | `'none'`, `'uppercase'`, `'lowercase'`, `'capitalize'`; `<Text>` only                                       |
+| `letterSpacing`      | points, or ems of the font size: `'0.05em'`; `<Text>` only                                                  |
+| `lineHeight`         | the height of a line, in points, or ems of the font size: `'1.5em'`, the text centered in it; `<Text>` only |
+| `lineClamp`          | at most this many lines, the last one ending in an ellipsis; `<Text>` only                                  |
 
 ## Colors
 

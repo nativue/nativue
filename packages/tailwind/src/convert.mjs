@@ -487,8 +487,6 @@ const KEYWORD_PROPERTIES = {
     'textTransform',
     { none: 'none', uppercase: 'uppercase', lowercase: 'lowercase', capitalize: 'capitalize' },
   ],
-  // truncate: one line ending in an ellipsis.
-  'text-overflow': ['lineClamp', { ellipsis: 1 }],
 }
 
 // Declarations Tailwind adds next to the ones that matter (border-style: solid with border-2, the
@@ -619,6 +617,7 @@ const CONVERTERS = {
   'box-shadow': boxShadow,
   'letter-spacing': (value) => {
     const converted = emsOrPoints(value)
+
     return converted === null ? null : { letterSpacing: converted }
   },
   'line-height': lineHeight,
@@ -810,6 +809,13 @@ function convertRule(rule, globalLookup, runTimeNames) {
   const buildTimeLookup = (name) => (runTimeNames.has(name) ? null : lookup(name))
   const style = {}
   const unsupported = []
+  // truncate: white-space: nowrap with text-overflow: ellipsis is one line ending in an ellipsis. Either
+  // alone has no native equivalent.
+  const isTruncated = ['white-space: nowrap', 'text-overflow: ellipsis'].every((declaration) =>
+    ruleDeclarations.some(({ property, value }) => `${property}: ${value}` === declaration),
+  )
+
+  if (isTruncated) style.lineClamp = 1
 
   for (const { property, value } of ruleDeclarations) {
     if (runTimeNames.has(property)) {
@@ -822,6 +828,7 @@ function convertRule(rule, globalLookup, runTimeNames) {
       continue
     }
     if (property.startsWith('--') || SILENTLY_IGNORED.has(property)) continue
+    if (isTruncated && (property === 'white-space' || property === 'text-overflow')) continue
     // text-sm's own line height, which leading-* overrides: text keeps the platform's.
     if (property === 'line-height' && value.includes('--tw-leading')) continue
     if (RUN_TIME_PROPERTIES[property]) {

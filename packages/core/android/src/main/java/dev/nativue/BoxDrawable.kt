@@ -35,10 +35,16 @@ class BoxDrawable : Drawable() {
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val rect = RectF()
+    private val boxPath = Path()
+    private val borderPath = Path()
+
+    /** Whether a corner has its own radius: the box is then a path, not a rounded rectangle. */
+    val hasCornerRadii: Boolean
+        get() = cornerRadii.any { it != null }
 
     override fun draw(canvas: Canvas) {
         rect.set(bounds)
-        val box = roundedPath(rect, inset = 0f)
+        val box = roundedPath(boxPath, rect, inset = 0f)
 
         fillPaint.shader = null
         fillPaint.color = backgroundColor
@@ -59,16 +65,22 @@ class BoxDrawable : Drawable() {
             rect.inset(borderWidth / 2, borderWidth / 2)
             borderPaint.color = borderColor
             borderPaint.strokeWidth = borderWidth
-            canvas.drawPath(roundedPath(rect, inset = borderWidth / 2), borderPaint)
+            canvas.drawPath(roundedPath(borderPath, rect, inset = borderWidth / 2), borderPaint)
         }
     }
 
-    /** [bounds] with its corners rounded, each radius less [inset]. */
-    private fun roundedPath(bounds: RectF, inset: Float): Path {
+    /** [path] set to [bounds] with its corners rounded, each radius less [inset]. */
+    private fun roundedPath(path: Path, bounds: RectF, inset: Float): Path {
         val radii = FloatArray(8) { index -> max(0f, (cornerRadii[index / 2] ?: cornerRadius) - inset) }
 
-        return Path().apply { addRoundRect(bounds, radii, Path.Direction.CW) }
+        path.reset()
+        path.addRoundRect(bounds, radii, Path.Direction.CW)
+
+        return path
     }
+
+    /** The box's shape, which a ContainerView clips its children to where its outline can't. */
+    fun outlinePath(): Path = roundedPath(Path(), RectF(bounds), inset = 0f)
 
     /**
      * Core Animation blurs with a sigma of half the shadow radius; Skia's blur radius r gives a sigma of
@@ -89,9 +101,9 @@ class BoxDrawable : Drawable() {
 
     /** `overflow: 'hidden'` clips to this outline, so rounded corners clip their content. */
     override fun getOutline(outline: Outline) {
-        if (cornerRadii.all { it == null }) return outline.setRoundRect(bounds, cornerRadius)
+        if (!hasCornerRadii) return outline.setRoundRect(bounds, cornerRadius)
 
-        val path = roundedPath(RectF(bounds), inset = 0f)
+        val path = outlinePath()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) outline.setPath(path) else @Suppress("DEPRECATION") outline.setConvexPath(path)
     }

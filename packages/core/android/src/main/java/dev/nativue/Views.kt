@@ -4,7 +4,9 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
 import android.graphics.Rect
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -14,9 +16,9 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
+import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
-import android.view.inputmethod.InputMethodManager
 import android.widget.ImageView
 import android.widget.ProgressBar
 import android.widget.ScrollView
@@ -26,9 +28,9 @@ import java.io.IOException
 import java.net.URL
 import java.security.MessageDigest
 import java.util.concurrent.Executors
+import kotlin.math.abs
 import kotlin.math.min
 import kotlin.math.roundToInt
-import kotlin.math.abs
 
 /**
  * A view whose children Yoga places (NativeNode.applyFrames): Android's own layout passes keep them
@@ -67,6 +69,19 @@ open class ContainerView(context: Context) : ViewGroup(context) {
 
     override fun onInterceptTouchEvent(event: MotionEvent): Boolean =
         gestureReporter?.isRecognizing == true || super.onInterceptTouchEvent(event)
+
+    /** Before Android 13 only a rounded rectangle outline clips: corners with their own radius clip here. */
+    override fun dispatchDraw(canvas: Canvas) {
+        val box = background as? BoxDrawable
+        if (!clipToOutline || box?.hasCornerRadii != true || Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            return super.dispatchDraw(canvas)
+        }
+
+        canvas.save()
+        canvas.clipPath(box.outlinePath())
+        super.dispatchDraw(canvas)
+        canvas.restore()
+    }
 
     /** Without an exact size (inside a scroll view), the size set in its layout params. */
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {

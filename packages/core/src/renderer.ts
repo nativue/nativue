@@ -271,9 +271,10 @@ function transformedText(text: string, textTransform: Style['textTransform']): s
     case 'lowercase':
       return text.toLowerCase()
     case 'capitalize':
+      // A word starts after anything but a letter, a digit or an apostrophe: "(hello)" is "(Hello)".
       return text.replace(
-        /(^|\s)(\p{L})/gu,
-        (_, space: string, letter: string) => space + letter.toUpperCase(),
+        /(^|[^\p{L}\p{N}'’])(\p{L})/gu,
+        (_, before: string, letter: string) => before + letter.toUpperCase(),
       )
     default:
       return text
