@@ -103,6 +103,9 @@ the view's corners, border and shadow:
 - Several, separated by commas, the first on top: `'radial-gradient(circle at top, white,
 transparent 40%), linear-gradient(#10b39b, #0b1220)'`.
 
+With [`@nativue/tailwind`](../packages/tailwind/README.md), `bg-linear-to-r from-emerald-400 to-teal-600`
+and the other gradient classes work too.
+
 Not drawn: `repeating-linear-gradient()`, `repeating-radial-gradient()` and `conic-gradient()`; color
 positions in lengths (`20px`) rather than `%`; and, on iOS, a gradient on a `<Text>` or an `<Image>`,
 which would cover them: put it on a `<View>` around them.

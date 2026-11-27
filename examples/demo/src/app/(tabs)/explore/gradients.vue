@@ -40,6 +40,16 @@ const RADIAL = [
     </Section>
 
     <Section
+      title="With Tailwind"
+      footer="bg-linear-to-r, bg-radial, from-, via- and to-, as on the web."
+    >
+      <View class="gap-3">
+        <View class="h-18 rounded-2xl bg-linear-to-r from-emerald-400 via-cyan-500 to-indigo-500" />
+        <View class="h-18 rounded-2xl bg-radial-[at_25%_25%] from-white to-zinc-900 to-75%" />
+      </View>
+    </Section>
+
+    <Section
       title="With the rest of the box"
       footer="Corners, a border and a shadow, and two layers: a glow over a gradient."
     >

@@ -1221,7 +1221,8 @@ const gradientsOf = (id) =>
   renderedViewIds(id)
     .map((viewId) => viewsById[viewId].style.backgroundImage)
     .filter(Boolean)
-const [diagonal, threeStops, toCorner, circle, ellipse, layered] = gradientsOf(gradientsScreenId)
+const [diagonal, threeStops, toCorner, circle, ellipse, tailwindLinear, tailwindRadial, layered] =
+  gradientsOf(gradientsScreenId)
 
 assert.deepEqual(diagonal, [
   {
@@ -1252,6 +1253,16 @@ assert.deepEqual(layered[0].center, [
 assert.equal(layered[0].colors[0], processColor('rgba(255, 255, 255, 0.6)'))
 assert.deepEqual(layered[0].positions, [0, 0.4])
 assert.equal(layered[1].angle, 160)
+// Tailwind's classes: their variables, from different classes, resolved for the element.
+assert.deepEqual(tailwindLinear[0].to, ['right'])
+assert.equal(tailwindLinear[0].colors.length, 3)
+assert.deepEqual(tailwindLinear[0].positions, [0, 0.5, 1])
+assert.deepEqual(tailwindRadial[0].center, [
+  [0.25, 0],
+  [0.25, 0],
+])
+assert.deepEqual(tailwindRadial[0].positions, [0, 0.75])
+assert.equal(tailwindRadial[0].colors[0], processColor('#ffffff'))
 
 // ---------- Native plugins (@nativue/haptics, @nativue/clipboard) ----------
 

@@ -1,7 +1,7 @@
 // backgroundImage, as CSS writes it: linear-gradient() and radial-gradient(), one or several (the first
 // on top), parsed into what native draws over backgroundColor. The geometry that depends on the view's
 // size (an angle's line, a corner, a radius) is worked out natively, at layout.
-import { processColor } from './colors'
+import { parseColor } from './colors'
 
 /** A length: a fraction of the view's side plus points, [fraction, points]. */
 type Length = [fraction: number, points: number]
@@ -48,21 +48,29 @@ function parseGradient(text: string): BackgroundGradient | null {
   const type = match[1].toLowerCase() as BackgroundGradient['type']
   const [first, ...rest] = splitTopLevel(match[2], ',').map((part) => part.trim())
   const firstTokens = splitTopLevel(first ?? '', ' ')
-  const hasSettings = firstTokens.length > 0 && processColor(firstTokens[0]) == null
+  const hasSettings = firstTokens.length > 0 && parseColor(firstTokens[0]) == null
   const stops = colorStops(hasSettings ? rest : [first, ...rest])
   if (stops.colors.length === 0) return null
 
-  // "in oklab", the color space, is left out: colors mix in sRGB.
-  const colorSpaceIndex = firstTokens.indexOf('in')
-  const settings = !hasSettings
-    ? []
-    : colorSpaceIndex < 0
-      ? firstTokens
-      : firstTokens.slice(0, colorSpaceIndex)
+  const settings = hasSettings
+    ? withoutColorSpace(firstTokens.map((token) => token.toLowerCase()))
+    : []
 
   return type === 'linear'
     ? { type, ...linearSettings(settings), ...stops }
     : { type, ...radialSettings(settings), ...stops }
+}
+
+const HUE_METHODS = new Set(['shorter', 'longer', 'increasing', 'decreasing'])
+
+/** "in oklab", "in hsl longer hue", before or after the direction: left out, colors mix in sRGB. */
+function withoutColorSpace(tokens: string[]): string[] {
+  const start = tokens.indexOf('in')
+  if (start < 0) return tokens
+
+  const hasHueMethod = HUE_METHODS.has(tokens[start + 2]) && tokens[start + 3] === 'hue'
+
+  return [...tokens.slice(0, start), ...tokens.slice(start + (hasHueMethod ? 4 : 2))]
 }
 
 /** "135deg", "to top right". */
@@ -91,21 +99,48 @@ function radialSettings(tokens: string[]): Partial<BackgroundGradient> {
   }
 }
 
-/** "at top", "at left 20%", "at 30% 40px": x then y, a single keyword centering the other. */
+const HORIZONTAL = new Set(['left', 'right'])
+const VERTICAL = new Set(['top', 'bottom'])
+
+/**
+ * "at top", "at center left", "at 30% 40px", "at right 10px top 20%": x and y, a keyword naming its
+ * axis whatever the order, the one left out centered.
+ */
 function position(tokens: string[]): [Length, Length] {
-  const values = tokens.slice(0, 2)
-  if (values.length === 0)
+  const isOffset = (token: string | undefined) => token !== undefined && /^-?[\d.]/.test(token)
+  const hasEdgeOffsets = tokens.some(
+    (token, index) => !isOffset(token) && token !== 'center' && isOffset(tokens[index + 1]),
+  )
+
+  // Edges and offsets from them: "right 10px top 20%".
+  if (hasEdgeOffsets) {
+    let x: Length = [0.5, 0]
+    let y: Length = [0.5, 0]
+
+    tokens.forEach((token, index) => {
+      if (isOffset(token)) return
+
+      const [fraction, points] = isOffset(tokens[index + 1]) ? length(tokens[index + 1]) : [0, 0]
+      const fromEnd = token === 'right' || token === 'bottom'
+      const edge: Length = fromEnd ? [1 - fraction, -points] : [fraction, points]
+
+      if (HORIZONTAL.has(token)) x = edge
+      else if (VERTICAL.has(token)) y = edge
+    })
+
+    return [x, y]
+  }
+
+  const [first, second = 'center'] = tokens
+  if (first === undefined)
     return [
       [0.5, 0],
       [0.5, 0],
     ]
 
-  const isVertical = (token: string) => token === 'top' || token === 'bottom'
-  const [x, y] = isVertical(values[0])
-    ? [values[1] ?? 'center', values[0]]
-    : [values[0], values[1] ?? 'center']
+  const isSwapped = VERTICAL.has(first) || HORIZONTAL.has(second)
 
-  return [length(x), length(y)]
+  return isSwapped ? [length(second), length(first)] : [length(first), length(second)]
 }
 
 function length(token: string): Length {
@@ -125,7 +160,8 @@ function colorStops(parts: string[]): Pick<BackgroundGradient, 'colors' | 'posit
 
   for (const part of parts) {
     const [colorText, ...positions] = splitTopLevel(part, ' ')
-    const color = processColor(colorText)
+    // A color hint ("red, 30%, blue") is left out: colors mix evenly.
+    const color = parseColor(colorText)
     if (color == null) continue
 
     const fractions = positions.map((text) =>
@@ -142,7 +178,46 @@ function colorStops(parts: string[]): Pick<BackgroundGradient, 'colors' | 'posit
     known.push(undefined)
   }
 
-  return withoutTransparentBlack(colors, spreadPositions(known))
+  return withoutTransparentBlack(...withinLine(colors, spreadPositions(known)))
+}
+
+/**
+ * Stops before 0% or past 100%, which CSS allows, cut at the ends of the line, the colors there mixed
+ * from their neighbours: native gradients take positions from 0 to 1.
+ */
+function withinLine(colors: number[], positions: number[]): [number[], number[]] {
+  if (positions[0] >= 0 && positions[positions.length - 1] <= 1) return [colors, positions]
+
+  const colorAt = (position: number) => {
+    const after = positions.findIndex((stop) => stop >= position)
+    if (after <= 0) return colors[after < 0 ? colors.length - 1 : 0]
+
+    const span = positions[after] - positions[after - 1]
+
+    return mixColors(
+      colors[after - 1],
+      colors[after],
+      span === 0 ? 1 : (position - positions[after - 1]) / span,
+    )
+  }
+  const inside = positions.flatMap((position, index) =>
+    position > 0 && position < 1 ? [index] : [],
+  )
+
+  return [
+    [colorAt(0), ...inside.map((index) => colors[index]), colorAt(1)],
+    [0, ...inside.map((index) => positions[index]), 1],
+  ]
+}
+
+/** Two 0xRRGGBBAA colors mixed, `amount` of the way from the first. */
+function mixColors(first: number, second: number, amount: number): number {
+  const channel = (color: number, shift: number) => (color >>> shift) & 0xff
+  const mixed = [24, 16, 8, 0].map((shift) =>
+    Math.round(channel(first, shift) + (channel(second, shift) - channel(first, shift)) * amount),
+  )
+
+  return ((mixed[0] << 24) | (mixed[1] << 16) | (mixed[2] << 8) | mixed[3]) >>> 0
 }
 
 /**
@@ -180,10 +255,15 @@ function spreadPositions(known: (number | undefined)[]): number[] {
 
   positions[0] ??= 0
   positions[positions.length - 1] ??= 1
+
   // Never before an earlier stop.
+  let latest = positions[0]!
+
   for (let index = 1; index < positions.length; index++) {
-    const previous = positions[index - 1]!
-    if (positions[index] !== undefined) positions[index] = Math.max(positions[index]!, previous)
+    if (positions[index] === undefined) continue
+
+    positions[index] = Math.max(positions[index]!, latest)
+    latest = positions[index]!
   }
   for (let index = 1; index < positions.length; index++) {
     if (positions[index] !== undefined) continue

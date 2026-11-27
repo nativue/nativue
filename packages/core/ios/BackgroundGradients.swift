@@ -8,7 +8,6 @@ final class BackgroundGradientsLayer: CALayer {
     func setGradients(_ gradients: [[String: Any]]) {
         self.gradients = gradients
         sublayers = gradients.reversed().map(GradientLayer.init)
-        layoutGradients()
     }
 
     /// Their geometry depends on the size: an angle's line, a corner, a radius.
@@ -47,8 +46,11 @@ private final class GradientLayer: CALayer {
 }
 
 extension UIView {
-    /// The gradients layer, created under the view's subviews the first time it's needed.
+    /// The gradients layer, created under the view's subviews the first time it's needed. A label or an image
+    /// view draws its content in its own layer, which the gradients would cover: they get none.
     func setBackgroundGradients(_ gradients: [[String: Any]]) {
+        guard !(self is UILabel || self is UIImageView) else { return }
+
         let existing = layer.sublayers?.first { $0 is BackgroundGradientsLayer } as? BackgroundGradientsLayer
         guard !gradients.isEmpty else {
             existing?.removeFromSuperlayer()
@@ -56,18 +58,26 @@ extension UIView {
         }
 
         let gradientsLayer = existing ?? BackgroundGradientsLayer()
-        if existing == nil { layer.insertSublayer(gradientsLayer, at: 0) }
+        if existing == nil {
+            // Behind the subviews' layers, wherever they're inserted.
+            gradientsLayer.zPosition = -1
+            layer.insertSublayer(gradientsLayer, at: 0)
+        }
         gradientsLayer.setGradients(gradients)
         applyBackgroundGradients()
     }
 
-    /// Fitted to the view's bounds and corners, again as its frame changes.
+    /// Fitted to the view's bounds and corners, again as its frame changes: at once, or along with a
+    /// LayoutAnimation. A scroll view's bounds move as it scrolls, keeping the gradients in place.
     func applyBackgroundGradients() {
         guard let gradientsLayer = layer.sublayers?.first(where: { $0 is BackgroundGradientsLayer }) as? BackgroundGradientsLayer
         else { return }
 
+        let animationDuration = UIView.inheritedAnimationDuration
+
         CATransaction.begin()
-        CATransaction.setDisableActions(true)
+        CATransaction.setDisableActions(animationDuration == 0)
+        CATransaction.setAnimationDuration(animationDuration)
         gradientsLayer.frame = bounds
         gradientsLayer.cornerRadius = layer.cornerRadius
         gradientsLayer.masksToBounds = true
