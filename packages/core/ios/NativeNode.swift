@@ -142,6 +142,7 @@ final class NativeNode {
                 place(childView, at: frame)
             }
             childView.applyCornerRadius()
+            childView.applyBackgroundGradients()
 
             applyFrames(of: child)
 

@@ -10,11 +10,14 @@ import android.graphics.drawable.Drawable
 import kotlin.math.max
 
 /**
- * A view's box: background color, rounded corners, border and a shadow drawn like iOS layers draw
- * theirs (color, opacity, blur radius, offset), outside the view's bounds. Sizes in pixels.
+ * A view's box: background color and gradients, rounded corners, border and a shadow drawn like iOS layers
+ * draw theirs (color, opacity, blur radius, offset), outside the view's bounds. Sizes in pixels.
  */
 class BoxDrawable : Drawable() {
     var backgroundColor = 0
+    /** backgroundImage (BackgroundGradients), the first on top; their lengths in dp, hence the density. */
+    var gradients: List<Map<*, *>> = emptyList()
+    var density = 1f
     var cornerRadius = 0f
     var borderWidth = 0f
     var borderColor = 0
@@ -32,9 +35,19 @@ class BoxDrawable : Drawable() {
     override fun draw(canvas: Canvas) {
         rect.set(bounds)
 
+        fillPaint.shader = null
         fillPaint.color = backgroundColor
-        applyShadow()
+        applyShadow(castsShadow = backgroundColor ushr 24 != 0)
         if (backgroundColor ushr 24 != 0) canvas.drawRoundRect(rect, cornerRadius, cornerRadius, fillPaint)
+
+        // The bottom one casts the shadow when there's no background color.
+        gradients.asReversed().forEachIndexed { index, gradient ->
+            fillPaint.shader = BackgroundGradients.shader(gradient, rect.width(), rect.height(), density) ?: return@forEachIndexed
+            fillPaint.color = 0xFF000000.toInt()
+            applyShadow(castsShadow = index == 0 && backgroundColor ushr 24 == 0)
+            canvas.drawRoundRect(rect, cornerRadius, cornerRadius, fillPaint)
+        }
+        fillPaint.shader = null
 
         if (borderWidth > 0) {
             // The stroke is centered on the path: inset by half so it stays inside, like iOS borders.
@@ -50,11 +63,11 @@ class BoxDrawable : Drawable() {
      * Core Animation blurs with a sigma of half the shadow radius; Skia's blur radius r gives a sigma of
      * 0.57735 r + 0.5. The shadow takes the fill's alpha, like iOS (an invisible box casts none).
      */
-    private fun applyShadow() {
+    private fun applyShadow(castsShadow: Boolean) {
         val sigma = shadowRadius / 2
         val alpha = ((shadowColor ushr 24) * shadowOpacity).toInt().coerceIn(0, 255)
 
-        if (alpha == 0 || backgroundColor ushr 24 == 0) {
+        if (alpha == 0 || !castsShadow) {
             fillPaint.clearShadowLayer()
             return
         }

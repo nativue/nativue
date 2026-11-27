@@ -72,11 +72,40 @@ Sizes are numbers (points), percentages (`'50%'`) or `'auto'`:
 | Property                                                       |                                                                                                                                                          |
 | -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `backgroundColor`                                              | a color                                                                                                                                                  |
+| `backgroundImage`                                              | CSS gradients over the background color, see below                                                                                                       |
 | `borderWidth`, `borderColor`                                   | the same on every side                                                                                                                                   |
 | `borderRadius`                                                 | the same on every corner                                                                                                                                 |
 | `opacity`                                                      | `0` to `1`                                                                                                                                               |
 | `transform`                                                    | a list of steps: `[{ translateX: 10 }, { scale: 1.1 }, { rotate: '45deg' }]`; also `translateY`, `scaleX`, `scaleY`, and `rotate` in radians as a number |
 | `shadowColor`, `shadowOpacity`, `shadowRadius`, `shadowOffset` | a shadow: `{ shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }`                                         |
+
+### Gradients
+
+`backgroundImage` takes CSS's `linear-gradient()` and `radial-gradient()`, as on the web. They follow
+the view's corners, border and shadow:
+
+```vue
+<View
+  :style="{
+    height: 120,
+    borderRadius: 16,
+    backgroundImage: 'linear-gradient(135deg, #4af2ae, #10b39b)',
+  }"
+/>
+```
+
+- `linear-gradient`: an angle (`deg`, `rad`, `turn`, `grad`; `180deg`, top to bottom, by default) or
+  `to` a side or corner (`to right`, `to top right`), then colors, each with an optional position in
+  `%`.
+- `radial-gradient`: `circle` or `ellipse`, sized by `closest-side`, `closest-corner`,
+  `farthest-side`, `farthest-corner` (the default) or by lengths, `at` a position (`at top left`,
+  `at 30% 40%`).
+- Several, separated by commas, the first on top: `'radial-gradient(circle at top, white,
+transparent 40%), linear-gradient(#10b39b, #0b1220)'`.
+
+Not drawn: `repeating-linear-gradient()`, `repeating-radial-gradient()` and `conic-gradient()`; color
+positions in lengths (`20px`) rather than `%`; and, on iOS, a gradient on a `<Text>` or an `<Image>`,
+which would cover them: put it on a `<View>` around them.
 
 ## Text
 

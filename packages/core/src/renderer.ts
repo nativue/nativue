@@ -22,6 +22,7 @@ import { animatedEventMapping, animatedStyleBinding, isAnimatedEvent } from './a
 import { Appearance } from './appearance'
 import { COLOR_PROPERTIES, processColor } from './colors'
 import { FlatListComponent, ImageBackground, Pressable, Swipeable } from './components'
+import { processBackgroundImage } from './gradients'
 import type { LayoutAnimationConfig, Style } from './types'
 export * from '@vue/runtime-core'
 export { AccessibilityInfo } from './accessibility'
@@ -277,6 +278,8 @@ function nativeIndexBefore(parent: Node, childIndex: number): number {
 }
 
 function nativeStyleValue(property: string, value: unknown): unknown {
+  if (property === 'backgroundImage') return processBackgroundImage(value)
+
   return COLOR_PROPERTIES.has(property) ? processColor(value) : value
 }
 

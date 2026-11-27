@@ -4,6 +4,7 @@ import {
   BellIcon,
   BlocksIcon,
   BugIcon,
+  BlendIcon,
   ChartSplineIcon,
   ClipboardCopyIcon,
   CompassIcon,
@@ -47,6 +48,13 @@ export const demoSections: DemoSection[] = [
         subtitle: '1,000 virtualized rows with swipe actions',
         icon: ListChecksIcon,
         tint: colors.orange,
+      },
+      {
+        href: '/explore/gradients',
+        title: 'Gradients',
+        subtitle: 'linear-gradient() and radial-gradient() backgrounds',
+        icon: BlendIcon,
+        tint: colors.pink,
       },
       {
         href: '/explore/svg',

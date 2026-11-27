@@ -33,9 +33,13 @@ extension NativeNode {
         case "backgroundColor":
             view.backgroundColor = UIColor(rgba: value)
 
+        case "backgroundImage":
+            view.setBackgroundGradients(value as? [[String: Any]] ?? [])
+
         case "borderRadius":
             view.layer.setValue(CGFloat(number(value) ?? 0), forKey: UIView.requestedCornerRadiusKey)
             view.applyCornerRadius()
+            view.applyBackgroundGradients()
 
         case "borderWidth":
             view.layer.borderWidth = CGFloat(number(value) ?? 0)

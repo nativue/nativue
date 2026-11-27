@@ -47,6 +47,11 @@ export type Style = {
   overflow?: 'visible' | 'hidden' | 'scroll'
 
   backgroundColor?: ColorValue
+  /**
+   * CSS gradients over backgroundColor, the first on top: 'linear-gradient(135deg, #4af2ae, #10b39b)',
+   * 'radial-gradient(circle at top, white, transparent 70%)'. On iOS, on a View: not on a Text or Image.
+   */
+  backgroundImage?: string
   borderColor?: ColorValue
   borderWidth?: number
   borderRadius?: number

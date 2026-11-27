@@ -48,6 +48,10 @@ private fun NativeNode.applyVisualProperty(property: String, value: Any?) {
 
     when (property) {
         "backgroundColor" -> updateBox { backgroundColor = androidColor(value) ?: 0 }
+        "backgroundImage" -> updateBox {
+            gradients = (value as? List<*>)?.filterIsInstance<Map<*, *>>().orEmpty()
+            density = view.resources.displayMetrics.density
+        }
         "borderRadius" -> updateBox { cornerRadius = pixels(value) }
         "borderWidth" -> updateBox { borderWidth = pixels(value) }
         "borderColor" -> updateBox { borderColor = androidColor(value) ?: 0 }

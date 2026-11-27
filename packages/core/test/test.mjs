@@ -1214,6 +1214,45 @@ assert.equal(curveRun[1].d, 'M20 215 Q150 150 280 215')
 assert.equal(curveRun[1].startOffset, '50%')
 assert.equal(curveRun[2], 'Text along a curve')
 
+// ---------- backgroundImage: CSS gradients, parsed for native ----------
+
+const gradientsScreenId = await open('explore/gradients')
+const gradientsOf = (id) =>
+  renderedViewIds(id)
+    .map((viewId) => viewsById[viewId].style.backgroundImage)
+    .filter(Boolean)
+const [diagonal, threeStops, toCorner, circle, ellipse, layered] = gradientsOf(gradientsScreenId)
+
+assert.deepEqual(diagonal, [
+  {
+    type: 'linear',
+    angle: 135,
+    colors: [processColor('#4af2ae'), processColor('#10b39b')],
+    positions: [0, 1],
+  },
+])
+assert.deepEqual(threeStops[0].positions, [0, 0.5, 1])
+// "in oklab" is left out; a corner is native's to work out, at the view's size.
+assert.deepEqual(toCorner[0].to, ['top', 'right'])
+assert.deepEqual(circle[0].center, [
+  [0, 0],
+  [0, 0],
+])
+assert.equal(circle[0].shape, 'circle')
+assert.equal(circle[0].extent, 'farthest-corner')
+assert.equal(ellipse[0].extent, 'closest-side')
+// transparent fades the color before it out, as CSS mixes colors: not through black.
+assert.equal(ellipse[0].colors.at(-1), (processColor('#ff9500') & 0xffffff00) >>> 0)
+// Layers, the first on top; a color function keeps its commas.
+assert.equal(layered.length, 2)
+assert.deepEqual(layered[0].center, [
+  [0.8, 0],
+  [0.2, 0],
+])
+assert.equal(layered[0].colors[0], processColor('rgba(255, 255, 255, 0.6)'))
+assert.deepEqual(layered[0].positions, [0, 0.4])
+assert.equal(layered[1].angle, 160)
+
 // ---------- Native plugins (@nativue/haptics, @nativue/clipboard) ----------
 
 const hapticsId = await open('explore/haptics')
