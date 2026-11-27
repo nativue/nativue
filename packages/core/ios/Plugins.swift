@@ -50,6 +50,15 @@ public final class PluginRegistry {
         viewMakers[type] = makeView
     }
 
+    /// The view controller on top, the app's or what it presents, to present a system screen from (a photo
+    /// picker, the camera). nil before the app shows its window.
+    @MainActor public var topViewController: UIViewController? {
+        let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
+        guard let root = (windows.first { $0.isKeyWindow } ?? windows.first)?.rootViewController else { return nil }
+
+        return sequence(first: root, next: \.presentedViewController).reduce(root) { _, presented in presented }
+    }
+
     /// Draws the tab bar and header icons whose `drawnIcon.drawer` is `drawer` (see router.ts's DrawnIcon).
     /// The image is tinted, like an SF Symbol: only its shape counts.
     public func addIconDrawer(_ drawer: String, _ draw: @escaping DrawIcon) {

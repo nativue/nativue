@@ -11,6 +11,7 @@ import {
   DatabaseIcon,
   HandIcon,
   HardDriveIcon,
+  ImagesIcon,
   KeyRoundIcon,
   ListChecksIcon,
   PaletteIcon,
@@ -134,6 +135,13 @@ export const demoSections: DemoSection[] = [
         subtitle: 'Copy text, with native code: @nativue/clipboard',
         icon: ClipboardCopyIcon,
         tint: colors.purple,
+      },
+      {
+        href: '/explore/image-picker',
+        title: 'Image picker',
+        subtitle: 'Photos, videos and the camera: @nativue/image-picker',
+        icon: ImagesIcon,
+        tint: colors.pink,
       },
       {
         href: '/explore/secure-store',

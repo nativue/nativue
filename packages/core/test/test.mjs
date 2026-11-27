@@ -31,6 +31,17 @@ const reportedErrors = []
 const hapticsCalls = []
 // The texts @nativue/clipboard copied.
 const copiedTexts = []
+// What @nativue/image-picker's native side hands back: two photos, as if the user chose them.
+const pickedMedia = [1, 2].map((index) => ({
+  uri: `file:///cache/nativue-image-picker/${index}.jpg`,
+  type: 'image',
+  width: 400,
+  height: 300,
+  mimeType: 'image/jpeg',
+  fileSize: 2048,
+}))
+const pickCalls = []
+const cameraCalls = []
 // What @nativue/secure-store's native side keeps, by key.
 const secureItems = new Map()
 // The statements @nativue/sqlite sent, as [sql, parameters]: it gets no rows back, and a COUNT gets zeros.
@@ -62,6 +73,25 @@ globalThis.__native = {
     copiedTexts.push(text)
     resolvesWith(false)(callId)
   },
+  'pluginAsync:imagePicker.pick': (callId, limit, mediaTypes) => {
+    pickCalls.push([limit, mediaTypes])
+    resolvesWith(pickedMedia.slice(0, limit === 1 ? 1 : 2))(callId)
+  },
+  'pluginAsync:imagePicker.openCamera': (callId, ...options) => {
+    cameraCalls.push(options)
+    resolvesWith({ ...pickedMedia[0], type: 'video', duration: 4.25 })(callId)
+  },
+  'pluginAsync:imagePicker.getCameraPermission': resolvesWith({
+    status: 'granted',
+    granted: true,
+    canAskAgain: true,
+  }),
+  'pluginAsync:imagePicker.requestCameraPermission': resolvesWith({
+    status: 'granted',
+    granted: true,
+    canAskAgain: true,
+  }),
+  'pluginAsync:imagePicker.getPendingResult': resolvesWith(null),
   'pluginAsync:secureStore.setItem': (callId, key, value) => {
     secureItems.set(key, value)
     resolvesWith(null)(callId)
@@ -1302,6 +1332,20 @@ await settle()
 assert.deepEqual(copiedTexts, ['Hello from nativue'])
 assert.ok(renderedTexts(clipboardId).includes('Copied'))
 
+// @nativue/image-picker: pick() and openCamera() pass their options on, and what comes back shows.
+const imagePickerId = await open('explore/image-picker')
+press(pressableContaining('Up to 5', imagePickerId))
+await settle()
+assert.deepEqual(pickCalls, [[5, 'all']])
+assert.equal(
+  renderedViewIds(imagePickerId).filter((id) => viewsById[id].type === 'Image').length,
+  2,
+)
+assert.ok(renderedTexts(imagePickerId).includes('image 400×300, 2 KB'))
+press(pressableContaining('Video', imagePickerId))
+await settle()
+assert.deepEqual(cameraCalls, [['videos', 30, 'high']])
+assert.ok(renderedTexts(imagePickerId).includes('video 400×300, 2 KB, 4.3 s'))
 // @nativue/secure-store: saves, reads and deletes through its native side.
 const secureStoreId = await open('explore/secure-store')
 press(pressableContaining('Save', secureStoreId))
