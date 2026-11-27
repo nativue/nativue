@@ -31,7 +31,13 @@ imports before it starts (`runtime`), and mods of the native files (`ios`, `andr
 
 ## Writing a package with native code
 
-[`@nativue/haptics`](../packages/haptics) is a small example of one. A package's `package.json` says where its native code is:
+Start from a new one, which works as is: a function in Swift and Kotlin that its JavaScript calls.
+
+```sh
+npm create nativue@latest nativue-battery -- --module
+```
+
+[`@nativue/haptics`](../packages/haptics) is a small example of a real one. A package's `package.json` says where its native code is:
 
 ```json
 "nativue": {

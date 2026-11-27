@@ -1,6 +1,7 @@
 # create-nativue
 
-Creates a [nativue](https://github.com/nativue/nativue) app, with its iOS and Android projects:
+Creates a [nativue](https://github.com/nativue/nativue) app, with its iOS and Android projects, or
+a package with native code (below):
 
 ```sh
 npm create nativue@latest my-app
@@ -22,5 +23,14 @@ The new app has a starter screen, TypeScript, and these scripts:
 | `npm run dev`       | the dev server alone: the app reloads on save                          |
 | `npm run build`     | bundles the app for a release build                                    |
 | `npm run typecheck` | type-checks the app, templates included                                |
+
+## A package with native code
+
+```sh
+npm create nativue@latest nativue-battery -- --module
+```
+
+creates a package whose JavaScript calls a function in Swift and Kotlin, ready to install in an app
+and grow from there: [writing a package with native code](https://github.com/nativue/nativue/blob/main/docs/packages.md#writing-a-package-with-native-code).
 
 Next: [Getting started](https://github.com/nativue/nativue/blob/main/docs/getting-started.md).

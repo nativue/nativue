@@ -1,0 +1,41 @@
+{
+  "name": "__PACKAGE_NAME__",
+  "version": "0.1.0",
+  "description": "",
+  "keywords": [
+    "vue",
+    "native",
+    "nativue"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "vue-tsc"
+  },
+  "peerDependencies": {
+    "@nativue/core": ">=__NATIVUE_VERSION__"
+  },
+  "devDependencies": {
+    "@nativue/core": "^__NATIVUE_VERSION__",
+    "typescript": "^5.9.3",
+    "vue-tsc": "^3.3.14"
+  },
+  "nativue": {
+    "ios": {
+      "sources": "ios",
+      "plugin": "__PASCAL__Plugin"
+    },
+    "android": {
+      "sources": "android",
+      "plugin": "__KOTLIN_PACKAGE__.__PASCAL__Plugin"
+    }
+  },
+  "files": [
+    "src",
+    "ios",
+    "android/build.gradle.kts",
+    "android/src"
+  ]
+}
