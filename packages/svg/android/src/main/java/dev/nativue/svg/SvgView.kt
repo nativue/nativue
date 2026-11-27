@@ -1,4 +1,4 @@
-package dev.nativue
+package dev.nativue.svg
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -24,6 +24,8 @@ import android.graphics.Typeface
 import android.os.Build
 import android.view.MotionEvent
 import android.view.View
+import dev.nativue.PluginView
+import dev.nativue.androidColor
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.ceil
@@ -38,11 +40,10 @@ import kotlin.math.tan
 
 /**
  * View behind <svg>: draws what JS sends as `drawing`, [tag, attributes, children or text] (src/svg.ts),
- * scaled from the root's viewBox like preserveAspectRatio="xMidYMid meet" (or "none"). Icons send
- * `elements` instead, Lucide's [tag, attributes] pairs, stroked with `color`. Mirrors ios/SvgView.swift.
+ * its viewBox fitted as preserveAspectRatio says. Icons send `elements` instead, [tag, attributes] pairs
+ * stroked with `color`. Mirrors ios/SvgView.swift.
  */
-// Limitation: no pattern, marker, image or textPath, and of the filters only a drop shadow.
-class SvgView(context: Context) : View(context) {
+class SvgView(context: Context) : View(context), PluginView {
     var viewBox = RectF(0f, 0f, 24f, 24f)
         set(value) {
             field = value
@@ -88,6 +89,16 @@ class SvgView(context: Context) : View(context) {
 
     init {
         isClickable = false // a press on an icon presses what contains it
+    }
+
+    override fun setProp(key: String, value: Any?) {
+        when (key) {
+            "color" -> color = androidColor(value) ?: 0xFF000000.toInt()
+            "viewBox" -> rect(value)?.let { viewBox = it }
+            "elements" -> elements = value as? List<*> ?: emptyList<Any>()
+            "drawing" -> drawing = value
+            "strokeWidth" -> strokeWidth = (value as? Number)?.toFloat() ?: 2f
+        }
     }
 
     override fun onDraw(canvas: Canvas) {

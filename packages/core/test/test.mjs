@@ -279,7 +279,7 @@ assert.equal(viewsById[rootStackId].type, 'ScreenStack')
 assert.equal(rootScreenIds().length, 1)
 assert.equal(viewsById[rootScreenIds()[0]].props.headerShown, false) // (tabs) brings its own headers
 
-// Tab icons from @nativue/icons reach the native side as their drawing.
+// Tab icons from @nativue/icons reach the native side as their drawing, which @nativue/svg draws.
 const tabBarItems = childScreenIds(tabBarId).map((id) => viewsById[id].props.tabBarItem)
 assert.deepEqual(
   tabBarItems.map(({ label, badge }) => ({ label, badge })),
@@ -288,9 +288,10 @@ assert.deepEqual(
     { label: 'Explore', badge: undefined },
   ],
 )
-for (const { svg } of tabBarItems) {
-  assert.deepEqual(svg.viewBox, [0, 0, 24, 24])
-  assert.ok(svg.elements.length > 0)
+for (const { drawnIcon } of tabBarItems) {
+  assert.equal(drawnIcon.drawer, 'svg')
+  assert.deepEqual(drawnIcon.viewBox, [0, 0, 24, 24])
+  assert.ok(drawnIcon.elements.length > 0)
 }
 assert.equal(tabBar.props.selectedIndex, 0)
 assert.equal(tabBar.props.activeTintColor, processColor('#0e9f84'))

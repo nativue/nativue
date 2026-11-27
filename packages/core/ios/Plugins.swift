@@ -14,6 +14,8 @@ public final class PluginRegistry {
     /// sendEvent("change", payload) reaches the element's @change; event names are lowercase.
     public typealias SendEvent = (_ eventName: String, _ payload: Any?) -> Void
     public typealias MakeView = (_ sendEvent: @escaping SendEvent) -> UIView
+    /// An icon JS describes ({ drawer, ... }) drawn at `size` points, for a tab bar or a header.
+    public typealias DrawIcon = (_ icon: [String: Any], _ size: CGFloat) -> UIImage?
 
     /// Set by the Bridge: calls JavaScript's listeners.
     var sendToJavaScript: (_ eventName: String, _ payload: Any?) -> Void = { _, _ in }
@@ -47,7 +49,17 @@ public final class PluginRegistry {
     public func addView(_ type: String, _ makeView: @escaping MakeView) {
         viewMakers[type] = makeView
     }
+
+    /// Draws the tab bar and header icons whose `drawnIcon.drawer` is `drawer` (see router.ts's DrawnIcon).
+    /// The image is tinted, like an SF Symbol: only its shape counts.
+    public func addIconDrawer(_ drawer: String, _ draw: @escaping DrawIcon) {
+        NavigationIcons.drawersByName[drawer] = draw
+    }
 }
+
+/// A plugin view that takes its own touches where `point(inside:with:)` says, which a <Pressable> around it
+/// leaves to it.
+public protocol InteractiveView: UIView {}
 
 /// Thrown by an async function: JavaScript's Promise rejects with an Error whose `code` is this one.
 /// Codes nativue's packages share: ERR_PERMISSION_DENIED, ERR_UNAVAILABLE, ERR_CANCELED,
@@ -64,7 +76,7 @@ public struct PluginError: LocalizedError {
     public var errorDescription: String? { message }
 }
 
-/// A plugin view gets its props here, all but `style`, which nativue applies (layout included).
+/// A plugin view gets its props here, all but `style` and `accessibility`, which nativue applies (layout included).
 public protocol PluginView: UIView {
     func setProp(_ key: String, value: Any?)
 }

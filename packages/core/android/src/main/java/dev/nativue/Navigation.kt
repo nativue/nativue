@@ -17,6 +17,7 @@ import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import kotlin.math.abs
@@ -202,7 +203,10 @@ class ScreenHeader(context: Context) : LinearLayout(context), ThemeAware {
 
     private val dragHandle = View(context)
     private val row = LinearLayout(context)
-    private val navigationButton = iconButton(ARROW_BACK)
+    private val navigationButton = IconButton(context).apply {
+        setIcon(R.drawable.nativue_arrow_back)
+        color = ThemeColors.onSurface
+    }
     private val leftItems = LinearLayout(context)
     private val title = textView(22f, Typeface.NORMAL)
     private val rightItems = LinearLayout(context)
@@ -276,30 +280,30 @@ class ScreenHeader(context: Context) : LinearLayout(context), ThemeAware {
     }
 
     /** Back arrow inside a stack, a close icon on a full screen modal, nothing on a group's first screen. */
-    fun setNavigation(icon: List<List<Any>>?) {
+    fun setNavigation(icon: Int?) {
         navigationButton.visibility = if (icon == null) View.GONE else View.VISIBLE
-        icon?.let { navigationButton.elements = it }
+        icon?.let(navigationButton::setIcon)
         (title.layoutParams as LayoutParams).marginStart = dp(if (icon == null) 12f else 4f)
     }
 
     /**
-     * [{ title?, svg?, systemImage? }]: an svg icon (@nativue/icons) shows as an icon button, otherwise the
-     * title as a text button; SF Symbol names are iOS-only. Presses are reported with the side and index,
-     * since the handlers live in JS.
+     * [{ title?, image?, drawnIcon?, systemImage? }]: an icon shows as an icon button, otherwise the title as a
+     * text button; SF Symbol names are iOS-only. Presses are reported with the side and index, since the
+     * handlers live in JS.
      */
     fun setItems(value: Any?, side: String) {
         val items = if (side == "right") rightItems else leftItems
         items.removeAllViews()
 
         (value as? List<*>)?.filterIsInstance<Map<*, *>>()?.forEachIndexed { index, item ->
-            val svg = item["svg"] as? Map<*, *>
-            val button = if (svg != null) IconButton(context).apply { setSvg(svg) } else textButton(item["title"] as? String ?: "")
-            val width = if (svg != null) dp(48f) else LayoutParams.WRAP_CONTENT
+            val hasIcon = item["image"] != null || item["drawnIcon"] != null
+            val button = if (hasIcon) IconButton(context).apply { setIcon(item) } else textButton(item["title"] as? String ?: "")
+            val width = if (hasIcon) dp(48f) else LayoutParams.WRAP_CONTENT
 
             tint(button)
             button.contentDescription = item["title"] as? String
             button.setOnClickListener { onEvent("headeritempress", mapOf("side" to side, "index" to index)) }
-            items.addView(button, LayoutParams(width, if (svg != null) dp(48f) else dp(40f)))
+            items.addView(button, LayoutParams(width, if (hasIcon) dp(48f) else dp(40f)))
         }
     }
 
@@ -324,31 +328,21 @@ class ScreenHeader(context: Context) : LinearLayout(context), ThemeAware {
         includeFontPadding = false
     }
 
-    private fun iconButton(elements: List<List<Any>>) = IconButton(context).apply {
-        this.elements = elements
-        color = ThemeColors.onSurface
-    }
 
     companion object {
-        val ARROW_BACK = listOf(listOf("path", mapOf("d" to "M19 12H5")), listOf("path", mapOf("d" to "m12 19-7-7 7-7")))
-        val CLOSE = listOf(listOf("path", mapOf("d" to "M18 6 6 18")), listOf("path", mapOf("d" to "m6 6 12 12")))
+        val ARROW_BACK = R.drawable.nativue_arrow_back
+        val CLOSE = R.drawable.nativue_close
     }
 }
 
 /** A 24dp icon in a 48dp round touch target with a ripple. */
 class IconButton(context: Context) : FrameLayout(context) {
-    private val icon = SvgView(context)
+    private val icon = ImageView(context)
 
-    var elements: List<*>
-        get() = icon.elements
+    var color: Int = 0
         set(value) {
-            icon.elements = value
-        }
-
-    var color: Int
-        get() = icon.color
-        set(value) {
-            icon.color = value
+            field = value
+            icon.imageTintList = ColorStateList.valueOf(value)
         }
 
     init {
@@ -356,10 +350,13 @@ class IconButton(context: Context) : FrameLayout(context) {
         addView(icon, LayoutParams(dp(24f), dp(24f), Gravity.CENTER))
     }
 
-    /** An icon from @nativue/icons: { viewBox, elements }. */
-    fun setSvg(svg: Map<*, *>) {
-        icon.elements = svg["elements"] as? List<*> ?: emptyList<Any>()
-        SvgView.rect(svg["viewBox"])?.let { icon.viewBox = it }
+    fun setIcon(drawable: Int) {
+        icon.setImageResource(drawable)
+    }
+
+    /** A header item's icon: { image } or { drawnIcon }. */
+    fun setIcon(item: Map<*, *>) {
+        NavigationIcons.show(item, icon, dp(24f))
     }
 }
 
@@ -639,7 +636,7 @@ class FixedSizeTextView(context: Context) : TextView(context)
 /** One destination of the navigation bar: an icon in a pill when selected, a label and a badge. */
 private class TabItemView(context: Context) : LinearLayout(context) {
     private val indicator = FrameLayout(context)
-    private val icon = SvgView(context)
+    private val icon = ImageView(context)
     private val label = FixedSizeTextView(context)
     private val badge = FixedSizeTextView(context)
 
@@ -676,15 +673,12 @@ private class TabItemView(context: Context) : LinearLayout(context) {
         background = RippleDrawable(ColorStateList.valueOf(ThemeColors.ripple), null, null)
     }
 
-    /** Only svg icons (@nativue/icons) draw on Android; SF Symbol names are iOS-only. */
+    /** SF Symbol names are iOS-only: an image or a drawn icon shows here. */
     fun update(item: Map<*, *>, isSelected: Boolean, activeTintColor: Int?, inactiveTintColor: Int?) {
         val activeColor = activeTintColor ?: ThemeColors.onSurface
         val color = if (isSelected) activeColor else inactiveTintColor ?: ThemeColors.onSurfaceVariant
-        val svg = item["svg"] as? Map<*, *>
-
-        icon.elements = svg?.get("elements") as? List<*> ?: emptyList<Any>()
-        SvgView.rect(svg?.get("viewBox"))?.let { icon.viewBox = it }
-        icon.color = color
+        NavigationIcons.show(item, icon, dp(24f))
+        icon.imageTintList = ColorStateList.valueOf(color)
         label.text = item["label"] as? String ?: ""
         label.setTextColor(color)
 

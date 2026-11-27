@@ -111,12 +111,14 @@ final class ScreenController: UIViewController, ContentRoot {
 
     private func makeBarButtonItem(_ description: [String: Any], side: String, index: Int) -> UIBarButtonItem {
         let title = description["title"] as? String ?? ""
-        let image = SvgView.iconImage(description, size: 22)
+        var barButtonItem: UIBarButtonItem?
+        let image = NavigationIcons.image(description, size: 22) { image in barButtonItem?.image = image }
 
         let action = UIAction(title: title, image: image) { [unowned self] _ in
             onEvent?("headeritempress", ["side": side, "index": index])
         }
+        barButtonItem = UIBarButtonItem(primaryAction: action)
 
-        return UIBarButtonItem(primaryAction: action)
+        return barButtonItem!
     }
 }

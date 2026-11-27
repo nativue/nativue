@@ -18,13 +18,13 @@ doesn't work. Full docs: https://github.com/nativue/nativue/tree/main/docs
 
 Global, with no import: `View`, `Text`, `Image`, `ImageBackground`, `Pressable`, `Button`, `TextInput`,
 `Switch`, `ScrollView`, `FlatList`, `Swipeable`, `Modal`, `ActivityIndicator`, `SafeAreaView`,
-`KeyboardAvoidingView`, `Svg`.
+`KeyboardAvoidingView`.
 
-- Charts and drawings: `<svg>` with `path`, `circle`, `rect`, `line`, `polyline`, `polygon`, `ellipse`,
-  `g`, `text`, and gradients in `defs` (`fill="url(#id)"`), as on the web; `@press` on an element.
-  Also `clipPath`, `mask`, `use`/`symbol`, `tspan` lines, `stroke-dashoffset` and `feDropShadow`
-  filters. As components too: `<Svg>`, `<Path>`, `<Circle>`... and `<SvgText>` for text. No `image`,
-  `pattern` or `marker` yet.
+- Charts and drawings: `<svg>` as on the web, with `@nativue/svg` installed (`@nativue/icons` brings
+  it): shapes, `text`/`tspan`/`textPath`, gradients and `pattern`s in `defs` (`fill="url(#id)"`),
+  `clipPath`, `mask`, `use`/`symbol`, `marker`, `image`, drop shadows and blur filters, and `@press`
+  on an element. As components too: `<Svg>`, `<Path>`, `<Circle>`... `<SvgText>` and `<SvgImage>`.
+  Without the package, `<svg>` shows nothing.
 
 - Text must be inside a `<Text>`, never directly in a `<View>`.
 - Taps: `<Pressable @press="save">` (also `@long-press`, and `v-slot="{ pressed }"`), or
@@ -100,7 +100,9 @@ Import the runtime from `vue`: `ref`, `computed`, `StyleSheet`, `Animated`, `Lay
 
 - `@/` points at `src/`. Shared components go in `src/components`, everything else in `src/lib`.
 - Vue plugins (Pinia...) are installed in `src/app.ts`: `export default function setup(app: App)`.
-- Official packages: `@nativue/icons` (icon components), `@nativue/tailwind`, `@nativue/haptics`,
+- Tab and header icons (`tabBarIcon`, a header item's `icon`): an `@nativue/icons` component,
+  `svgIcon(viewBox, elements)` from `@nativue/svg`, an image `{ uri }`, or an SF Symbol name (iOS).
+- Official packages: `@nativue/svg`, `@nativue/icons` (icon components), `@nativue/tailwind`, `@nativue/haptics`,
   `@nativue/clipboard` (copy text), `@nativue/notifications` (local notifications), `@nativue/sqlite`.
   A package with native code needs the app
   rebuilt with `npm run ios` or `npm run android`, not just a reload.

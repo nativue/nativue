@@ -787,14 +787,6 @@ class Bridge(private val activity: ComponentActivity, private val rootView: Root
             setIndicatorSize(node, "medium")
         }
 
-        "Svg" -> {
-            val svgView = SvgView(activity)
-            svgView.onElementPress = { nodeIds, x, y ->
-                dispatchEvent("elementpress", id, mapOf("nodeIds" to nodeIds, "x" to x / density, "y" to y / density))
-            }
-            NativeNode(svgView, measuresContent = false)
-        }
-
         else -> {
             val makeView = pluginRegistry.viewMakers[type]
             val view = makeView?.invoke { eventName, payload -> dispatchEvent(eventName, id, payload) }
@@ -896,7 +888,8 @@ class Bridge(private val activity: ComponentActivity, private val rootView: Root
         val node = nodesById[id] ?: return
         val view = node.view
 
-        if (key != "style" && view is PluginView) return view.setProp(key, value)
+        // Style and accessibility are nativue's, as on its own views.
+        if (key != "style" && key != "accessibility" && view is PluginView) return view.setProp(key, value)
 
         when (key) {
             "style" -> {
@@ -997,18 +990,7 @@ class Bridge(private val activity: ComponentActivity, private val rootView: Root
 
             "size" -> if (view is ProgressBar) setIndicatorSize(node, value as? String ?: "medium")
 
-            "color" -> {
-                (view as? ProgressBar)?.indeterminateTintList = androidColor(value)?.let(ColorStateList::valueOf)
-                (view as? SvgView)?.color = androidColor(value) ?: SVG_DEFAULT_COLOR
-            }
-
-            "viewBox" -> SvgView.rect(value)?.let { (view as? SvgView)?.viewBox = it }
-
-            "elements" -> (view as? SvgView)?.elements = value as? List<*> ?: emptyList<Any>()
-
-            "drawing" -> (view as? SvgView)?.drawing = value
-
-            "strokeWidth" -> (view as? SvgView)?.strokeWidth = number(value) ?: 2f
+            "color" -> (view as? ProgressBar)?.indeterminateTintList = androidColor(value)?.let(ColorStateList::valueOf)
 
             "placeholder" -> (view as? EditText)?.hint = value as? String
 
@@ -1190,7 +1172,6 @@ class Bridge(private val activity: ComponentActivity, private val rootView: Root
         const val JAVASCRIPT_STACK_SIZE = 8L * 1024 * 1024
         const val SYMBOLICATE_TIMEOUT_MS = 2000
         const val RECONNECT_DELAY_MS = 2000L
-        const val SVG_DEFAULT_COLOR = 0xFF000000.toInt()
         const val BUTTON_TINT = 0xFF007AFF.toInt()
         val EDGES = listOf(YogaEdge.LEFT, YogaEdge.TOP, YogaEdge.RIGHT, YogaEdge.BOTTOM)
         val SYSTEM_BARS = WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()

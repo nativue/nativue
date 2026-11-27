@@ -357,7 +357,7 @@ private let fontWeights: [String: UIFont.Weight] = [
 
 extension UIColor {
     /// Colors arrive as 0xRRGGBBAA numbers: the JS side (src/colors.js) parses every CSS format.
-    convenience init?(rgba value: Any) {
+    public convenience init?(rgba value: Any) {
         guard let rgba = (value as? NSNumber)?.uint32Value else { return nil }
 
         self.init(

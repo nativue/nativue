@@ -1,10 +1,10 @@
+import Nativue
 import UIKit
 
 /// View behind <svg>: draws what JS sends as `drawing`, [tag, attributes, children or text] (src/svg.ts),
-/// scaled from the root's viewBox like preserveAspectRatio="xMidYMid meet" (or "none"). Icons send
-/// `elements` instead, Lucide's [tag, attributes] pairs, stroked with `color`.
-/// Limitation: no pattern, marker, image or textPath, and of the filters only a drop shadow.
-final class SvgView: UIView {
+/// its viewBox fitted as preserveAspectRatio says. Icons send `elements` instead, [tag, attributes] pairs
+/// stroked with `color`.
+final class SvgView: UIView, PluginView, InteractiveView {
     var viewBox = CGRect(x: 0, y: 0, width: 24, height: 24) {
         didSet { updateIconDrawing() }
     }
@@ -61,18 +61,24 @@ final class SvgView: UIView {
         return CGRect(x: numbers[0], y: numbers[1], width: numbers[2], height: numbers[3])
     }
 
-    /// A tab bar or header item's icon: `systemImage` is an SF Symbol name, `svg` ({ viewBox, elements }) an
-    /// icon from @nativue/icons.
-    static func iconImage(_ item: [String: Any], size: CGFloat = 25) -> UIImage? {
-        if let name = item["systemImage"] as? String { return UIImage(systemName: name) }
-        guard let svg = item["svg"] as? [String: Any] else { return nil }
-
-        return templateImage(elements: svg["elements"] as? [[Any]] ?? [], viewBox: svg["viewBox"], size: size)
+    func setProp(_ key: String, value: Any?) {
+        switch key {
+        case "color": color = value.flatMap { UIColor(rgba: $0) } ?? .black
+        case "viewBox": if let rect = Self.rect(fromViewBox: value) { viewBox = rect }
+        case "elements": elements = value as? [[Any]] ?? []
+        case "drawing": drawing = value
+        case "strokeWidth": strokeWidth = CGFloat((value as? NSNumber)?.doubleValue ?? 2)
+        default: break
+        }
     }
 
-    /// The elements drawn into a template image (tinted by its container, like SF Symbols), sized like
-    /// a tab bar icon.
-    static func templateImage(elements: [[Any]], viewBox: Any?, size: CGFloat = 25) -> UIImage {
+    /// A tab bar or header icon (svgIcon in src/index.ts): { viewBox, elements }, tinted by the bar.
+    static func iconImage(_ icon: [String: Any], size: CGFloat) -> UIImage {
+        templateImage(elements: icon["elements"] as? [[Any]] ?? [], viewBox: icon["viewBox"], size: size)
+    }
+
+    /// The elements drawn into a template image (tinted by its container, like SF Symbols).
+    static func templateImage(elements: [[Any]], viewBox: Any?, size: CGFloat) -> UIImage {
         let svgView = SvgView(frame: CGRect(x: 0, y: 0, width: size, height: size))
         if let rect = rect(fromViewBox: viewBox) { svgView.viewBox = rect }
         svgView.elements = elements

@@ -638,13 +638,6 @@ final class Bridge {
         case "SwipeableView":
             return NativeNode(view: SwipeableView(frame: .zero), measuresContent: false)
 
-        case "Svg":
-            let svgView = SvgView(frame: .zero)
-            svgView.onElementPress = { [unowned self] nodeIds, location in
-                dispatchEvent("elementpress", toNodeId: id, payload: ["nodeIds": nodeIds, "x": location.x, "y": location.y])
-            }
-            return NativeNode(view: svgView, measuresContent: false)
-
         case "PressableView":
             let pressableView = PressableView()
             pressableView.onEvent = { [unowned self] eventName in dispatchEvent(eventName, toNodeId: id) }
@@ -912,7 +905,8 @@ final class Bridge {
     private func setProp(_ key: String, value: Any?, onNodeId id: Int) {
         guard let node = nodesById[id] else { return }
 
-        if key != "style", let pluginView = node.view as? PluginView {
+        // Style and accessibility are nativue's, as on its own views.
+        if key != "style", key != "accessibility", let pluginView = node.view as? PluginView {
             pluginView.setProp(key, value: value is NSNull ? nil : value)
             return
         }
@@ -940,9 +934,11 @@ final class Bridge {
 
         case "tabBarItem":
             let item = value as? [String: Any] ?? [:]
-            screenController(id)?.setTabBarItem(
+            let screen = screenController(id)
+            let image = NavigationIcons.image(item, size: 25) { [weak screen] image in screen?.tabBarItem.image = image }
+            screen?.setTabBarItem(
                 label: item["label"] as? String,
-                image: SvgView.iconImage(item),
+                image: image,
                 badge: (item["badge"] as? CustomStringConvertible)?.description
             )
 
@@ -1005,19 +1001,6 @@ final class Bridge {
 
         case "color":
             (node.view as? UIActivityIndicatorView)?.color = UIColor(rgba: value as Any)
-            (node.view as? SvgView)?.color = UIColor(rgba: value as Any) ?? .black
-
-        case "viewBox":
-            if let viewBox = SvgView.rect(fromViewBox: value) { (node.view as? SvgView)?.viewBox = viewBox }
-
-        case "elements":
-            (node.view as? SvgView)?.elements = value as? [[Any]] ?? []
-
-        case "drawing":
-            (node.view as? SvgView)?.drawing = value
-
-        case "strokeWidth":
-            (node.view as? SvgView)?.strokeWidth = CGFloat((value as? NSNumber)?.doubleValue ?? 2)
 
         case "visible":
             modalController(id)?.setVisible(isTruthyAttribute(value))

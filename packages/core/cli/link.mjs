@@ -46,14 +46,32 @@ export function nativuePackages(appDirectory) {
   if (!existsSync(join(appDirectory, 'package.json'))) return []
 
   const { dependencies = {}, devDependencies = {} } = readJson(join(appDirectory, 'package.json'))
-  const names = new Set([...Object.keys(dependencies), ...Object.keys(devDependencies)])
+  const visited = new Set()
+  const found = []
+  const pending = [...Object.keys(dependencies), ...Object.keys(devDependencies)].map((name) => [
+    name,
+    appDirectory,
+  ])
+  // The app's packages, then theirs: a package made for nativue brings the native packages it
+  // depends on (@nativue/icons brings @nativue/svg).
+  const visit = (name, fromDirectory) => {
+    if (visited.has(name)) return
+    visited.add(name)
 
-  return [...names].flatMap((name) => {
-    const directory = packageDirectory(name, appDirectory)
-    const nativue = directory && readJson(join(directory, 'package.json')).nativue
+    const directory = packageDirectory(name, fromDirectory)
+    const manifest = directory && readJson(join(directory, 'package.json'))
+    const isForNativue = manifest?.nativue || manifest?.peerDependencies?.['@nativue/core']
 
-    return nativue ? [{ name, directory, nativue }] : []
-  })
+    if (manifest?.nativue) found.push({ name, directory, nativue: manifest.nativue })
+    if (isForNativue) {
+      Object.keys(manifest.dependencies ?? {}).forEach((dependency) =>
+        pending.push([dependency, directory]),
+      )
+    }
+  }
+  while (pending.length > 0) visit(...pending.shift())
+
+  return found
 }
 
 function iosPlugins(appDirectory) {
