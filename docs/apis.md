@@ -232,7 +232,10 @@ they update when the window is resized. For layouts, prefer flexbox and percenta
 
 While `npm run dev` runs, what the app prints shows in its terminal, each line marked `ios` or
 `android`, with stacks pointing at your files. It also goes to Xcode's console and Logcat, with its
-level, in release builds too.
+level. Release builds log too; on iOS the system log keeps their text private, as anyone with the
+device can read it.
+
+Long arrays, objects and strings are cut, as in Node: after 100 items and 10,000 characters.
 
 `time`, `count`, `dir`, `clear` and `profile` (and their pairs) are accepted and do nothing.
 

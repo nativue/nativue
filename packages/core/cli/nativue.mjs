@@ -244,7 +244,13 @@ function vueHotUpdates(sendToApps) {
 // runtime is a Vite client: the dev server speaks Vite's protocol for it and relays updates over SSE.
 async function dev() {
   const connectedApps = new Set()
-  const sendToApps = (message) => connectedApps.forEach((response) => response.write(message))
+  // A source map, read once until the code changes: every message to the apps is a reload, an update
+  // or a keepalive.
+  const sourceMapsByFile = new Map()
+  const sendToApps = (message) => {
+    sourceMapsByFile.clear()
+    connectedApps.forEach((response) => response.write(message))
+  }
   const config = viteConfig({
     mode: 'development',
     plugins: [vueHotUpdates((payload) => sendToApps(`data: hot ${JSON.stringify(payload)}\n\n`))],
@@ -376,12 +382,24 @@ async function dev() {
     return sourceMap.ok ? { sourceMap: await sourceMap.json(), directory: BUNDLE_DIRECTORY } : null
   }
 
+  function cachedSourceMapOf(file) {
+    if (!sourceMapsByFile.has(file)) {
+      const sourceMap = sourceMapOf(file)
+
+      sourceMapsByFile.set(file, sourceMap)
+      sourceMap.catch(() => sourceMapsByFile.delete(file))
+    }
+
+    return sourceMapsByFile.get(file)
+  }
+
   /** The text with its stack frames pointing at the app's files. */
   async function symbolicate(text) {
     const files = [...framedFiles(text)]
+
     if (files.length === 0) return text
 
-    const sourceMaps = await Promise.all(files.map(sourceMapOf))
+    const sourceMaps = await Promise.all(files.map(cachedSourceMapOf))
     const symbolicateFrames = createSymbolicator(
       Object.fromEntries(
         files.map((file, index) => [file, sourceMaps[index]]).filter(([, map]) => map),
@@ -403,7 +421,10 @@ async function dev() {
   async function handleLog(request, response) {
     const { platform, entries } = JSON.parse(await readBody(request))
 
-    for (const { level, text } of entries) printLog(platform, level, await symbolicate(text))
+    // Without a source map (Vite restarting), a stack prints as the app sent it.
+    for (const { level, text } of entries) {
+      printLog(platform, level, await symbolicate(text).catch(() => text))
+    }
     response.writeHead(204).end()
   }
 

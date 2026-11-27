@@ -8,6 +8,9 @@ export type LogLevel = 'log' | 'info' | 'debug' | 'warn' | 'error'
 const MAX_DEPTH = 2
 /** An object or array longer than this on one line shows one entry per line. */
 const MAX_LINE_LENGTH = 72
+/** Past this, an array, Map, Set or object shows '... N more items', and a string '... N more characters', as in Node. */
+const MAX_ITEMS = 100
+const MAX_STRING_LENGTH = 10_000
 const INDENT = '  '
 const SUBSTITUTION = /%[sdifoOc%]/g
 
@@ -28,7 +31,8 @@ export function createConsole(write: (level: LogLevel, text: string) => void) {
     groupDepth++
   }
 
-  const doNothing = () => {}
+  // Typed to take what the web's console takes: console.time('label') type-checks.
+  const doNothing: (...values: unknown[]) => void = () => {}
 
   return {
     log: printer('log'),
@@ -84,6 +88,7 @@ export function createConsole(write: (level: LogLevel, text: string) => void) {
 /** Strings as they are, the rest inspected; a first string with % takes the next values in. */
 export function formatValues(values: unknown[]): string {
   const [first, ...rest] = values
+
   if (typeof first !== 'string' || !first.includes('%')) return values.map(formatValue).join(' ')
 
   const remaining = [...rest]
@@ -102,16 +107,21 @@ function substitute(token: string, value: unknown) {
     case '%s':
       return formatValue(value)
     case '%d':
-      return String(typeof value === 'object' ? NaN : Number(value))
+      return String(Number(asNumber(value)))
     case '%i':
-      return String(parseInt(String(value), 10))
+      return String(parseInt(String(asNumber(value)), 10))
     case '%f':
-      return String(parseFloat(String(value)))
+      return String(parseFloat(String(asNumber(value))))
     case '%c':
       return '' // CSS, which a terminal can't apply
     default:
       return inspect(value)
   }
+}
+
+/** Objects and symbols, which can't be turned into numbers (or would throw), are NaN. */
+function asNumber(value: unknown) {
+  return typeof value === 'symbol' || (typeof value === 'object' && value !== null) ? NaN : value
 }
 
 function formatValue(value: unknown) {
@@ -121,7 +131,7 @@ function formatValue(value: unknown) {
 export function inspect(value: unknown, depth = 0, seen = new Set<object>()): string {
   switch (typeof value) {
     case 'string':
-      return `'${value.replaceAll("'", "\\'")}'`
+      return `'${truncate(value).replaceAll("'", "\\'")}'`
     case 'bigint':
       return `${value}n`
     case 'symbol':
@@ -146,18 +156,21 @@ function inspectObject(value: object, depth: number, seen: Set<object>): string 
   try {
     const inspectNested = (nested: unknown) => inspect(nested, depth + 1, seen)
 
-    if (Array.isArray(value)) return wrap('[', value.map(inspectNested), ']')
+    if (Array.isArray(value)) return wrap('[', formatItems(value, inspectNested), ']')
     if (value instanceof Map) {
-      const entries = [...value].map(
+      const entries = formatItems(
+        [...value],
         ([key, item]) => `${inspectNested(key)} => ${inspectNested(item)}`,
       )
 
       return wrap(`Map(${value.size}) {`, entries, '}')
     }
-    if (value instanceof Set)
-      return wrap(`Set(${value.size}) {`, [...value].map(inspectNested), '}')
+    if (value instanceof Set) {
+      return wrap(`Set(${value.size}) {`, formatItems([...value], inspectNested), '}')
+    }
 
-    const entries = Object.entries(value).map(
+    const entries = formatItems(
+      Object.entries(value),
       ([key, item]) => `${formatKey(key)}: ${inspectNested(item)}`,
     )
 
@@ -165,6 +178,19 @@ function inspectObject(value: object, depth: number, seen: Set<object>): string 
   } finally {
     seen.delete(value)
   }
+}
+
+function formatItems<Item>(items: Item[], format: (item: Item) => string) {
+  const shown = items.slice(0, MAX_ITEMS).map(format)
+  const hidden = items.length - shown.length
+
+  return hidden > 0 ? [...shown, `... ${hidden} more item${hidden === 1 ? '' : 's'}`] : shown
+}
+
+function truncate(text: string) {
+  const hidden = text.length - MAX_STRING_LENGTH
+
+  return hidden > 0 ? `${text.slice(0, MAX_STRING_LENGTH)}... ${hidden} more characters` : text
 }
 
 /** 'Point ' for a class's instance, nothing for a plain object. */
@@ -182,6 +208,7 @@ function wrap(open: string, entries: string[], close: string) {
   if (entries.length === 0) return `${open}${close}`
 
   const oneLine = `${open} ${entries.join(', ')} ${close}`
+
   if (oneLine.length <= MAX_LINE_LENGTH && !oneLine.includes('\n')) return oneLine
 
   return `${open}\n${entries.map((entry) => entry.replace(/^/gm, INDENT)).join(',\n')}\n${close}`

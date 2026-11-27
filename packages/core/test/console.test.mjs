@@ -108,6 +108,14 @@ assert.ok(lastPrinted()[1].includes('│ first   │ 1  │'))
 console.table('not a table')
 assert.deepEqual(lastPrinted(), ['log', 'not a table'])
 
+// Long arrays and strings are cut, as Node cuts them.
+const many = formatValues([Array.from({ length: 102 }, (_, index) => index)])
+assert.ok(many.includes('99,\n') && many.endsWith('... 2 more items\n]'))
+assert.ok(formatValues([['x'.repeat(10_005)]]).includes("... 5 more characters'"))
+
+// Values that can't be numbers are NaN, never a throw.
+assert.equal(formatValues(['%d %i %f', Symbol('id'), Object.create(null), {}]), 'NaN NaN NaN')
+
 // The rest does nothing, without throwing.
 for (const name of [
   'time',

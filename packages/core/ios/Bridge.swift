@@ -1110,16 +1110,46 @@ private func double(_ argument: Any) -> Double {
 }
 
 private let javaScriptLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "nativue", category: "JavaScript")
+/// The system log cuts a message at 1 KB: a longer one goes in parts of this many bytes, in order.
+private let maxLogPartBytes = 1000
 
-/// The console's levels as the system log's, which Xcode and Console.app show and filter.
+/// The console's levels as the system log's, which Xcode and Console.app show and filter. Release builds
+/// keep the text private, as anyone with the device can read the system log.
 private func logFromJavaScript(_ message: String, level: String) {
-    switch level {
-    case "debug": javaScriptLogger.debug("\(message, privacy: .public)")
-    case "info": javaScriptLogger.info("\(message, privacy: .public)")
-    case "warn": javaScriptLogger.warning("\(message, privacy: .public)")
-    case "error": javaScriptLogger.error("\(message, privacy: .public)")
-    default: javaScriptLogger.notice("\(message, privacy: .public)")
+    let type: OSLogType = switch level {
+    case "debug": .debug
+    case "info": .info
+    case "warn", "error": .error
+    default: .default
     }
+
+    for part in logParts(of: message) {
+        #if DEBUG
+        javaScriptLogger.log(level: type, "\(part, privacy: .public)")
+        #else
+        javaScriptLogger.log(level: type, "\(part, privacy: .private)")
+        #endif
+    }
+}
+
+private func logParts(of message: String) -> [String] {
+    var parts: [String] = []
+    var part = ""
+    var partBytes = 0
+
+    for character in message {
+        let characterBytes = character.utf8.count
+
+        if partBytes + characterBytes > maxLogPartBytes {
+            parts.append(part)
+            part = ""
+            partBytes = 0
+        }
+        part.append(character)
+        partBytes += characterBytes
+    }
+
+    return parts + [part]
 }
 
 private func string(_ argument: Any) -> String {
