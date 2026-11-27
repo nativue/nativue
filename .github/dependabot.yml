@@ -1,0 +1,24 @@
+# A pull request a week with the latest versions; CI checks them (tests, typecheck, both builds, and
+# that the dev server's prelude still compiles on Hermes).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    # Patches and minors together; each major on its own, so one that breaks doesn't hold the rest back.
+    groups:
+      npm:
+        patterns: ['*']
+        update-types: ['minor', 'patch']
+    ignore:
+      # Must be the Hermes the apps embed (Package.swift, android/build.gradle.kts): updated together, by hand.
+      - dependency-name: hermes-compiler
+      # vue-tsc (Volar) needs typescript below 7.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

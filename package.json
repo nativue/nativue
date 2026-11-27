@@ -16,6 +16,7 @@
     "format": "prettier --write packages examples"
   },
   "devDependencies": {
-    "prettier": "^3.10.1"
+    "prettier": "^3.10.1",
+    "typescript": "^6.0.3"
   }
 }
