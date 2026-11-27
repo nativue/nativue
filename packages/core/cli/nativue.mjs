@@ -17,10 +17,10 @@ import http from 'node:http'
 import net from 'node:net'
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, watch } from 'node:fs'
 import { randomUUID } from 'node:crypto'
-import { createRequire } from 'node:module'
 import { relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { compileToBytecode } from './hermes.mjs'
+import { hotPrelude } from './hot-prelude.mjs'
 import { resolvePlugins } from './plugins.mjs'
 import { linkNativePackages, PLATFORMS, prebuild } from './prebuild.mjs'
 import { runOnAndroid, runOnIOS } from './run.mjs'
@@ -236,15 +236,6 @@ function vueHotUpdates(sendToApps) {
       })
     },
   }
-}
-
-function hotPrelude(clientId, serverURL) {
-  const viteRequire = createRequire(createRequire(import.meta.url).resolve('vite'))
-  const runtime = readFileSync(viteRequire.resolve('rolldown/experimental/runtime'), 'utf8')
-  const client = readFileSync(frameworkPath('cli/hot-client.js'), 'utf8')
-  const options = JSON.stringify({ clientId, serverURL })
-
-  return `${runtime.replace(/^export \{[^}]*\};?$/m, '')}\nvar __NATIVUE_HOT__ = ${options};\n${client}\n`
 }
 
 // Vite's full bundle mode builds the app and, on save, a patch with the changed modules. Each app

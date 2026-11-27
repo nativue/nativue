@@ -12,14 +12,16 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "typecheck": "vue-tsc"
+    "typecheck": "vue-tsc",
+    "format": "prettier --write src"
   },
   "peerDependencies": {
     "@nativue/core": ">=__NATIVUE_VERSION__"
   },
   "devDependencies": {
     "@nativue/core": "^__NATIVUE_VERSION__",
-    "typescript": "^5.9.3",
+    "prettier": "^3.10.1",
+    "typescript": "^6.0.3",
     "vue-tsc": "^3.3.14"
   },
   "nativue": {

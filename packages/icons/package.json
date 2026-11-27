@@ -26,7 +26,7 @@
     "typecheck": "vue-tsc"
   },
   "dependencies": {
-    "lucide": "^1.74.0"
+    "lucide": "^1.82.0"
   },
   "peerDependencies": {
     "@nativue/core": "*"
