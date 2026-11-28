@@ -1,0 +1,51 @@
+{
+  "name": "@nativue/file-system",
+  "version": "0.1.0",
+  "description": "Read, write, download and upload files in nativue apps",
+  "keywords": [
+    "vue",
+    "native",
+    "file-system",
+    "files",
+    "download",
+    "upload",
+    "nativue"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/nativue/nativue#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nativue/nativue.git",
+    "directory": "packages/file-system"
+  },
+  "bugs": "https://github.com/nativue/nativue/issues",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "vue-tsc"
+  },
+  "peerDependencies": {
+    "@nativue/core": ">=0.14.0"
+  },
+  "nativue": {
+    "ios": {
+      "sources": "ios",
+      "plugin": "FileSystemPlugin"
+    },
+    "android": {
+      "sources": "android",
+      "plugin": "dev.nativue.filesystem.FileSystemPlugin"
+    }
+  },
+  "files": [
+    "src",
+    "ios",
+    "android/build.gradle.kts",
+    "android/src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -6,6 +6,7 @@
 | [`@nativue/icons`](../packages/icons/README.md)                 | 2,000+ Lucide icons as components, drawn natively; also tab and header icons |
 | [`@nativue/tailwind`](../packages/tailwind/README.md)           | Tailwind CSS classes, turned into native styles when the app is built        |
 | [`@nativue/clipboard`](../packages/clipboard/README.md)         | copying text to the clipboard                                                |
+| [`@nativue/file-system`](../packages/file-system/README.md)     | read, write, download and upload files                                       |
 | [`@nativue/haptics`](../packages/haptics/README.md)             | haptic feedback                                                              |
 | [`@nativue/image-picker`](../packages/image-picker/README.md)   | photos and videos from the library or the camera                             |
 | [`@nativue/network`](../packages/network/README.md)             | whether the app is online, and on what connection, live                      |
