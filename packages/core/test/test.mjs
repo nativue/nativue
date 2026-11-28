@@ -92,6 +92,12 @@ globalThis.__native = {
     canAskAgain: true,
   }),
   'pluginAsync:imagePicker.getPendingResult': resolvesWith(null),
+  'pluginAsync:network.getState': resolvesWith({
+    isConnected: true,
+    isInternetReachable: true,
+    type: 'wifi',
+    isExpensive: false,
+  }),
   'pluginAsync:secureStore.setItem': (callId, key, value) => {
     secureItems.set(key, value)
     resolvesWith(null)(callId)
@@ -1346,6 +1352,20 @@ press(pressableContaining('Video', imagePickerId))
 await settle()
 assert.deepEqual(cameraCalls, [['videos', 30, 'high']])
 assert.ok(renderedTexts(imagePickerId).includes('video 400×300, 2 KB, 4.3 s'))
+
+// @nativue/network: the state as read, then as it changes.
+const networkId = await open('explore/network')
+await settle()
+assert.ok(renderedTexts(networkId).includes('Wi-Fi'))
+globalThis.__nativeEvent('network.change', {
+  isConnected: false,
+  isInternetReachable: false,
+  type: 'none',
+  isExpensive: false,
+})
+await settle()
+assert.ok(renderedTexts(networkId).includes('Offline'))
+
 // @nativue/secure-store: saves, reads and deletes through its native side.
 const secureStoreId = await open('explore/secure-store')
 press(pressableContaining('Save', secureStoreId))

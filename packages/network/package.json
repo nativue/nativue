@@ -1,0 +1,50 @@
+{
+  "name": "@nativue/network",
+  "version": "0.1.0",
+  "description": "Whether a nativue app is online, and on what connection",
+  "keywords": [
+    "vue",
+    "native",
+    "network",
+    "offline",
+    "connectivity",
+    "nativue"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/nativue/nativue#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nativue/nativue.git",
+    "directory": "packages/network"
+  },
+  "bugs": "https://github.com/nativue/nativue/issues",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "vue-tsc"
+  },
+  "peerDependencies": {
+    "@nativue/core": ">=0.14.0"
+  },
+  "nativue": {
+    "ios": {
+      "sources": "ios",
+      "plugin": "NetworkPlugin"
+    },
+    "android": {
+      "sources": "android",
+      "plugin": "dev.nativue.network.NetworkPlugin"
+    }
+  },
+  "files": [
+    "src",
+    "ios",
+    "android/build.gradle.kts",
+    "android/src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
