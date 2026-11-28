@@ -18,6 +18,7 @@
     "@nativue/notifications": "*",
     "@nativue/network": "*",
     "@nativue/secure-store": "*",
+    "@nativue/share": "*",
     "@nativue/sqlite": "*",
     "@nativue/svg": "*",
     "@nativue/tailwind": "*"

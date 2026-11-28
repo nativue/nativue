@@ -114,7 +114,8 @@ Import the runtime from `vue`: `ref`, `computed`, `StyleSheet`, `Animated`, `Lay
   `openCamera({ mediaTypes, videoMaxDuration, videoQuality })`; call `getPendingResult()` on start, for
   what was picked or taken while Android closed the app),
   `@nativue/secure-store` (secrets: `SecureStore.setItem(key, value)`, `getItem`, `deleteItem`),
-  `@nativue/network` (`useNetworkState()`: `{ isConnected, isInternetReachable, type, isExpensive }`, live).
+  `@nativue/network` (`useNetworkState()`: `{ isConnected, isInternetReachable, type, isExpensive }`, live),
+  `@nativue/share` (`Share.share({ text, url, files })` opens the system's share sheet).
   A package with native code needs the app
   rebuilt with `npm run ios` or `npm run android`, not just a reload.
 - Notifications: `Notifications.schedule({ title, body, data }, { seconds } | { date } | { hour, minute } | null)`

@@ -42,6 +42,8 @@ const pickedMedia = [1, 2].map((index) => ({
 }))
 const pickCalls = []
 const cameraCalls = []
+// What @nativue/share was asked to share.
+const sharedContents = []
 // What @nativue/secure-store's native side keeps, by key.
 const secureItems = new Map()
 // The statements @nativue/sqlite sent, as [sql, parameters]: it gets no rows back, and a COUNT gets zeros.
@@ -98,6 +100,10 @@ globalThis.__native = {
     type: 'wifi',
     isExpensive: false,
   }),
+  'pluginAsync:share.share': (callId, content) => {
+    sharedContents.push(content)
+    resolvesWith({ completed: true, app: 'com.example.mail' })(callId)
+  },
   'pluginAsync:secureStore.setItem': (callId, key, value) => {
     secureItems.set(key, value)
     resolvesWith(null)(callId)
@@ -1365,6 +1371,23 @@ globalThis.__nativeEvent('network.change', {
 })
 await settle()
 assert.ok(renderedTexts(networkId).includes('Offline'))
+
+// @nativue/share: what's shared reaches the native side whole, and the chosen app shows.
+const shareId = await open('explore/share')
+press(pressableContaining('A link', shareId))
+await settle()
+await settle() // the content, then the share
+assert.deepEqual(sharedContents, [
+  {
+    text: 'Vue, but truly native.',
+    url: 'https://github.com/nativue/nativue',
+    files: [],
+    subject: 'Have a look at nativue',
+    dialogTitle: '',
+    mimeType: '',
+  },
+])
+assert.ok(renderedTexts(shareId).includes('Shared with com.example.mail'))
 
 // @nativue/secure-store: saves, reads and deletes through its native side.
 const secureStoreId = await open('explore/secure-store')
