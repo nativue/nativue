@@ -16,6 +16,7 @@
 | [`@nativue/secure-store`](../packages/secure-store/README.md)   | small secrets (tokens, passwords), in the Keychain and the Android Keystore  |
 | [`@nativue/share`](../packages/share/README.md)                 | the system's share sheet: text, links, photos, videos and files              |
 | [`@nativue/sqlite`](../packages/sqlite/README.md)               | SQLite databases                                                             |
+| [`@nativue/webview`](../packages/webview/README.md)             | web pages inside the app, with messages both ways                            |
 
 Any npm package written in plain JavaScript or Vue works too, as long as it doesn't use the browser's
 DOM.
