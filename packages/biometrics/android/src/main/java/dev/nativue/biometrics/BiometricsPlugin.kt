@@ -87,12 +87,11 @@ class BiometricsPlugin : NativuePlugin, ActivityListener {
             .apply { if (!allowsDeviceCredential) setNegativeButtonText(cancelLabel) }
             .build()
 
+        // In the background the prompt can't show, and androidx then does nothing, without a callback.
+        if (activity.supportFragmentManager.isStateSaved) return promise.resolve(mapOf("success" to false, "error" to "interrupted"))
+
         waiting = promise
-        try {
-            prompt.authenticate(info)
-        } catch (error: IllegalArgumentException) {
-            answer(mapOf("success" to false, "error" to "not_available"))
-        }
+        prompt.authenticate(info)
     }
 
     /** A failed try leaves the prompt open for another: only its end answers. */
@@ -111,12 +110,12 @@ class BiometricsPlugin : NativuePlugin, ActivityListener {
         waiting = null
     }
 
+    /** A face or finger that doesn't match leaves the prompt open; too many lock it out: none is "failed". */
     private fun reason(errorCode: Int) = when (errorCode) {
         BiometricPrompt.ERROR_USER_CANCELED, BiometricPrompt.ERROR_NEGATIVE_BUTTON -> "canceled"
-        BiometricPrompt.ERROR_CANCELED -> "interrupted"
+        BiometricPrompt.ERROR_CANCELED, BiometricPrompt.ERROR_TIMEOUT -> "interrupted"
         BiometricPrompt.ERROR_LOCKOUT, BiometricPrompt.ERROR_LOCKOUT_PERMANENT -> "lockout"
         BiometricPrompt.ERROR_NO_BIOMETRICS, BiometricPrompt.ERROR_NO_DEVICE_CREDENTIAL -> "not_enrolled"
-        BiometricPrompt.ERROR_HW_NOT_PRESENT, BiometricPrompt.ERROR_HW_UNAVAILABLE -> "not_available"
-        else -> "failed"
+        else -> "not_available"
     }
 }

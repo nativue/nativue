@@ -52,9 +52,10 @@ exception.
 | `lockout`       | too many tries: the device's passcode unlocks biometrics again        |
 | `not_enrolled`  | nothing set up (or, with `allowDeviceCredential`, no passcode either) |
 | `not_available` | no biometrics on this device, or turned off                           |
-| `failed`        | it didn't match                                                       |
+| `failed`        | iOS: it didn't match, after the tries it allows (Android locks out)   |
 
-A failed try leaves the prompt open for another; only how it ends answers.
+A failed try leaves the prompt open for another; only how it ends answers. On Android, a second call
+while a prompt is open rejects with `ERR_UNAVAILABLE`.
 
 On Android it takes class 2 ("weak") biometrics too, as many devices' face unlock is: enough to tell
 it's the user, which is what this is for. It doesn't unlock keys; for secrets, keep them in

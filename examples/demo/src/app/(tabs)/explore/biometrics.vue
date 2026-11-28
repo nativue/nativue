@@ -12,13 +12,17 @@ const deviceStatus = ref<BiometricStatus | null>(null)
 const result = ref('')
 
 async function authenticate(allowDeviceCredential: boolean) {
-  const answer = await Biometrics.authenticate({
-    reason: 'Unlock the demo’s secrets',
-    title: 'It’s you?',
-    allowDeviceCredential,
-  })
+  try {
+    const answer = await Biometrics.authenticate({
+      reason: 'Unlock the demo’s secrets',
+      title: 'It’s you?',
+      allowDeviceCredential,
+    })
 
-  result.value = answer.success ? 'Unlocked' : `Not unlocked: ${answer.error}`
+    result.value = answer.success ? 'Unlocked' : `Not unlocked: ${answer.error}`
+  } catch (failure) {
+    result.value = (failure as Error).message
+  }
 }
 
 onMounted(async () => {

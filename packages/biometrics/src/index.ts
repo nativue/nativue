@@ -32,7 +32,7 @@ export type AuthenticationError =
   | 'not_enrolled'
   /** No biometrics on this device, or turned off. */
   | 'not_available'
-  /** It didn't match. */
+  /** iOS: it didn't match, after the tries it allows. Android locks out instead. */
   | 'failed'
 
 export type AuthenticationResult =
@@ -48,7 +48,8 @@ export const Biometrics = {
 
   /**
    * Asks for the user's face or fingerprint. Resolves `{ success: false, error }` when it doesn't happen,
-   * as a cancel is an answer, not a failure of the app.
+   * as a cancel is an answer, not a failure of the app. Android rejects (ERR_UNAVAILABLE) a second call while
+   * a prompt is open.
    */
   async authenticate(options: AuthenticateOptions): Promise<AuthenticationResult> {
     const { reason, title = '', cancelLabel = '', allowDeviceCredential = false } = options
