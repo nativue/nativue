@@ -13,6 +13,7 @@
 | [`@nativue/network`](../packages/network/README.md)             | whether the app is online, and on what connection, live                      |
 | [`@nativue/notifications`](../packages/notifications/README.md) | local notifications                                                          |
 | [`@nativue/secure-store`](../packages/secure-store/README.md)   | small secrets (tokens, passwords), in the Keychain and the Android Keystore  |
+| [`@nativue/share`](../packages/share/README.md)                 | the system's share sheet: text, links, photos, videos and files              |
 | [`@nativue/sqlite`](../packages/sqlite/README.md)               | SQLite databases                                                             |
 
 Any npm package written in plain JavaScript or Vue works too, as long as it doesn't use the browser's

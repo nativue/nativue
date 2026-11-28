@@ -42,6 +42,8 @@ const pickedMedia = [1, 2].map((index) => ({
 }))
 const pickCalls = []
 const cameraCalls = []
+// What @nativue/share was asked to share.
+const sharedContents = []
 // @nativue/file-system's files, by URI, and the transfers it started.
 const files = new Map()
 const transfers = []
@@ -153,6 +155,9 @@ globalThis.__native = {
   'pluginAsync:biometrics.authenticate': (callId, options) => {
     authenticationOptions.push(options)
     resolvesWith({ success: false, error: 'canceled' })(callId)
+  'pluginAsync:share.share': (callId, content) => {
+    sharedContents.push(content)
+    resolvesWith({ completed: true, app: 'com.example.mail' })(callId)
   },
   'pluginAsync:secureStore.setItem': (callId, key, value) => {
     secureItems.set(key, value)
@@ -1453,6 +1458,22 @@ assert.deepEqual(authenticationOptions, [
   },
 ])
 assert.ok(renderedTexts(biometricsId).includes('Not unlocked: canceled'))
+// @nativue/share: what's shared reaches the native side whole, and the chosen app shows.
+const shareId = await open('explore/share')
+press(pressableContaining('A link', shareId))
+await settle()
+await settle() // the content, then the share
+assert.deepEqual(sharedContents, [
+  {
+    text: 'Vue, but truly native.',
+    url: 'https://github.com/nativue/nativue',
+    files: [],
+    subject: 'Have a look at nativue',
+    dialogTitle: '',
+    mimeType: '',
+  },
+])
+assert.ok(renderedTexts(shareId).includes('Shared with com.example.mail'))
 
 // @nativue/secure-store: saves, reads and deletes through its native side.
 const secureStoreId = await open('explore/secure-store')

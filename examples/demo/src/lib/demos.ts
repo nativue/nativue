@@ -17,6 +17,7 @@ import {
   ListChecksIcon,
   PaletteIcon,
   ScanFaceIcon,
+  Share2Icon,
   SparklesIcon,
   SquareTerminalIcon,
   VibrateIcon,
@@ -188,6 +189,13 @@ export const demoSections: DemoSection[] = [
         subtitle: 'Local notifications, with native code: @nativue/notifications',
         icon: BellIcon,
         tint: colors.orange,
+      },
+      {
+        href: '/explore/share',
+        title: 'Share',
+        subtitle: 'Text, links, photos and files: @nativue/share',
+        icon: Share2Icon,
+        tint: colors.green,
       },
       {
         href: '/explore/sqlite',
