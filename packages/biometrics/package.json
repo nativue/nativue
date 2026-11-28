@@ -1,0 +1,58 @@
+{
+  "name": "@nativue/biometrics",
+  "version": "0.1.0",
+  "description": "Face ID, Touch ID and fingerprint in nativue apps",
+  "keywords": [
+    "vue",
+    "native",
+    "biometrics",
+    "face-id",
+    "touch-id",
+    "fingerprint",
+    "nativue"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/nativue/nativue#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nativue/nativue.git",
+    "directory": "packages/biometrics"
+  },
+  "bugs": "https://github.com/nativue/nativue/issues",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./plugin": {
+      "types": "./plugin.d.mts",
+      "default": "./plugin.mjs"
+    }
+  },
+  "scripts": {
+    "typecheck": "vue-tsc"
+  },
+  "peerDependencies": {
+    "@nativue/core": ">=0.19.0"
+  },
+  "nativue": {
+    "plugin": "./plugin.mjs",
+    "ios": {
+      "sources": "ios",
+      "plugin": "BiometricsPlugin"
+    },
+    "android": {
+      "sources": "android",
+      "plugin": "dev.nativue.biometrics.BiometricsPlugin"
+    }
+  },
+  "files": [
+    "src",
+    "ios",
+    "android/build.gradle.kts",
+    "android/src",
+    "plugin.mjs",
+    "plugin.d.mts"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
