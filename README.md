@@ -80,6 +80,7 @@ To run on a phone, see [Getting started](docs/getting-started.md#run-on-a-phone)
 | [`@nativue/svg`](packages/svg)                     | `<svg>` as on the web: charts and drawings      |
 | [`@nativue/icons`](packages/icons)                 | icon sets as components                         |
 | [`@nativue/tailwind`](packages/tailwind)           | Tailwind CSS classes, turned into native styles |
+| [`@nativue/auth-session`](packages/auth-session)   | OAuth sign-in in the secure browser             |
 | [`@nativue/biometrics`](packages/biometrics)       | Face ID, Touch ID and fingerprint               |
 | [`@nativue/clipboard`](packages/clipboard)         | copying text to the clipboard                   |
 | [`@nativue/file-system`](packages/file-system)     | read, write, download and upload files          |

@@ -5,6 +5,7 @@
 | [`@nativue/svg`](../packages/svg/README.md)                     | `<svg>` as on the web: charts, illustrations, gradients, taps                |
 | [`@nativue/icons`](../packages/icons/README.md)                 | 2,000+ Lucide icons as components, drawn natively; also tab and header icons |
 | [`@nativue/tailwind`](../packages/tailwind/README.md)           | Tailwind CSS classes, turned into native styles when the app is built        |
+| [`@nativue/auth-session`](../packages/auth-session/README.md)   | OAuth sign-in (with PKCE) in the system's secure browser                     |
 | [`@nativue/biometrics`](../packages/biometrics/README.md)       | Face ID, Touch ID and fingerprint                                            |
 | [`@nativue/clipboard`](../packages/clipboard/README.md)         | copying text to the clipboard                                                |
 | [`@nativue/file-system`](../packages/file-system/README.md)     | read, write, download and upload files                                       |

@@ -10,6 +10,7 @@
     "typecheck": "vue-tsc"
   },
   "dependencies": {
+    "@nativue/auth-session": "*",
     "@nativue/biometrics": "*",
     "@nativue/clipboard": "*",
     "@nativue/core": "*",
