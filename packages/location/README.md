@@ -21,7 +21,7 @@ if (granted) {
   const { coords } = await Location.getCurrentPosition({ accuracy: 'high' })
 }
 
-// Until remove(); in a component, also on unmount.
+// Until remove(); called in a component's setup, also on unmount.
 const watch = Location.watchPosition({ distanceInterval: 10 }, ({ coords }) => moveMarker(coords))
 watch.remove()
 ```

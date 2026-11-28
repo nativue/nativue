@@ -220,13 +220,14 @@ globalThis.__native = {
   'pluginAsync:location.getLastKnownPosition': resolvesWith(null),
   'pluginAsync:location.hasServicesEnabled': resolvesWith(true),
   'pluginAsync:location.enableServices': resolvesWith(true),
-  'pluginAsync:location.startWatching': (callId, watchId, options) => {
+  'plugin:location.startWatching': (watchId, options) => {
     locationCalls.push(['startWatching', watchId, options])
-    resolvesWith(null)(callId)
   },
-  'pluginAsync:location.stopWatching': (callId, watchId) => {
+  'plugin:location.stopWatching': (watchId) => {
     locationCalls.push(['stopWatching', watchId])
-    resolvesWith(null)(callId)
+  },
+  'plugin:location.stopAllWatches': () => {
+    locationCalls.push(['stopAllWatches'])
   },
   'pluginAsync:webView.evaluate': (callId, webViewId, script) => {
     webViewCommands.push(['evaluate', webViewId, script])
@@ -1609,6 +1610,7 @@ press(pressableContaining('Current', locationId))
 press(pressableContaining('Last known', locationId))
 await settle()
 await settle()
+assert.deepEqual(locationCalls.shift(), ['stopAllWatches']) // as the module loaded
 assert.deepEqual(locationCalls.slice(0, 2), [
   ['requestPermission', true],
   ['getCurrentPosition', 'high', 30000],
@@ -1630,7 +1632,14 @@ globalThis.__nativeEvent('location.watch', {
 })
 await settle()
 assert.ok(renderedTexts(locationId).includes('ERR_PERMISSION_DENIED: Taken away'))
-assert.deepEqual(locationCalls.at(-1), ['stopWatching', watchId])
+// Native ended it: nothing left to stop, the screen can start another.
+assert.ok(!locationCalls.some(([name]) => name === 'stopWatching'))
+press(pressableContaining('Start', locationId))
+await settle()
+assert.equal(locationCalls.filter(([name]) => name === 'startWatching').length, 2)
+await open('explore')
+await settle()
+assert.deepEqual(locationCalls.at(-1), ['stopWatching', watchId + 1])
 
 // @nativue/secure-store: saves, reads and deletes through its native side.
 const secureStoreId = await open('explore/secure-store')

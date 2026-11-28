@@ -1,5 +1,12 @@
 <script setup lang="ts">
-import { onMounted, ref, shallowRef, usePermission, type NativeSubscription } from 'vue'
+import {
+  onMounted,
+  onUnmounted,
+  ref,
+  shallowRef,
+  usePermission,
+  type NativeSubscription,
+} from 'vue'
 import { Stack } from '@nativue/core/router'
 import { Location, type Position } from '@nativue/location'
 import Page from '@/components/Page.vue'
@@ -19,6 +26,8 @@ const watch = shallowRef<NativeSubscription | null>(null)
 onMounted(async () => {
   servicesEnabled.value = await Location.hasServicesEnabled()
 })
+// Started from a press, not in setup: the screen stops it itself.
+onUnmounted(() => watch.value?.remove())
 
 function describe({ coords, timestamp }: Position) {
   const time = new Date(timestamp).toLocaleTimeString()

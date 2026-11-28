@@ -70,13 +70,17 @@ const native = {
   hasServicesEnabled: requireNativeFunction<() => Promise<boolean>>('location.hasServicesEnabled'),
   enableServices: requireNativeFunction<() => Promise<boolean>>('location.enableServices'),
   startWatching:
-    requireNativeFunction<(watchId: number, options: NativeWatchOptions) => Promise<void>>(
+    requireNativeFunction<(watchId: number, options: NativeWatchOptions) => void>(
       'location.startWatching',
     ),
-  stopWatching: requireNativeFunction<(watchId: number) => Promise<void>>('location.stopWatching'),
+  stopWatching: requireNativeFunction<(watchId: number) => void>('location.stopWatching'),
+  stopAllWatches: requireNativeFunction<() => void>('location.stopAllWatches'),
 }
 
 let lastWatchId = 0
+
+// What an earlier JavaScript (before a reload) left watching reports to no one.
+native.stopAllWatches()
 
 export const Location = {
   getPermission: native.getPermission,
@@ -113,8 +117,8 @@ export const Location = {
   enableServices: native.enableServices,
 
   /**
-   * Calls onPosition as the device moves, until remove(); in a component, also on unmount. onError
-   * gets the same errors as getCurrentPosition's, and updates stop.
+   * Calls onPosition as the device moves, until remove(); called in a component's setup, also on
+   * unmount. onError gets the same errors as getCurrentPosition's, and updates stop.
    */
   watchPosition(
     { accuracy = 'balanced', distanceInterval = 0, timeInterval = 5_000 }: WatchPositionOptions,
@@ -122,27 +126,25 @@ export const Location = {
     onError: (error: NativeError) => void = (error) => console.error(error),
   ): NativeSubscription {
     const watchId = ++lastWatchId
-    let isWatching = true
     const listener = addNativeListener<WatchEvent>('location.watch', (event) => {
       if (event.watchId !== watchId) return
       if (event.position) return onPosition(event.position)
 
-      remove()
+      isWatching = false
+      listener.remove()
       onError(new NativeError(event.message ?? 'Location stopped', event.code ?? 'ERR_UNAVAILABLE'))
     })
+    let isWatching = true
 
     function remove() {
       if (!isWatching) return
 
       isWatching = false
       listener.remove()
-      native.stopWatching(watchId).catch((error) => console.error(error))
+      native.stopWatching(watchId)
     }
 
-    native.startWatching(watchId, { accuracy, distanceInterval, timeInterval }).catch((error) => {
-      remove()
-      onError(error)
-    })
+    native.startWatching(watchId, { accuracy, distanceInterval, timeInterval })
     if (getCurrentInstance()) onUnmounted(remove)
 
     return { remove }

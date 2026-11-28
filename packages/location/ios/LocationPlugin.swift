@@ -12,11 +12,6 @@ public final class LocationPlugin: NativuePlugin {
 
     public func register(in registry: PluginRegistry) {
         self.registry = registry
-        // Called again for each new JavaScript runtime: the old one's watches have no one to report to.
-        DispatchQueue.main.async { [self] in
-            watches.values.forEach { $0.stop() }
-            watches = [:]
-        }
 
         registry.addAsyncFunction("location.getPermission") { _ in
             await MainActor.run { Self.permission(of: CLLocationManager()) }
@@ -41,17 +36,44 @@ public final class LocationPlugin: NativuePlugin {
 
         registry.addAsyncFunction("location.enableServices") { _ in CLLocationManager.locationServicesEnabled() }
 
-        registry.addAsyncFunction("location.startWatching") { [unowned self] arguments in
-            try await startWatching(arguments[0] as! Int, options: arguments[1] as! [String: Any])
+        // Watches start and stop in the order JavaScript asks: synchronous calls, queued on the main thread.
+        registry.addFunction("location.startWatching") { [unowned self] arguments in
+            let (watchId, options) = (arguments[0] as! Int, arguments[1] as! [String: Any])
+
+            DispatchQueue.main.async { [self] in
+                do {
+                    try startWatching(watchId, options: options)
+                } catch let error as PluginError {
+                    sendWatchError(watchId, error)
+                } catch {}
+            }
 
             return nil
         }
 
-        registry.addAsyncFunction("location.stopWatching") { [unowned self] arguments in
-            await MainActor.run { watches.removeValue(forKey: arguments[0] as! Int)?.stop() }
+        registry.addFunction("location.stopWatching") { [unowned self] arguments in
+            let watchId = arguments[0] as! Int
+
+            DispatchQueue.main.async { [self] in watches.removeValue(forKey: watchId)?.stop() }
 
             return nil
         }
+
+        // The module calls it as it loads: a reload's new JavaScript has no watches yet, the old one's are left over.
+        registry.addFunction("location.stopAllWatches") { [unowned self] _ in
+            DispatchQueue.main.async { [self] in
+                watches.values.forEach { $0.stop() }
+                watches = [:]
+            }
+
+            return nil
+        }
+    }
+
+    @MainActor
+    private func sendWatchError(_ watchId: Int, _ error: PluginError) {
+        watches.removeValue(forKey: watchId)?.stop()
+        registry?.sendEvent("location.watch", ["watchId": watchId, "code": error.code, "message": error.message])
     }
 
     @MainActor
@@ -70,10 +92,8 @@ public final class LocationPlugin: NativuePlugin {
         updates.onLocation = { [weak registry] location in
             registry?.sendEvent("location.watch", ["watchId": watchId, "position": Self.position(location)])
         }
-        updates.onError = { [weak self] error in
-            self?.watches.removeValue(forKey: watchId)?.stop()
-            self?.registry?.sendEvent("location.watch", ["watchId": watchId, "code": error.code, "message": error.message])
-        }
+        updates.onError = { [weak self] error in self?.sendWatchError(watchId, error) }
+        watches.removeValue(forKey: watchId)?.stop()
         watches[watchId] = updates
         updates.manager.startUpdatingLocation()
     }
@@ -117,6 +137,10 @@ public final class LocationPlugin: NativuePlugin {
         }
         if manager.authorizationStatus == .notDetermined {
             await AuthorizationPrompt(manager).answer { manager.requestWhenInUseAuthorization() }
+        }
+        // The first prompt's alert is still closing: asked now, the second would take its return to the front as an answer.
+        if UIApplication.shared.applicationState != .active {
+            for await _ in NotificationCenter.default.notifications(named: UIApplication.didBecomeActiveNotification) { break }
         }
         if background, manager.authorizationStatus == .authorizedWhenInUse {
             await AuthorizationPrompt(manager).answer { manager.requestAlwaysAuthorization() }

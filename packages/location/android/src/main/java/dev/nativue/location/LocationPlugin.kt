@@ -1,7 +1,10 @@
 package dev.nativue.location
 
 import android.Manifest
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
@@ -43,13 +46,26 @@ class LocationPlugin : NativuePlugin, ActivityListener {
     private val watches = mutableMapOf<Int, () -> Unit>()
     private var enableServicesLauncher: ActivityResultLauncher<IntentSenderRequest>? = null
     private var waitingForServices: Promise? = null
+    private var isWatchingLocationMode = false
+
+    // Location turned off ends every watch, with an error, as on iOS: the providers just go quiet.
+    private val locationModeReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (!servicesEnabled()) watches.keys.toList().forEach { watchId -> sendWatchError(watchId, LOCATION_OFF) }
+        }
+    }
 
     override fun register(registry: PluginRegistry) {
         this.registry = registry
-        // Called again for each new JavaScript runtime: the old one's watches have no one to report to.
-        mainThread.post {
-            watches.values.forEach { stop -> stop() }
-            watches.clear()
+        // Called again for each new activity: the receiver is registered once, for the whole process.
+        if (!isWatchingLocationMode) {
+            ContextCompat.registerReceiver(
+                registry.applicationContext,
+                locationModeReceiver,
+                IntentFilter(LocationManager.MODE_CHANGED_ACTION),
+                ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+            isWatchingLocationMode = true
         }
 
         addFunction("location.getPermission") { _, promise -> promise.resolve(permission()) }
@@ -83,24 +99,26 @@ class LocationPlugin : NativuePlugin, ActivityListener {
 
         addFunction("location.enableServices") { _, promise -> enableServices(promise) }
 
-        addFunction("location.startWatching") { arguments, promise ->
+        // Watches start and stop in the order JavaScript asks: synchronous calls, queued on the main thread.
+        registry.addFunction("location.startWatching") { arguments ->
             val watchId = (arguments[0] as Number).toInt()
             val options = arguments[1] as Map<*, *>
 
-            ifCanLocate(promise) {
-                watches.remove(watchId)?.invoke()
-                watches[watchId] = locator.watch(
-                    options["accuracy"] as String,
-                    (options["distanceInterval"] as Number).toFloat(),
-                    (options["timeInterval"] as Number).toLong(),
-                ) { location -> registry.sendEvent("location.watch", mapOf("watchId" to watchId, "position" to position(location))) }
-                promise.resolve(null)
-            }
+            mainThread.post { startWatching(watchId, options) }
+            null
         }
 
-        addFunction("location.stopWatching") { arguments, promise ->
-            watches.remove((arguments[0] as Number).toInt())?.invoke()
-            promise.resolve(null)
+        registry.addFunction("location.stopWatching") { arguments ->
+            val watchId = (arguments[0] as Number).toInt()
+
+            mainThread.post { watches.remove(watchId)?.invoke() }
+            null
+        }
+
+        // The module calls it as it loads: a reload's new JavaScript has no watches yet, the old one's are left over.
+        registry.addFunction("location.stopAllWatches") {
+            mainThread.post(::stopAllWatches)
+            null
         }
     }
 
@@ -109,6 +127,43 @@ class LocationPlugin : NativuePlugin, ActivityListener {
             waitingForServices?.resolve(servicesEnabled())
             waitingForServices = null
         }
+    }
+
+    // Its JavaScript goes with it: no one to report positions to, and the dialog it showed won't answer.
+    override fun onActivityDestroyed(activity: ComponentActivity) {
+        if (activity.isChangingConfigurations) return
+
+        stopAllWatches()
+        waitingForServices?.resolve(servicesEnabled())
+        waitingForServices = null
+    }
+
+    private fun startWatching(watchId: Int, options: Map<*, *>) {
+        val error = when {
+            !hasPermission(COARSE) -> "ERR_PERMISSION_DENIED" to "No location permission: ask with requestPermission() first"
+            !servicesEnabled() -> LOCATION_OFF
+            else -> null
+        }
+
+        watches.remove(watchId)?.invoke()
+        if (error != null) return sendWatchError(watchId, error)
+
+        watches[watchId] = locator.watch(
+            options["accuracy"] as String,
+            (options["distanceInterval"] as Number).toFloat(),
+            (options["timeInterval"] as Number).toLong(),
+        ) { location -> registry.sendEvent("location.watch", mapOf("watchId" to watchId, "position" to position(location))) }
+            ?: return sendWatchError(watchId, "ERR_UNAVAILABLE" to "No location provider is on for this accuracy")
+    }
+
+    private fun sendWatchError(watchId: Int, error: Pair<String, String>) {
+        watches.remove(watchId)?.invoke()
+        registry.sendEvent("location.watch", mapOf("watchId" to watchId, "code" to error.first, "message" to error.second))
+    }
+
+    private fun stopAllWatches() {
+        watches.values.forEach { stop -> stop() }
+        watches.clear()
     }
 
     private fun addFunction(name: String, function: (List<Any?>, Promise) -> Unit) {
@@ -137,8 +192,9 @@ class LocationPlugin : NativuePlugin, ActivityListener {
             )
         }
 
-        registry.permissions.request(FINE + COARSE) { response ->
-            val asksAlways = background && response["granted"] == true && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+        registry.permissions.request(FINE + COARSE) { _ ->
+            // Approximate is enough: Android asks for all the time on top of either.
+            val asksAlways = background && hasPermission(COARSE) && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
 
             if (asksAlways) registry.permissions.request(BACKGROUND) { promise.resolve(permission()) }
             else promise.resolve(permission())
@@ -148,7 +204,7 @@ class LocationPlugin : NativuePlugin, ActivityListener {
     private fun ifCanLocate(promise: Promise, locate: () -> Unit) {
         when {
             !hasPermission(COARSE) -> promise.reject("ERR_PERMISSION_DENIED", "No location permission: ask with requestPermission() first")
-            !servicesEnabled() -> promise.reject("ERR_UNAVAILABLE", "Location is turned off on the device")
+            !servicesEnabled() -> promise.reject(LOCATION_OFF.first, LOCATION_OFF.second)
             else -> locate()
         }
     }
@@ -214,5 +270,6 @@ class LocationPlugin : NativuePlugin, ActivityListener {
         val FINE = listOf(Manifest.permission.ACCESS_FINE_LOCATION)
         val COARSE = listOf(Manifest.permission.ACCESS_COARSE_LOCATION)
         val BACKGROUND = listOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+        val LOCATION_OFF = "ERR_UNAVAILABLE" to "Location is turned off on the device"
     }
 }

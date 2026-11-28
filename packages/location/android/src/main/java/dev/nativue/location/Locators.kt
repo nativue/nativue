@@ -26,8 +26,8 @@ internal interface Locator {
 
     fun lastKnown(onResult: (Location?) -> Unit)
 
-    /** Returns what stops it. */
-    fun watch(accuracy: String, distanceMeters: Float, intervalMillis: Long, onLocation: (Location) -> Unit): () -> Unit
+    /** Returns what stops it; null with no provider to watch. */
+    fun watch(accuracy: String, distanceMeters: Float, intervalMillis: Long, onLocation: (Location) -> Unit): (() -> Unit)?
 }
 
 /** Google Play services' fused provider: GPS, Wi-Fi and cell towers together, the least battery. */
@@ -93,8 +93,8 @@ internal class SystemLocator(private val context: Context) : Locator {
         onResult(manager.getProviders(true).mapNotNull { manager.getLastKnownLocation(it) }.maxByOrNull { it.time })
     }
 
-    override fun watch(accuracy: String, distanceMeters: Float, intervalMillis: Long, onLocation: (Location) -> Unit): () -> Unit {
-        val provider = provider(accuracy) ?: return {}
+    override fun watch(accuracy: String, distanceMeters: Float, intervalMillis: Long, onLocation: (Location) -> Unit): (() -> Unit)? {
+        val provider = provider(accuracy) ?: return null
         val request = LocationRequestCompat.Builder(intervalMillis).setMinUpdateDistanceMeters(distanceMeters).build()
         val listener = LocationListenerCompat { onLocation(it) }
 
