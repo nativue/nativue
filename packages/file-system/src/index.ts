@@ -131,6 +131,7 @@ const nativeUpload =
   >('fileSystem.upload')
 const nativeCancel =
   requireNativeFunction<(taskId: number, keepingWhatArrived: boolean) => void>('fileSystem.cancel')
+const nativeCancelAll = requireNativeFunction<() => void>('fileSystem.cancelAll')
 const nativeDiscardDownload = requireNativeFunction<(to: string) => Promise<void>>(
   'fileSystem.discardDownload',
 )
@@ -139,6 +140,9 @@ const nativeDiscardDownload = requireNativeFunction<(to: string) => Promise<void
 let nextTaskId = Date.now()
 
 export const Paths: AppPaths = nativePaths()
+
+// The transfers of a runtime a reload replaced have no one left to answer; downloads keep what arrived.
+nativeCancelAll()
 
 // async, so a URI that isn't file:// rejects as native failures do.
 export const FileSystem = {
@@ -179,6 +183,7 @@ export const FileSystem = {
     let settle: { resolve(result: DownloadResult): void; reject(error: unknown): void }
     const promise = new Promise<DownloadResult>((resolve, reject) => (settle = { resolve, reject }))
     const subscription = onProgress && listenToProgress(() => taskId, onProgress)
+    let latest: Promise<unknown> = Promise.resolve()
 
     function finish() {
       state = 'done'
@@ -190,7 +195,12 @@ export const FileSystem = {
       const thisTaskId = nextTaskId++
 
       taskId = thisTaskId
-      startSafely(() => nativeDownload(thisTaskId, webURL(url), fileURI(to), headers)).then(
+      const native = startSafely(() =>
+        nativeDownload(thisTaskId, webURL(url), fileURI(to), headers),
+      )
+
+      latest = native
+      native.then(
         (result) => {
           if (thisTaskId !== taskId) return
 
@@ -216,11 +226,16 @@ export const FileSystem = {
         nativeCancel(taskId, true)
       },
 
+      // After the paused one has stopped writing: one download to a file at a time.
       resume() {
         if (state !== 'paused') return
 
         state = 'running'
-        run()
+        latest
+          .catch(() => {})
+          .then(() => {
+            if (state === 'running') run()
+          })
       },
 
       cancel() {

@@ -15,6 +15,7 @@ import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
+import java.net.ProtocolException
 import java.net.URL
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
@@ -33,6 +34,8 @@ class FileSystemPlugin : NativuePlugin {
     private val fileWorker = Executors.newSingleThreadExecutor()
     private val transferWorkers = Executors.newCachedThreadPool()
     private val runningTransfers = ConcurrentHashMap<Long, Transfer>()
+    /** One download to a destination at a time: two would write the same partial file. */
+    private val busyDestinations = ConcurrentHashMap.newKeySet<String>()
 
     private class Transfer {
         @Volatile var isCanceled = false
@@ -48,8 +51,6 @@ class FileSystemPlugin : NativuePlugin {
     }
 
     override fun register(registry: PluginRegistry) {
-        // A new activity is a new JavaScript runtime: the old one's transfers have no one left to answer.
-        runningTransfers.values.forEach(Transfer::cancel)
 
         registry.addFunction("fileSystem.paths") { _ ->
             mapOf(
@@ -118,7 +119,16 @@ class FileSystemPlugin : NativuePlugin {
             val taskId = (arguments[0] as Number).toLong()
 
             transfer(taskId, promise) { transfer ->
-                download(registry, taskId, transfer, arguments[1] as String, file(arguments[2]), headers(arguments[3]))
+                val destination = file(arguments[2])
+
+                if (!busyDestinations.add(destination.canonicalPath)) {
+                    throw FileError("ERR_UNAVAILABLE", "Another download to ${destination.path} is running")
+                }
+                try {
+                    download(registry, taskId, transfer, arguments[1] as String, destination, headers(arguments[3]))
+                } finally {
+                    busyDestinations.remove(destination.canonicalPath)
+                }
             }
         }
 
@@ -141,6 +151,12 @@ class FileSystemPlugin : NativuePlugin {
 
         registry.addFunction("fileSystem.cancel") { arguments ->
             runningTransfers[(arguments[0] as Number).toLong()]?.cancel(keepingWhatArrived = arguments[1] as? Boolean ?: false)
+            null
+        }
+
+        // A new runtime's first call: a reload's transfers have no one left to answer. Downloads keep what arrived.
+        registry.addFunction("fileSystem.cancelAll") { _ ->
+            runningTransfers.values.forEach { it.cancel(keepingWhatArrived = true) }
             null
         }
 
@@ -271,7 +287,7 @@ class FileSystemPlugin : NativuePlugin {
         // Without them, a connection that stops sending, without closing, would hang forever; iOS waits as long.
         connection.connectTimeout = TIMEOUT_MS
         connection.readTimeout = TIMEOUT_MS
-        connection.requestMethod = method
+        setMethod(connection, method)
         headers.forEach { (name, value) -> connection.setRequestProperty(name, value) }
 
         return connection
@@ -282,6 +298,15 @@ class FileSystemPlugin : NativuePlugin {
      * is asked for no more (Range, If-Range): a 206 continues it, anything else starts over, and a 416 (what's
      * there can't be continued) asks again for the whole file.
      */
+    /** HttpURLConnection refuses PATCH, which tus uploads use: then the field it checks is set as it is. */
+    private fun setMethod(connection: HttpURLConnection, method: String) {
+        try {
+            connection.requestMethod = method
+        } catch (error: ProtocolException) {
+            HttpURLConnection::class.java.getDeclaredField("method").apply { isAccessible = true }.set(connection, method)
+        }
+    }
+
     private fun download(
         registry: PluginRegistry,
         taskId: Long,
@@ -322,7 +347,8 @@ class FileSystemPlugin : NativuePlugin {
                 responseBody(connection, status).use { input -> copy(input, output, transfer, progress, startingAt = offset) }
             }
             partial.finish()
-            progress.report(destination.length(), isLast = true)
+            // With its size known now, even when the server didn't say it.
+            ProgressReporter(registry, taskId, destination.length()).report(destination.length(), isLast = true)
 
             return mapOf("uri" to Uri.fromFile(destination).toString(), "status" to status, "headers" to responseHeaders(connection))
         } catch (error: Exception) {

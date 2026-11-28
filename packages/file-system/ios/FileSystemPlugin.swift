@@ -9,7 +9,6 @@ public final class FileSystemPlugin: NativuePlugin {
     public init() {}
 
     public func register(in registry: PluginRegistry) {
-        // The transfers of a runtime a reload replaced have no one left to answer.
         transfers.attach(to: registry)
 
         registry.addFunction("fileSystem.paths") { _ in
@@ -45,7 +44,7 @@ public final class FileSystemPlugin: NativuePlugin {
 
         registry.addAsyncFunction("fileSystem.writeBase64") { arguments in
             try fileOperation {
-                guard let data = Data(base64Encoded: arguments[1] as! String) else {
+                guard let data = Data(base64Encoded: arguments[1] as! String, options: .ignoreUnknownCharacters) else {
                     throw PluginError(code: "ERR_INVALID_ARGUMENT", message: "That isn't base64")
                 }
 
@@ -112,7 +111,7 @@ public final class FileSystemPlugin: NativuePlugin {
 
             setHeaders(arguments[3], on: &request)
 
-            return try await transfers.download(taskId: taskId(arguments[0]), request: request, to: try fileURL(arguments[2]))
+            return try await transfers.download(taskId: integer(arguments[0]), request: request, to: try fileURL(arguments[2]))
         }
 
         registry.addAsyncFunction("fileSystem.upload") { [transfers] arguments in
@@ -125,7 +124,7 @@ public final class FileSystemPlugin: NativuePlugin {
             setHeaders(arguments[4], on: &request)
 
             guard form != nil || range != nil else {
-                return try await transfers.upload(taskId: taskId(arguments[0]), request: request, body: source, isTemporary: false)
+                return try await transfers.upload(taskId: integer(arguments[0]), request: request, body: source, isTemporary: false)
             }
 
             let boundary = "nativue-\(UUID().uuidString)"
@@ -135,11 +134,18 @@ public final class FileSystemPlugin: NativuePlugin {
                 request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
             }
 
-            return try await transfers.upload(taskId: taskId(arguments[0]), request: request, body: body, isTemporary: true)
+            return try await transfers.upload(taskId: integer(arguments[0]), request: request, body: body, isTemporary: true)
         }
 
         registry.addFunction("fileSystem.cancel") { [transfers] arguments in
-            transfers.cancel(taskId: taskId(arguments[0]), keepingWhatArrived: arguments[1] as? Bool ?? false)
+            transfers.cancel(taskId: integer(arguments[0]), keepingWhatArrived: arguments[1] as? Bool ?? false)
+
+            return nil
+        }
+
+        // A new runtime's first call: a reload's transfers have no one left to answer. Downloads keep what arrived.
+        registry.addFunction("fileSystem.cancelAll") { [transfers] _ in
+            transfers.cancelAll()
 
             return nil
         }
@@ -245,7 +251,7 @@ private func prepare(_ destination: URL) throws {
 // MARK: - Transfers
 
 /// JavaScript numbers arrive as Int or Double.
-private func taskId(_ argument: Any) -> Int {
+private func integer(_ argument: Any) -> Int {
     (argument as? Int) ?? Int(argument as! Double)
 }
 
@@ -259,8 +265,8 @@ private func setHeaders(_ argument: Any, on request: inout URLRequest) {
 private func byteRange(of file: URL, offset: Any, length: Any) throws -> Range<Int64>? {
     let attributes = try fileOperation { try FileManager.default.attributesOfItem(atPath: file.path) }
     let size = Int64(attributes[.size] as? Int ?? 0)
-    let start = Int64(taskId(offset))
-    let requested = Int64(taskId(length))
+    let start = Int64(integer(offset))
+    let requested = Int64(integer(length))
 
     guard start > 0 || requested >= 0 else { return nil }
     guard start <= size else {
@@ -397,7 +403,11 @@ private final class Transfers: NSObject, URLSessionDataDelegate {
         var totalBytes: Int64 = -1
         var writingError: Error?
         var keepsWhatArrived = false
+        /// JavaScript canceled or paused it: a restart doesn't happen.
+        var isStopped = false
         var restartsWithoutRange = false
+        /// Restarted once already: a second 416 is the server's answer.
+        var hasRestarted = false
         var lastProgress: TimeInterval = 0
 
         init(taskId: Int, continuation: CheckedContinuation<Any?, Error>, request: URLRequest,
@@ -423,17 +433,32 @@ private final class Transfers: NSObject, URLSessionDataDelegate {
     private var tasksById: [Int: URLSessionTask] = [:]
     /// Canceled before they started: a cancel can arrive first.
     private var canceledIds: [Int: Bool] = [:]
+    private var busyDestinations: Set<String> = []
 
     func attach(to registry: PluginRegistry) {
+        queue.addOperation { [self] in self.registry = registry }
+    }
+
+    func cancelAll() {
         queue.addOperation { [self] in
-            self.registry = registry
-            tasksById.values.forEach { $0.cancel() }
+            for (taskId, task) in tasksById {
+                stop(runningByTask[task.taskIdentifier], keepingWhatArrived: true)
+                canceledIds.removeValue(forKey: taskId)
+                task.cancel()
+            }
         }
     }
 
+    /// One download to a destination at a time: two would write the same partial file.
     func download(taskId: Int, request: URLRequest, to destination: URL) async throws -> Any? {
         try await withCheckedThrowingContinuation { continuation in
             queue.addOperation { [self] in
+                guard busyDestinations.insert(destination.path).inserted else {
+                    return continuation.resume(throwing: PluginError(
+                        code: "ERR_UNAVAILABLE", message: "Another download to \(destination.path) is running"
+                    ))
+                }
+
                 let running = Running(
                     taskId: taskId, continuation: continuation, request: request,
                     partial: PartialDownload(destination: destination), temporaryBody: nil
@@ -464,9 +489,14 @@ private final class Transfers: NSObject, URLSessionDataDelegate {
                 return
             }
 
-            runningByTask[task.taskIdentifier]?.keepsWhatArrived = keepingWhatArrived
+            stop(runningByTask[task.taskIdentifier], keepingWhatArrived: keepingWhatArrived)
             task.cancel()
         }
+    }
+
+    private func stop(_ running: Running?, keepingWhatArrived: Bool) {
+        running?.keepsWhatArrived = keepingWhatArrived
+        running?.isStopped = true
     }
 
     private func rangeRequest(for running: Running) -> URLRequest {
@@ -486,7 +516,10 @@ private final class Transfers: NSObject, URLSessionDataDelegate {
         if let keepsWhatArrived = canceledIds.removeValue(forKey: running.taskId) {
             task.cancel()
             if let body = running.temporaryBody { try? FileManager.default.removeItem(at: body) }
-            if !keepsWhatArrived { try? running.partial?.discard() }
+            if let partial = running.partial {
+                busyDestinations.remove(partial.destination.path)
+                if !keepsWhatArrived { try? partial.discard() }
+            }
 
             return running.continuation.resume(throwing: transferError(URLError(.cancelled)))
         }
@@ -514,7 +547,7 @@ private final class Transfers: NSObject, URLSessionDataDelegate {
             return completionHandler(.allow)
         }
 
-        if response.statusCode == 416 {
+        if response.statusCode == 416 && !running.hasRestarted {
             running.restartsWithoutRange = true
 
             return completionHandler(.cancel)
@@ -531,7 +564,7 @@ private final class Transfers: NSObject, URLSessionDataDelegate {
             running.bytes = try output.seekToEnd().asInt64
 
             // The cache folder can be emptied meanwhile: the rest only goes after what was asked for.
-            if resumes && running.bytes != running.resumedAt {
+            if resumes && running.bytes != running.resumedAt && !running.hasRestarted {
                 try? output.close()
                 running.restartsWithoutRange = true
 
@@ -575,12 +608,16 @@ private final class Transfers: NSObject, URLSessionDataDelegate {
         try? running.output?.close()
         if let body = running.temporaryBody { try? FileManager.default.removeItem(at: body) }
 
-        if running.restartsWithoutRange, let partial = running.partial {
+        if running.restartsWithoutRange, !running.isStopped, let partial = running.partial {
             running.restartsWithoutRange = false
+            running.hasRestarted = true
+            running.resumedAt = 0
             try? partial.discard()
 
             return start(session.dataTask(with: running.request), running)
         }
+
+        if let partial = running.partial { busyDestinations.remove(partial.destination.path) }
 
         if let error = running.writingError ?? error {
             // Kept for the next download to resume, unless canceled for good or the server can't resume it.

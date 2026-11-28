@@ -21,7 +21,6 @@ const transferStatus = ref('')
 const photoUri = ref<string | null>(null)
 const largeStatus = ref('')
 const isPaused = ref(false)
-let running: { cancel(): void } | null = null
 let largeDownload: Download | null = null
 
 async function attempt(action: () => Promise<void>, status = noteStatus) {
@@ -83,11 +82,7 @@ const download = () =>
   attempt(async () => {
     photoUri.value = null
 
-    const transfer = FileSystem.download(PHOTO_URL, PHOTO, { onProgress: describeProgress })
-
-    running = transfer
-
-    const result = await transfer
+    const result = await FileSystem.download(PHOTO_URL, PHOTO, { onProgress: describeProgress })
     const info = await FileSystem.getInfo(result.uri)
 
     transferStatus.value = `${result.status}: ${Math.round(info.size / 1024)} KB saved`
@@ -96,14 +91,10 @@ const download = () =>
 
 const upload = () =>
   attempt(async () => {
-    const transfer = FileSystem.upload(UPLOAD_URL, PHOTO, {
+    const result = await FileSystem.upload(UPLOAD_URL, PHOTO, {
       multipart: { field: 'photo', mimeType: 'image/jpeg', fields: { caption: 'From nativue' } },
       onProgress: describeProgress,
     })
-
-    running = transfer
-
-    const result = await transfer
     const echo = JSON.parse(result.body) as { form?: { caption?: string }; files?: object }
 
     transferStatus.value = `${result.status}: the server got caption "${echo.form?.caption}" and ${Object.keys(echo.files ?? {}).join(', ')}`
@@ -112,43 +103,42 @@ const upload = () =>
 // The first 64 KB alone, as one part of an upload in parts.
 const uploadPart = () =>
   attempt(async () => {
-    const transfer = FileSystem.upload('https://httpbin.org/put', PHOTO, {
+    const result = await FileSystem.upload('https://httpbin.org/put', PHOTO, {
       method: 'PUT',
       offset: 0,
       length: PART_BYTES,
     })
-
-    running = transfer
-
-    const result = await transfer
     const echo = JSON.parse(result.body) as { headers?: Record<string, string> }
 
     transferStatus.value = `${result.status}: the server got ${echo.headers?.['Content-Length']} bytes`
   }, transferStatus)
 
-function cancel() {
-  running?.cancel()
-}
-
 // Paused, failed or closed halfway, it continues where it stopped.
 const downloadLarge = () =>
   attempt(async () => {
+    if (largeDownload) return
+
     const download = FileSystem.download(LARGE_FILE_URL, LARGE_FILE, {
       onProgress: (progress) => (largeStatus.value = progressText(progress)),
     })
 
     largeDownload = download
-    isPaused.value = false
+    try {
+      const result = await download
+      const info = await FileSystem.getInfo(result.uri)
 
-    const result = await download
-    const info = await FileSystem.getInfo(result.uri)
-
-    largeStatus.value = `${result.status}: ${Math.round(info.size / 1024 / 1024)} MB saved`
+      largeStatus.value = `${result.status}: ${Math.round(info.size / 1024 / 1024)} MB saved`
+    } finally {
+      largeDownload = null
+      isPaused.value = false
+    }
   }, largeStatus)
 
 function togglePause() {
-  if (isPaused.value) largeDownload?.resume()
-  else largeDownload?.pause()
+  if (!largeDownload) return
+
+  if (isPaused.value) largeDownload.resume()
+  else largeDownload.pause()
   isPaused.value = !isPaused.value
 }
 
@@ -193,9 +183,6 @@ function cancelLarge() {
         </Pressable>
         <Pressable :class="BUTTON_CLASS" @press="uploadPart">
           <Text class="font-semibold text-slate-900 dark:text-white">Part</Text>
-        </Pressable>
-        <Pressable :class="BUTTON_CLASS" @press="cancel">
-          <Text class="font-semibold text-slate-900 dark:text-white">Cancel</Text>
         </Pressable>
       </View>
       <Text v-if="transferStatus" class="text-slate-500 dark:text-slate-400">
