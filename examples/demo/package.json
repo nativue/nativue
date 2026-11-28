@@ -12,6 +12,7 @@
   "dependencies": {
     "@nativue/clipboard": "*",
     "@nativue/core": "*",
+    "@nativue/file-system": "*",
     "@nativue/haptics": "*",
     "@nativue/icons": "*",
     "@nativue/image-picker": "*",
