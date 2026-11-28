@@ -19,6 +19,7 @@ import {
   SparklesIcon,
   SquareTerminalIcon,
   VibrateIcon,
+  WifiIcon,
 } from '@nativue/icons/lucide'
 import { colors } from './theme'
 
@@ -158,6 +159,13 @@ export const demoSections: DemoSection[] = [
         subtitle: 'Photos, videos and the camera: @nativue/image-picker',
         icon: ImagesIcon,
         tint: colors.pink,
+      },
+      {
+        href: '/explore/network',
+        title: 'Network',
+        subtitle: 'Online or offline, live: @nativue/network',
+        icon: WifiIcon,
+        tint: colors.blue,
       },
       {
         href: '/explore/secure-store',

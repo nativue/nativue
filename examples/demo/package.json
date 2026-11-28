@@ -17,6 +17,7 @@
     "@nativue/icons": "*",
     "@nativue/image-picker": "*",
     "@nativue/notifications": "*",
+    "@nativue/network": "*",
     "@nativue/secure-store": "*",
     "@nativue/sqlite": "*",
     "@nativue/svg": "*",

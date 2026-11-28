@@ -84,6 +84,7 @@ To run on a phone, see [Getting started](docs/getting-started.md#run-on-a-phone)
 | [`@nativue/file-system`](packages/file-system)     | read, write, download and upload files          |
 | [`@nativue/haptics`](packages/haptics)             | haptic feedback                                 |
 | [`@nativue/image-picker`](packages/image-picker)   | photos and videos from the library or camera    |
+| [`@nativue/network`](packages/network)             | online or offline, live                         |
 | [`@nativue/notifications`](packages/notifications) | local notifications                             |
 | [`@nativue/secure-store`](packages/secure-store)   | secrets in the Keychain and the Keystore        |
 | [`@nativue/sqlite`](packages/sqlite)               | SQLite databases                                |
