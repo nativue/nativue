@@ -27,7 +27,7 @@ class WebViewPlugin : NativuePlugin {
         addCommand("webView.stopLoading", registry) { it.stopLoading() }
 
         registry.addAsyncFunction("webView.evaluate") { arguments, promise ->
-            onWebView(arguments[0], promise) { it.evaluate(arguments[1] as String, promise::resolve) }
+            onWebView(arguments[0], promise) { it.evaluate(arguments[1] as String, promise) }
         }
     }
 

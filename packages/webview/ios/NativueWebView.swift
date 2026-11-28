@@ -66,7 +66,12 @@ final class NativueWebView: WKWebView, PluginView, WKNavigationDelegate, WKUIDel
 
     func setProp(_ key: String, value: Any?) {
         switch key {
-        case "webViewId": if let id = value as? Int { register(id, self) }
+        case "webViewId":
+            guard let id = value as? Int else { return }
+
+            register(id, self)
+            sendEvent("registered", nil)
+            return
         case "url": source.url = value as? String
         case "headers": source.headers = value as? [String: String]
         case "html": source.html = value as? String
@@ -220,9 +225,9 @@ final class NativueWebView: WKWebView, PluginView, WKNavigationDelegate, WKUIDel
         return nil
     }
 
-    // The page's process ended (memory, a crash): the view would stay blank.
+    // The page's process ended (memory, a crash): the view stays blank until the app loads it again.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        reload()
+        sendEvent("processterminated", nil)
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {

@@ -29,32 +29,34 @@ const webView = useTemplateRef<WebViewMethods>('webView')
 </template>
 ```
 
-Like other native views, it's sized by its style (`flex: 1`, a `height`), not by the page.
+Like other native views, it's sized by its style (`flex: 1`, a `height`), not by the page. Off
+screen, Android pauses its videos and animations.
 
 ## Props
 
-| Prop                                    |                                                                                              |
-| --------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `source`                                | `{ uri, headers? }`, a page (the headers go with its first request), or `{ html, baseUrl? }` |
-| `injectedJavaScript`                    | runs once each page has loaded                                                               |
-| `injectedJavaScriptBeforeContentLoaded` | runs before each page's own scripts                                                          |
-| `javaScriptEnabled`                     | `true` by default                                                                            |
-| `userAgent`                             | replaces the browser's                                                                       |
-| `allowsBackForwardNavigationGestures`   | iOS: swipe from the edge to go back and forward                                              |
+| Prop                                    |                                                                                                               |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `source`                                | `{ uri, headers? }`, a page (the headers go with its first request), or `{ html, baseUrl? }`                  |
+| `injectedJavaScript`                    | runs once each page has loaded                                                                                |
+| `injectedJavaScriptBeforeContentLoaded` | runs before each page's own scripts; Android runs it in the page's frames too (check `window === window.top`) |
+| `javaScriptEnabled`                     | `true` by default                                                                                             |
+| `userAgent`                             | replaces the browser's                                                                                        |
+| `allowsBackForwardNavigationGestures`   | iOS: swipe from the edge to go back and forward                                                               |
 
 Links to other schemes (`tel:`, `mailto:`, another app's) open in the app they belong to.
 `target="_blank"` links and `window.open` load in the same view.
 
 ## Events
 
-| Event                      | Payload                                                                       |
-| -------------------------- | ----------------------------------------------------------------------------- |
-| `@load-start`              | `{ url }`                                                                     |
-| `@load`                    | `{ url, title }`                                                              |
-| `@error`                   | `{ url, code, description }`: the page couldn't load (offline, no such host)  |
-| `@http-error`              | `{ url, statusCode }`: a status of 400 or more; the server's page still shows |
-| `@navigation-state-change` | `{ url, title, loading, canGoBack, canGoForward }`                            |
-| `@message`                 | `{ data }`: what the page posted                                              |
+| Event                      | Payload                                                                                                                        |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `@load-start`              | `{ url }`                                                                                                                      |
+| `@load`                    | `{ url, title }`                                                                                                               |
+| `@error`                   | `{ url, code, description }`: the page couldn't load (offline, no such host)                                                   |
+| `@http-error`              | `{ url, statusCode }`: a status of 400 or more; the server's page still shows                                                  |
+| `@navigation-state-change` | `{ url, title, loading, canGoBack, canGoForward }`                                                                             |
+| `@message`                 | `{ data }`: what the page posted                                                                                               |
+| `@process-terminated`      | the page's process ended (memory, a crash): the view is blank. Render it again with a new `key`; on iOS, `reload()` also works |
 
 ## Messages
 

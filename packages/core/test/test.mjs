@@ -1525,6 +1525,14 @@ const webViewProps = () => viewsById[webViewId].props
 assert.equal(webViewProps().url, 'https://vuejs.org')
 assert.equal(webViewProps().html, null)
 assert.equal(webViewProps().javaScriptEnabled, true)
+press(pressableContaining('Read title', webViewScreenId))
+await settle()
+assert.equal(webViewCommands.length, 0) // the view hasn't said it's registered yet
+globalThis.__dispatch(webViewId, 'registered')
+await settle()
+await settle()
+assert.equal(webViewCommands.length, 1)
+webViewCommands.length = 0
 globalThis.__dispatch(webViewId, 'navigationstatechange', {
   url: 'https://vuejs.org/guide',
   title: 'Guide',

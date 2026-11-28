@@ -62,7 +62,10 @@ export const WebView = defineComponent({
     source: { type: Object as PropType<WebViewSource>, required: true },
     /** Runs in the page once it has loaded, on every page it opens. */
     injectedJavaScript: String,
-    /** Runs before the page's own scripts, on every page it opens. */
+    /**
+     * Runs before the page's own scripts, on every page it opens. Android also runs it in the page's
+     * frames: check `window === window.top` when it's only for the page.
+     */
     injectedJavaScriptBeforeContentLoaded: String,
     javaScriptEnabled: { type: Boolean, default: true },
     userAgent: String,
@@ -77,19 +80,40 @@ export const WebView = defineComponent({
     httpError: (_error: { url: string; statusCode: number }) => true,
     navigationStateChange: (_navigation: WebViewNavigation) => true,
     message: (_message: WebViewMessage) => true,
+    /**
+     * The page's process ended (the system needed the memory, or it crashed), leaving the view blank.
+     * Render it again with a new `key` to load the page again; on iOS, reload() also does.
+     */
+    processTerminated: () => true,
   },
   setup(props, { attrs, emit, expose }) {
     const webViewId = ++lastWebViewId
+    // Native finds the view by its id once the view is made: a method called sooner waits for it.
+    let markRegistered = () => {}
+    const registered = new Promise<void>((resolve) => (markRegistered = resolve))
+    const command = (send: NativeCommand) => async () => {
+      await registered
+
+      return send(webViewId)
+    }
 
     const methods: WebViewMethods = {
-      goBack: () => nativeGoBack(webViewId),
-      goForward: () => nativeGoForward(webViewId),
-      reload: () => nativeReload(webViewId),
-      stopLoading: () => nativeStopLoading(webViewId),
-      evaluateJavaScript: (expression) => evaluate(webViewId, expression),
-      postMessage: async (data) => {
-        await evaluate(
-          webViewId,
+      goBack: command(nativeGoBack),
+
+      goForward: command(nativeGoForward),
+
+      reload: command(nativeReload),
+
+      stopLoading: command(nativeStopLoading),
+
+      async evaluateJavaScript(expression) {
+        await registered
+
+        return evaluate(webViewId, expression)
+      },
+
+      async postMessage(data) {
+        await methods.evaluateJavaScript(
           `window.dispatchEvent(new MessageEvent('message', { data: ${JSON.stringify(String(data))} })), undefined`,
         )
       },
@@ -99,13 +123,22 @@ export const WebView = defineComponent({
 
     // Declared events leave attrs: native reports them here, and they go on to the listeners.
     const eventForwarders = {
+      onRegistered: () => markRegistered(),
+
       onLoadStart: (navigation: { url: string }) => emit('loadStart', navigation),
+
       onLoad: (navigation: { url: string; title: string }) => emit('load', navigation),
+
       onError: (error: WebViewError) => emit('error', error),
+
       onHttpError: (error: { url: string; statusCode: number }) => emit('httpError', error),
+
       onNavigationStateChange: (navigation: WebViewNavigation) =>
         emit('navigationStateChange', navigation),
+
       onMessage: (message: WebViewMessage) => emit('message', message),
+
+      onProcessTerminated: () => emit('processTerminated'),
     }
 
     return () => {

@@ -7,6 +7,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.webkit.JavascriptInterface
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -17,6 +18,7 @@ import androidx.webkit.ScriptHandler
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import dev.nativue.PluginView
+import dev.nativue.Promise
 import dev.nativue.SendEvent
 import org.json.JSONTokener
 
@@ -41,6 +43,8 @@ class NativueWebView(
     private var injectedJavaScriptBeforeContentLoaded: String? = null
     private var documentStartScript: ScriptHandler? = null
     private var isLoadingPage = false
+    /** The page that's loading failed: it ends with no load event, as on iOS. */
+    private var hasFailedPage = false
     private var hasPendingChanges = false
     private var hasPendingNavigationState = false
 
@@ -64,7 +68,12 @@ class NativueWebView(
 
     override fun setProp(key: String, value: Any?) {
         when (key) {
-            "webViewId" -> (value as? Number)?.let { register(it.toInt(), this) }
+            "webViewId" -> {
+                val id = (value as? Number)?.toInt() ?: return
+
+                register(id, this)
+                return sendEvent("registered", null)
+            }
             "url" -> source = source.copy(url = value as? String)
             "headers" -> source = source.copy(headers = (value as? Map<*, *>)?.entries?.associate { "${it.key}" to "${it.value}" })
             "html" -> source = source.copy(html = value as? String)
@@ -111,8 +120,25 @@ class NativueWebView(
         }
     }
 
-    fun evaluate(script: String, resolve: (String?) -> Unit) {
-        evaluateJavascript(script) { json -> resolve(JSONTokener(json).nextValue() as? String) }
+    // The script always answers a string: anything else is a script that didn't run.
+    fun evaluate(script: String, promise: Promise) {
+        evaluateJavascript(script) { json ->
+            val answer = JSONTokener(json).nextValue() as? String
+
+            if (answer != null) promise.resolve(answer)
+            else promise.reject("ERR_UNAVAILABLE", "The script didn't run: a syntax error, or JavaScript is off")
+        }
+    }
+
+    // Off screen, its videos and animations stop; JavaScript goes on, as on iOS.
+    override fun onDetachedFromWindow() {
+        onPause()
+        super.onDetachedFromWindow()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        onResume()
     }
 
     // Each callback says one thing changed: one event for what changed together.
@@ -137,11 +163,27 @@ class NativueWebView(
 
     /** Loaded here; any other scheme (tel:, mailto:, another app's) opens in the app it belongs to. */
     private fun openElsewhere(uri: Uri) {
+        val intent = if (uri.scheme == "intent") intentFromLink(uri) ?: return else Intent(Intent.ACTION_VIEW, uri)
+
         try {
-            context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (error: ActivityNotFoundException) {
-            // No app for it: the link does nothing, as in a browser.
+            val fallbackUrl = intent.getStringExtra("browser_fallback_url")
+
+            // No app for it: the page's fallback when it gives one, as in a browser.
+            if (fallbackUrl != null) loadUrl(fallbackUrl)
         }
+    }
+
+    /** intent://…#Intent;…;end, the links Android pages use for apps: only what any link could open. */
+    private fun intentFromLink(uri: Uri): Intent? = try {
+        Intent.parseUri(uri.toString(), Intent.URI_INTENT_SCHEME).apply {
+            addCategory(Intent.CATEGORY_BROWSABLE)
+            component = null
+            selector = null
+        }
+    } catch (error: Exception) {
+        null
     }
 
     private inner class Client : WebViewClient() {
@@ -156,6 +198,7 @@ class NativueWebView(
 
         override fun onPageStarted(view: WebView, url: String, favicon: Bitmap?) {
             isLoadingPage = true
+            hasFailedPage = false
             if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
                 injectedJavaScriptBeforeContentLoaded?.let { evaluateJavascript(it, null) }
             }
@@ -165,9 +208,11 @@ class NativueWebView(
 
         override fun onPageFinished(view: WebView, url: String) {
             isLoadingPage = false
+            scheduleNavigationState()
+            if (hasFailedPage) return
+
             injectedJavaScript?.let { evaluateJavascript(it, null) }
             sendEvent("load", mapOf("url" to url, "title" to (title ?: "")))
-            scheduleNavigationState()
         }
 
         override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) = scheduleNavigationState()
@@ -175,6 +220,7 @@ class NativueWebView(
         override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
             if (!request.isForMainFrame) return
 
+            hasFailedPage = true
             sendEvent(
                 "error",
                 mapOf("url" to request.url.toString(), "code" to error.errorCode, "description" to error.description.toString()),
@@ -185,6 +231,14 @@ class NativueWebView(
             if (!request.isForMainFrame) return
 
             sendEvent("httperror", mapOf("url" to request.url.toString(), "statusCode" to response.statusCode))
+        }
+
+        // The view can't be used again: true keeps the app running, and the app renders a new one.
+        override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+            destroy()
+            sendEvent("processterminated", null)
+
+            return true
         }
     }
 
