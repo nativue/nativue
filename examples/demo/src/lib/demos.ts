@@ -15,6 +15,7 @@ import {
   ImagesIcon,
   KeyRoundIcon,
   ListChecksIcon,
+  LogInIcon,
   PaletteIcon,
   SparklesIcon,
   SquareTerminalIcon,
@@ -138,6 +139,13 @@ export const demoSections: DemoSection[] = [
         subtitle: 'Haptic feedback, with native code: @nativue/haptics',
         icon: VibrateIcon,
         tint: colors.red,
+      },
+      {
+        href: '/explore/auth-session',
+        title: 'Auth session',
+        subtitle: 'OAuth sign-in in the secure browser: @nativue/auth-session',
+        icon: LogInIcon,
+        tint: colors.blue,
       },
       {
         href: '/explore/clipboard',

@@ -45,6 +45,8 @@ const cameraCalls = []
 // @nativue/file-system's files, by URI, and the transfers it started.
 const files = new Map()
 const transfers = []
+// The sign-ins @nativue/auth-session opened, as [url, redirectUri].
+const openedSessions = []
 // What @nativue/secure-store's native side keeps, by key.
 const secureItems = new Map()
 // The statements @nativue/sqlite sent, as [sql, parameters]: it gets no rows back, and a COUNT gets zeros.
@@ -143,6 +145,21 @@ globalThis.__native = {
     type: 'wifi',
     isExpensive: false,
   }),
+  'pluginAsync:authSession.open': (callId, url, redirectUri) => {
+    openedSessions.push([url, redirectUri])
+
+    const state = new URL(url).searchParams.get('state')
+
+    resolvesWith({ type: 'success', url: `${redirectUri}?code=the-code&state=${state}#extra=1` })(
+      callId,
+    )
+  },
+  'pluginAsync:authSession.createPKCE': resolvesWith({
+    codeVerifier: 'verifier',
+    codeChallenge: 'challenge',
+    codeChallengeMethod: 'S256',
+  }),
+  'pluginAsync:authSession.randomString': resolvesWith('random-state'),
   'pluginAsync:secureStore.setItem': (callId, key, value) => {
     secureItems.set(key, value)
     resolvesWith(null)(callId)
@@ -1426,6 +1443,16 @@ globalThis.__nativeEvent('network.change', {
 })
 await settle()
 assert.ok(renderedTexts(networkId).includes('Offline'))
+
+// @nativue/auth-session: the redirect's params come back, the state checks out and the code is exchanged.
+const authSessionId = await open('explore/auth-session')
+press(pressableContaining('Sign in', authSessionId))
+for (let step = 0; step < 6; step++) await settle()
+assert.equal(openedSessions[0][1], 'nativue://oauth')
+assert.ok(openedSessions[0][0].includes('code_challenge=challenge'))
+const tokenRequest = fetchRequests.find(({ url }) => url.endsWith('/connect/token'))
+assert.ok(tokenRequest.body.string.includes('code=the-code'))
+assert.ok(tokenRequest.body.string.includes('code_verifier=verifier'))
 
 // @nativue/secure-store: saves, reads and deletes through its native side.
 const secureStoreId = await open('explore/secure-store')

@@ -1,0 +1,51 @@
+{
+  "name": "@nativue/auth-session",
+  "version": "0.1.0",
+  "description": "OAuth sign-in in nativue apps, in the system's secure browser",
+  "keywords": [
+    "vue",
+    "native",
+    "oauth",
+    "auth",
+    "pkce",
+    "sign-in",
+    "nativue"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/nativue/nativue#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nativue/nativue.git",
+    "directory": "packages/auth-session"
+  },
+  "bugs": "https://github.com/nativue/nativue/issues",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "vue-tsc"
+  },
+  "peerDependencies": {
+    "@nativue/core": ">=0.14.0"
+  },
+  "nativue": {
+    "ios": {
+      "sources": "ios",
+      "plugin": "AuthSessionPlugin"
+    },
+    "android": {
+      "sources": "android",
+      "plugin": "dev.nativue.authsession.AuthSessionPlugin"
+    }
+  },
+  "files": [
+    "src",
+    "ios",
+    "android/build.gradle.kts",
+    "android/src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
