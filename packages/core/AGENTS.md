@@ -116,7 +116,8 @@ Import the runtime from `vue`: `ref`, `computed`, `StyleSheet`, `Animated`, `Lay
   `@nativue/secure-store` (secrets: `SecureStore.setItem(key, value)`, `getItem`, `deleteItem`),
   `@nativue/file-system` (`FileSystem.readText`/`writeText`/`download`/`upload` with `file://` URIs from
   `Paths.document` and `Paths.cache`),
-  `@nativue/network` (`useNetworkState()`: `{ isConnected, isInternetReachable, type, isExpensive }`, live).
+  `@nativue/network` (`useNetworkState()`: `{ isConnected, isInternetReachable, type, isExpensive }`, live),
+  `@nativue/biometrics` (`Biometrics.authenticate({ reason })` resolves `{ success }` or `{ success: false, error }`).
   A package with native code needs the app
   rebuilt with `npm run ios` or `npm run android`, not just a reload.
 - Notifications: `Notifications.schedule({ title, body, data }, { seconds } | { date } | { hour, minute } | null)`

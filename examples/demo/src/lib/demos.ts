@@ -16,6 +16,7 @@ import {
   KeyRoundIcon,
   ListChecksIcon,
   PaletteIcon,
+  ScanFaceIcon,
   SparklesIcon,
   SquareTerminalIcon,
   VibrateIcon,
@@ -138,6 +139,13 @@ export const demoSections: DemoSection[] = [
         subtitle: 'Haptic feedback, with native code: @nativue/haptics',
         icon: VibrateIcon,
         tint: colors.red,
+      },
+      {
+        href: '/explore/biometrics',
+        title: 'Biometrics',
+        subtitle: 'Face ID, Touch ID and fingerprint: @nativue/biometrics',
+        icon: ScanFaceIcon,
+        tint: colors.purple,
       },
       {
         href: '/explore/clipboard',

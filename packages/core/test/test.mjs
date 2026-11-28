@@ -45,6 +45,8 @@ const cameraCalls = []
 // @nativue/file-system's files, by URI, and the transfers it started.
 const files = new Map()
 const transfers = []
+// What @nativue/biometrics was asked to authenticate with.
+const authenticationOptions = []
 // What @nativue/secure-store's native side keeps, by key.
 const secureItems = new Map()
 // The statements @nativue/sqlite sent, as [sql, parameters]: it gets no rows back, and a COUNT gets zeros.
@@ -143,6 +145,15 @@ globalThis.__native = {
     type: 'wifi',
     isExpensive: false,
   }),
+  'pluginAsync:biometrics.getStatus': resolvesWith({
+    available: true,
+    enrolled: true,
+    types: ['face'],
+  }),
+  'pluginAsync:biometrics.authenticate': (callId, options) => {
+    authenticationOptions.push(options)
+    resolvesWith({ success: false, error: 'canceled' })(callId)
+  },
   'pluginAsync:secureStore.setItem': (callId, key, value) => {
     secureItems.set(key, value)
     resolvesWith(null)(callId)
@@ -1426,6 +1437,22 @@ globalThis.__nativeEvent('network.change', {
 })
 await settle()
 assert.ok(renderedTexts(networkId).includes('Offline'))
+
+// @nativue/biometrics: the device's status shows, and a cancel is an answer, not an error.
+const biometricsId = await open('explore/biometrics')
+await settle()
+assert.ok(renderedTexts(biometricsId).some((text) => text.includes('Available')))
+press(pressableContaining('Or passcode', biometricsId))
+await settle()
+assert.deepEqual(authenticationOptions, [
+  {
+    reason: 'Unlock the demo’s secrets',
+    title: 'It’s you?',
+    cancelLabel: '',
+    allowDeviceCredential: true,
+  },
+])
+assert.ok(renderedTexts(biometricsId).includes('Not unlocked: canceled'))
 
 // @nativue/secure-store: saves, reads and deletes through its native side.
 const secureStoreId = await open('explore/secure-store')

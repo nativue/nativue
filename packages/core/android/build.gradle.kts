@@ -75,6 +75,8 @@ dependencies {
     implementation("androidx.core:core:1.16.0")
     // ComponentActivity: activity-result launchers and new-intent listeners for plugins.
     api("androidx.activity:activity:1.13.0")
+    // FragmentActivity, which NativueActivity is, as SDKs ask for: androidx.biometric's prompt, payment sheets.
+    api("androidx.fragment:fragment:1.9.1")
     // AppState: whether the app, not one activity, is in front.
     implementation("androidx.lifecycle:lifecycle-process:2.11.1")
 }
