@@ -24,6 +24,7 @@
     "@nativue/share": "*",
     "@nativue/sqlite": "*",
     "@nativue/svg": "*",
-    "@nativue/tailwind": "*"
+    "@nativue/tailwind": "*",
+    "@nativue/webview": "*"
   }
 }

@@ -1,0 +1,49 @@
+{
+  "name": "@nativue/webview",
+  "version": "0.1.0",
+  "description": "Web pages inside nativue apps, with messages both ways",
+  "keywords": [
+    "vue",
+    "native",
+    "webview",
+    "browser",
+    "nativue"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/nativue/nativue#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nativue/nativue.git",
+    "directory": "packages/webview"
+  },
+  "bugs": "https://github.com/nativue/nativue/issues",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "vue-tsc"
+  },
+  "peerDependencies": {
+    "@nativue/core": ">=0.18.0"
+  },
+  "nativue": {
+    "ios": {
+      "sources": "ios",
+      "plugin": "WebViewPlugin"
+    },
+    "android": {
+      "sources": "android",
+      "plugin": "dev.nativue.webview.WebViewPlugin"
+    }
+  },
+  "files": [
+    "src",
+    "ios",
+    "android/build.gradle.kts",
+    "android/src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

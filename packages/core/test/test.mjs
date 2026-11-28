@@ -51,6 +51,8 @@ const transfers = []
 const openedSessions = []
 // What @nativue/biometrics was asked to authenticate with.
 const authenticationOptions = []
+// The commands @nativue/webview sent, as [name, webViewId, script?].
+const webViewCommands = []
 // What @nativue/secure-store's native side keeps, by key.
 const secureItems = new Map()
 // The statements @nativue/sqlite sent, as [sql, parameters]: it gets no rows back, and a COUNT gets zeros.
@@ -176,6 +178,19 @@ globalThis.__native = {
   'pluginAsync:share.share': (callId, content) => {
     sharedContents.push(content)
     resolvesWith({ completed: true, app: 'com.example.mail' })(callId)
+  },
+  ...Object.fromEntries(
+    ['goBack', 'goForward', 'reload', 'stopLoading'].map((name) => [
+      `pluginAsync:webView.${name}`,
+      (callId, webViewId) => {
+        webViewCommands.push([name, webViewId])
+        resolvesWith(null)(callId)
+      },
+    ]),
+  ),
+  'pluginAsync:webView.evaluate': (callId, webViewId, script) => {
+    webViewCommands.push(['evaluate', webViewId, script])
+    resolvesWith(JSON.stringify({ value: 'Vue.js' }))(callId)
   },
   'pluginAsync:secureStore.setItem': (callId, key, value) => {
     secureItems.set(key, value)
@@ -1501,6 +1516,46 @@ assert.deepEqual(sharedContents, [
   },
 ])
 assert.ok(renderedTexts(shareId).includes('Shared with com.example.mail'))
+
+// @nativue/webview: the source splits into the native props, events reach the screen, and the methods
+// reach the view by its id.
+const webViewScreenId = await open('explore/webview')
+const webViewId = descendantOfType(webViewScreenId, 'WebView')
+const webViewProps = () => viewsById[webViewId].props
+assert.equal(webViewProps().url, 'https://vuejs.org')
+assert.equal(webViewProps().html, null)
+assert.equal(webViewProps().javaScriptEnabled, true)
+press(pressableContaining('Read title', webViewScreenId))
+await settle()
+assert.equal(webViewCommands.length, 0) // the view hasn't said it's registered yet
+globalThis.__dispatch(webViewId, 'registered')
+await settle()
+await settle()
+assert.equal(webViewCommands.length, 1)
+webViewCommands.length = 0
+globalThis.__dispatch(webViewId, 'navigationstatechange', {
+  url: 'https://vuejs.org/guide',
+  title: 'Guide',
+  loading: false,
+  canGoBack: true,
+  canGoForward: false,
+})
+globalThis.__dispatch(webViewId, 'message', { data: 'hi' })
+await settle()
+assert.ok(renderedTexts(webViewScreenId).includes('https://vuejs.org/guide'))
+assert.ok(renderedTexts(webViewScreenId).includes('The page sent: hi'))
+press(pressableContaining('Back', webViewScreenId))
+press(pressableContaining('Read title', webViewScreenId))
+await settle()
+await settle()
+assert.ok(renderedTexts(webViewScreenId).includes('document.title: Vue.js'))
+assert.equal(webViewCommands[0][0], 'goBack')
+assert.equal(webViewCommands[1][1], webViewProps().webViewId)
+assert.ok(webViewCommands[1][2].includes('JSON.stringify({ value: (document.title) })'))
+press(pressableContaining('HTML', webViewScreenId))
+await settle()
+assert.equal(webViewProps().url, null)
+assert.ok(webViewProps().html.includes('window.nativueWebView.postMessage'))
 
 // @nativue/secure-store: saves, reads and deletes through its native side.
 const secureStoreId = await open('explore/secure-store')
