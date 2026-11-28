@@ -232,8 +232,16 @@ they update when the window is resized. For layouts, prefer flexbox and percenta
 
 While `npm run dev` runs, what the app prints shows in its terminal, each line marked `ios` or
 `android`, with stacks pointing at your files. It also goes to Xcode's console and Logcat, with its
-level. Release builds log too; on iOS the system log keeps their text private, as anyone with the
-device can read it.
+level.
+
+### In release builds
+
+A release build (`npm run build`, and what `run --no-dev` installs) leaves out `console.log`, `info`,
+`debug`, `trace`, `table`, `dir` and `group`/`groupCollapsed`/`groupEnd`: their calls aren't in the
+bundle, so they cost nothing and leak nothing. An argument that does something still runs:
+`console.log(cart.save())` still saves. `warn`, `error` and `assert` stay, for problems in the field,
+and go to the device's log: on iOS with their text private, on Android readable to anyone with the
+device and USB debugging on. Don't log tokens or passwords at those levels either.
 
 Long arrays, objects and strings are cut, as in Node: after 100 items and 10,000 characters.
 

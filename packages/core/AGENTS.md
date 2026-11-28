@@ -99,7 +99,8 @@ Import the runtime from `vue`: `ref`, `computed`, `StyleSheet`, `Animated`, `Lay
   `clear`; promise-based, string values. Store objects as JSON. For large data or queries, use
   `@nativue/sqlite`.
 - `fetch`, `XMLHttpRequest`, `Blob`, `FileReader`, `URL`, `URLSearchParams`, timers and `console`
-  work as on the web, with no import.
+  work as on the web, with no import. Release builds leave out every `console` call but `warn`, `error`
+  and `assert`.
 - Accessibility: `role` and `aria-*` attributes (`aria-label`, `aria-hidden`...) on any component.
 
 ## Project

@@ -36,6 +36,19 @@ const BUNDLE_PATH = `${BUNDLE_DIRECTORY}/main.bundle.js`
 const ANDROID_ASSETS_DIRECTORY = 'android/app/src/main/assets'
 const KEEPALIVE_INTERVAL_MS = 15000
 const UNANSWERED_UPDATE_TIMEOUT_MS = 10000
+// What a release build leaves out: logs slow the JavaScript thread and land in the device's log, which
+// Android keeps readable. warn and error stay, for problems in the field.
+const DEVELOPMENT_CONSOLE_METHODS = [
+  'log',
+  'info',
+  'debug',
+  'trace',
+  'table',
+  'dir',
+  'group',
+  'groupCollapsed',
+  'groupEnd',
+]
 
 const NATIVE_COMPONENT_TAGS = [
   'View',
@@ -165,6 +178,16 @@ const APP_VITE_PLUGINS = [
   ...appPlugins.flatMap((plugin) => plugin.vite ?? []),
 ]
 
+/**
+ * Each method an empty function the minifier then drops with its call, even where the call's value is
+ * used (`onPress: () => console.log(item)`). Arguments that do something still run.
+ */
+function withoutDevelopmentLogs() {
+  return Object.fromEntries(
+    DEVELOPMENT_CONSOLE_METHODS.map((method) => [`console.${method}`, '(() => {})']),
+  )
+}
+
 function viteConfig({ mode, plugins = [] }) {
   // Vite reads the mode from NODE_ENV: development builds keep each component's file (for errors).
   process.env.NODE_ENV = mode
@@ -199,7 +222,10 @@ function viteConfig({ mode, plugins = [] }) {
         { find: /^@\//, replacement: `${process.cwd()}/src/` },
       ],
     },
-    define: { 'process.env.NODE_ENV': JSON.stringify(mode) },
+    define: {
+      'process.env.NODE_ENV': JSON.stringify(mode),
+      ...(mode === 'production' ? withoutDevelopmentLogs() : {}),
+    },
     build: {
       lib: {
         entry: frameworkPath('src/entry.ts'),
