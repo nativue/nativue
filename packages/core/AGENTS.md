@@ -117,6 +117,7 @@ Import the runtime from `vue`: `ref`, `computed`, `StyleSheet`, `Animated`, `Lay
   `@nativue/file-system` (`FileSystem.readText`/`writeText`/`download`/`upload` with `file://` URIs from
   `Paths.document` and `Paths.cache`),
   `@nativue/network` (`useNetworkState()`: `{ isConnected, isInternetReachable, type, isExpensive }`, live),
+  `@nativue/share` (`Share.share({ text, url, files })` opens the system's share sheet),
   `@nativue/auth-session` (OAuth: `AuthSession.open(url, 'myapp://oauth')` with `createPKCE()`; keep tokens in secure-store).
   A package with native code needs the app
   rebuilt with `npm run ios` or `npm run android`, not just a reload.

@@ -88,6 +88,7 @@ To run on a phone, see [Getting started](docs/getting-started.md#run-on-a-phone)
 | [`@nativue/network`](packages/network)             | online or offline, live                         |
 | [`@nativue/notifications`](packages/notifications) | local notifications                             |
 | [`@nativue/secure-store`](packages/secure-store)   | secrets in the Keychain and the Keystore        |
+| [`@nativue/share`](packages/share)                 | the system's share sheet                        |
 | [`@nativue/sqlite`](packages/sqlite)               | SQLite databases                                |
 
 ## Not affiliated
