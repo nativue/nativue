@@ -37,7 +37,7 @@ const ANDROID_ASSETS_DIRECTORY = 'android/app/src/main/assets'
 const KEEPALIVE_INTERVAL_MS = 15000
 const UNANSWERED_UPDATE_TIMEOUT_MS = 10000
 // What a release build leaves out: logs slow the JavaScript thread and land in the device's log, which
-// Android keeps readable. warn and error stay, for problems in the field.
+// Android keeps readable. warn, error and assert stay, for problems in the field.
 const DEVELOPMENT_CONSOLE_METHODS = [
   'log',
   'info',
