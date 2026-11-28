@@ -1,0 +1,56 @@
+{
+  "name": "@nativue/location",
+  "version": "0.1.0",
+  "description": "The device's location in nativue apps: one position, or updates as it moves",
+  "keywords": [
+    "vue",
+    "native",
+    "location",
+    "gps",
+    "nativue"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/nativue/nativue#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nativue/nativue.git",
+    "directory": "packages/location"
+  },
+  "bugs": "https://github.com/nativue/nativue/issues",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./plugin": {
+      "types": "./plugin.d.mts",
+      "default": "./plugin.mjs"
+    }
+  },
+  "scripts": {
+    "typecheck": "vue-tsc"
+  },
+  "peerDependencies": {
+    "@nativue/core": ">=0.18.0"
+  },
+  "nativue": {
+    "plugin": "./plugin.mjs",
+    "ios": {
+      "sources": "ios",
+      "plugin": "LocationPlugin"
+    },
+    "android": {
+      "sources": "android",
+      "plugin": "dev.nativue.location.LocationPlugin"
+    }
+  },
+  "files": [
+    "src",
+    "ios",
+    "android/build.gradle.kts",
+    "android/src",
+    "plugin.mjs",
+    "plugin.d.mts"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

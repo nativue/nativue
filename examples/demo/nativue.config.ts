@@ -1,4 +1,5 @@
 import { defineConfig } from '@nativue/core/config'
+import location from '@nativue/location/plugin'
 import tailwind from '@nativue/tailwind'
 
 export default defineConfig({
@@ -6,5 +7,5 @@ export default defineConfig({
   scheme: 'nativue',
   ios: { bundleIdentifier: 'dev.nativue.app' },
   android: { package: 'dev.nativue.app' },
-  plugins: [tailwind()],
+  plugins: [tailwind(), location({ background: true })],
 })

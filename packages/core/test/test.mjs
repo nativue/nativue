@@ -51,6 +51,20 @@ const transfers = []
 const openedSessions = []
 // What @nativue/biometrics was asked to authenticate with.
 const authenticationOptions = []
+// The watches @nativue/location started and stopped, as [name, watchId, options?].
+const locationCalls = []
+const POSITION = {
+  coords: {
+    latitude: -23.55052,
+    longitude: -46.63331,
+    accuracy: 12,
+    altitude: null,
+    altitudeAccuracy: null,
+    heading: null,
+    speed: null,
+  },
+  timestamp: 0,
+}
 // The commands @nativue/webview sent, as [name, webViewId, script?].
 const webViewCommands = []
 // What @nativue/secure-store's native side keeps, by key.
@@ -188,6 +202,33 @@ globalThis.__native = {
       },
     ]),
   ),
+  'pluginAsync:location.getPermission': resolvesWith({
+    status: 'granted',
+    granted: true,
+    canAskAgain: true,
+    accuracy: 'precise',
+    scope: 'whenInUse',
+  }),
+  'pluginAsync:location.requestPermission': (callId, background) => {
+    locationCalls.push(['requestPermission', background])
+    resolvesWith({ status: 'granted', granted: true, canAskAgain: true, scope: 'always' })(callId)
+  },
+  'pluginAsync:location.getCurrentPosition': (callId, accuracy, timeout) => {
+    locationCalls.push(['getCurrentPosition', accuracy, timeout])
+    resolvesWith(POSITION)(callId)
+  },
+  'pluginAsync:location.getLastKnownPosition': resolvesWith(null),
+  'pluginAsync:location.hasServicesEnabled': resolvesWith(true),
+  'pluginAsync:location.enableServices': resolvesWith(true),
+  'plugin:location.startWatching': (watchId, options) => {
+    locationCalls.push(['startWatching', watchId, options])
+  },
+  'plugin:location.stopWatching': (watchId) => {
+    locationCalls.push(['stopWatching', watchId])
+  },
+  'plugin:location.stopAllWatches': () => {
+    locationCalls.push(['stopAllWatches'])
+  },
   'pluginAsync:webView.evaluate': (callId, webViewId, script) => {
     webViewCommands.push(['evaluate', webViewId, script])
     resolvesWith(JSON.stringify({ value: 'Vue.js' }))(callId)
@@ -1556,6 +1597,49 @@ press(pressableContaining('HTML', webViewScreenId))
 await settle()
 assert.equal(webViewProps().url, null)
 assert.ok(webViewProps().html.includes('window.nativueWebView.postMessage'))
+
+// @nativue/location: the permission's fields, a position, and a watch whose updates reach only it, until
+// the screen stops it.
+const locationId = await open('explore/location')
+await settle()
+await settle()
+assert.ok(renderedTexts(locationId).includes('granted, precise, whenInUse'))
+assert.ok(renderedTexts(locationId).includes('Location is on'))
+press(pressableContaining('Always', locationId))
+press(pressableContaining('Current', locationId))
+press(pressableContaining('Last known', locationId))
+await settle()
+await settle()
+assert.deepEqual(locationCalls.shift(), ['stopAllWatches']) // as the module loaded
+assert.deepEqual(locationCalls.slice(0, 2), [
+  ['requestPermission', true],
+  ['getCurrentPosition', 'high', 30000],
+])
+assert.ok(renderedTexts(locationId).includes('granted, always'))
+assert.ok(renderedTexts(locationId).includes('None known'))
+press(pressableContaining('Start', locationId))
+await settle()
+const [, watchId, watchOptions] = locationCalls.find(([name]) => name === 'startWatching')
+assert.deepEqual(watchOptions, { accuracy: 'high', distanceInterval: 5, timeInterval: 5000 })
+globalThis.__nativeEvent('location.watch', { watchId: watchId + 1, position: POSITION })
+globalThis.__nativeEvent('location.watch', { watchId, position: POSITION })
+await settle()
+assert.equal(renderedTexts(locationId).filter((text) => text.startsWith('-23.55052')).length, 1)
+globalThis.__nativeEvent('location.watch', {
+  watchId,
+  code: 'ERR_PERMISSION_DENIED',
+  message: 'Taken away',
+})
+await settle()
+assert.ok(renderedTexts(locationId).includes('ERR_PERMISSION_DENIED: Taken away'))
+// Native ended it: nothing left to stop, the screen can start another.
+assert.ok(!locationCalls.some(([name]) => name === 'stopWatching'))
+press(pressableContaining('Start', locationId))
+await settle()
+assert.equal(locationCalls.filter(([name]) => name === 'startWatching').length, 2)
+await open('explore')
+await settle()
+assert.deepEqual(locationCalls.at(-1), ['stopWatching', watchId + 1])
 
 // @nativue/secure-store: saves, reads and deletes through its native side.
 const secureStoreId = await open('explore/secure-store')

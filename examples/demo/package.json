@@ -18,6 +18,7 @@
     "@nativue/haptics": "*",
     "@nativue/icons": "*",
     "@nativue/image-picker": "*",
+    "@nativue/location": "*",
     "@nativue/notifications": "*",
     "@nativue/network": "*",
     "@nativue/secure-store": "*",
