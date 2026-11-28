@@ -17,6 +17,7 @@ import {
   KeyRoundIcon,
   ListChecksIcon,
   LogInIcon,
+  MapPinIcon,
   PaletteIcon,
   ScanFaceIcon,
   Share2Icon,
@@ -177,6 +178,13 @@ export const demoSections: DemoSection[] = [
         subtitle: 'Photos, videos and the camera: @nativue/image-picker',
         icon: ImagesIcon,
         tint: colors.pink,
+      },
+      {
+        href: '/explore/location',
+        title: 'Location',
+        subtitle: 'Where the device is, and as it moves: @nativue/location',
+        icon: MapPinIcon,
+        tint: colors.red,
       },
       {
         href: '/explore/network',
