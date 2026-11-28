@@ -155,6 +155,7 @@ globalThis.__native = {
   'pluginAsync:biometrics.authenticate': (callId, options) => {
     authenticationOptions.push(options)
     resolvesWith({ success: false, error: 'canceled' })(callId)
+  },
   'pluginAsync:share.share': (callId, content) => {
     sharedContents.push(content)
     resolvesWith({ completed: true, app: 'com.example.mail' })(callId)
