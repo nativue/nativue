@@ -184,7 +184,10 @@ const APP_VITE_PLUGINS = [
  */
 function withoutDevelopmentLogs() {
   return Object.fromEntries(
-    DEVELOPMENT_CONSOLE_METHODS.map((method) => [`console.${method}`, '(() => {})']),
+    DEVELOPMENT_CONSOLE_METHODS.flatMap((method) => [
+      [`console.${method}`, '(() => {})'],
+      [`globalThis.console.${method}`, '(() => {})'],
+    ]),
   )
 }
 

@@ -236,9 +236,10 @@ level.
 
 ### In release builds
 
-A release build (`npm run build`, and what `run --no-dev` installs) leaves out `console.log`, `info`,
-`debug`, `trace`, `table`, `dir` and `group`/`groupCollapsed`/`groupEnd`: their calls aren't in the
-bundle, so they cost nothing and leak nothing. An argument that does something still runs:
+A release build (`npm run build`) leaves out calls to `console.log`, `info`, `debug`, `trace`, `table`,
+`dir` and `group`/`groupCollapsed`/`groupEnd`, written as `console.log(...)` or
+`globalThis.console.log(...)`: they aren't in the bundle, so they cost nothing and leak nothing. One
+reached another way (`const { log } = console`) stays. An argument that does something still runs:
 `console.log(cart.save())` still saves. `warn`, `error` and `assert` stay, for problems in the field,
 and go to the device's log: on iOS with their text private, on Android readable to anyone with the
 device and USB debugging on. Don't log tokens or passwords at those levels either.
