@@ -40,25 +40,31 @@ public final class AuthSessionPlugin: NSObject, NativuePlugin, ASWebAuthenticati
         }
 
         return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Any?, Error>) in
-            let session = makeSession(url: url, scheme: scheme) { [weak self] callbackURL, error in
-                self?.session = nil
+            var hasAnswered = false
+            // A session that doesn't start may also call its handler: once is the answer.
+            let answer = { [weak self] (result: Result<Any?, Error>) in
+                guard !hasAnswered else { return }
 
-                if let callbackURL { return continuation.resume(returning: ["type": "success", "url": callbackURL.absoluteString]) }
+                hasAnswered = true
+                self?.session = nil
+                continuation.resume(with: result)
+            }
+            let session = makeSession(url: url, scheme: scheme) { callbackURL, error in
+                if let callbackURL { return answer(.success(["type": "success", "url": callbackURL.absoluteString])) }
                 if (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin {
-                    return continuation.resume(returning: ["type": "cancel"])
+                    return answer(.success(["type": "cancel"]))
                 }
 
-                continuation.resume(throwing: PluginError(
+                answer(.failure(PluginError(
                     code: "ERR_UNAVAILABLE", message: error?.localizedDescription ?? "The sign-in couldn't open"
-                ))
+                )))
             }
 
             session.presentationContextProvider = self
             session.prefersEphemeralWebBrowserSession = ephemeral
             self.session = session
             if !session.start() {
-                self.session = nil
-                continuation.resume(throwing: PluginError(code: "ERR_UNAVAILABLE", message: "The sign-in couldn't open"))
+                answer(.failure(PluginError(code: "ERR_UNAVAILABLE", message: "The sign-in couldn't open")))
             }
         }
     }

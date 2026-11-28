@@ -9,8 +9,11 @@ export interface AuthSessionOptions {
 }
 
 export type AuthSessionResult =
-  /** The provider sent the user back: url is where, params its query and fragment, merged. */
-  | { type: 'success'; url: string; params: Record<string, string> }
+  /**
+   * The provider sent the user back: url is where, params its query and fragment, merged. A provider that
+   * refused (the user denied access) sends `error` instead of `code`.
+   */
+  | { type: 'success'; url: string; params: Record<string, string | undefined> }
   /** The user closed the browser before finishing. */
   | { type: 'cancel' }
 
@@ -37,7 +40,7 @@ export const AuthSession = {
    * and waits for the provider to redirect to redirectUri: a URL with the app's scheme, `myapp://oauth`.
    */
   async open(url: string, redirectUri: string, { ephemeral = false }: AuthSessionOptions = {}) {
-    if (!/^https?:\/\//.test(url)) {
+    if (!/^https?:\/\//i.test(url)) {
       throw new TypeError(`AuthSession.open: ${url} isn't an http(s) URL`)
     }
     if (!/^[a-z][a-z0-9+.-]*:/i.test(redirectUri) || /^https?:/i.test(redirectUri)) {

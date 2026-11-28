@@ -35,7 +35,7 @@ authorize.search = new URLSearchParams({
 
 const result = await AuthSession.open(authorize.toString(), redirectUri)
 
-if (result.type === 'success' && result.params.state === state) {
+if (result.type === 'success' && result.params.state === state && result.params.code) {
   const response = await fetch('https://accounts.example.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -59,7 +59,10 @@ Keep the tokens in `@nativue/secure-store`.
   provider. `https` redirects aren't taken.
 - It resolves `{ type: 'success', url, params }` when the provider redirects there (`params` merges
   the query and the fragment, where the implicit flow puts tokens), or `{ type: 'cancel' }` when the
-  user closes the browser.
+  user closes the browser. A provider that refused sends `params.error` (`access_denied`) instead of
+  `params.code`.
+- iOS takes any redirect with the redirect's scheme. Android takes the one with its scheme, host and
+  path (a trailing slash doesn't matter), and other links to the app go on to the router.
 - `ephemeral: true` starts with no cookies or sign-ins from the browser and leaves none behind. On iOS
   it also skips the "wants to use … to sign in" alert; on Android it needs a browser that supports it
   (Chrome 136 and later), and others ignore it.

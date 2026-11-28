@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Base64
+import androidx.activity.ComponentActivity
 import androidx.browser.customtabs.CustomTabsIntent
 import dev.nativue.ActivityListener
 import dev.nativue.NativuePlugin
@@ -76,14 +77,22 @@ class AuthSessionPlugin : NativuePlugin, ActivityListener {
         } catch (error: ActivityNotFoundException) {
             pending = null
             promise.reject("ERR_UNAVAILABLE", "There's no browser to sign in with")
+        } catch (error: Exception) {
+            pending = null
+            promise.reject("ERR_UNAVAILABLE", error.message ?: "The sign-in couldn't open")
         }
+    }
+
+    // Its JavaScript goes with it: the redirect then reaches the new one's onOpenURL, as a link.
+    override fun onActivityDestroyed(activity: ComponentActivity) {
+        pending = null
     }
 
     // The redirect, before the router sees it.
     override fun open(url: String): Boolean {
         val current = pending ?: return false
 
-        if (withoutQuery(url) != withoutQuery(current.redirectUri)) return false
+        if (!isRedirect(url, current.redirectUri)) return false
 
         pending = null
         current.promise.resolve(mapOf("type" to "success", "url" to url))
@@ -104,17 +113,26 @@ class AuthSessionPlugin : NativuePlugin, ActivityListener {
         }
 
         override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+
         override fun onActivityStarted(activity: Activity) {}
+
         override fun onActivityStopped(activity: Activity) {}
+
         override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+
         override fun onActivityDestroyed(activity: Activity) {}
     }
 
-    /** myapp://oauth?code=…#… is myapp://oauth: the scheme in any case, as URLs compare. */
-    private fun withoutQuery(url: String): String {
-        val path = url.substringBefore('#').substringBefore('?')
+    /**
+     * myapp://oauth/?code=… is a redirect to myapp://oauth: the same scheme and host, in any case, and path,
+     * with or without a trailing slash. Other links to the app go on to the router.
+     */
+    private fun isRedirect(url: String, redirectUri: String): Boolean {
+        val (link, redirect) = Uri.parse(url) to Uri.parse(redirectUri)
 
-        return path.substringBefore(':').lowercase() + ":" + path.substringAfter(':')
+        return link.scheme.equals(redirect.scheme, ignoreCase = true) &&
+            link.host.orEmpty().equals(redirect.host.orEmpty(), ignoreCase = true) &&
+            link.path.orEmpty().trimEnd('/') == redirect.path.orEmpty().trimEnd('/')
     }
 
     /** 32 random bytes from the system's secure generator, base64url: 43 characters, as PKCE asks. */

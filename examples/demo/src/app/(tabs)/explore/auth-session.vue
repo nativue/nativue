@@ -34,6 +34,7 @@ async function signIn(ephemeral: boolean) {
 
     if (result.type === 'cancel') return (status.value = 'Closed before signing in')
     if (result.params.state !== state) return (status.value = 'The state came back changed')
+    if (!result.params.code) return (status.value = `The provider said ${result.params.error}`)
 
     status.value = await exchange(result.params.code, codeVerifier)
   } catch (failure) {
