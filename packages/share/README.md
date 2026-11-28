@@ -32,9 +32,9 @@ const { completed, app } = await Share.share({
 | `dialogTitle` | Android: the chooser's title                                                  |
 | `mimeType`    | Android: the files' type, when their extensions don't say it (`'image/jpeg'`) |
 
-At least one of `text`, `url` and `files`. Files must be in the app's folders: `Paths.document` and
-`Paths.cache` from `@nativue/file-system`, where other packages save theirs too. On Android, the app
-that receives them reads them through `content://` URIs that only it gets.
+At least one of `text`, `url` and `files`. On Android, files must be in the app's folders (its
+document and cache folders, `Paths` in `@nativue/file-system`, where other packages save theirs too),
+and the app that receives them reads them through `content://` URIs that only it gets.
 
 ## What comes back
 
@@ -43,15 +43,16 @@ that receives them reads them through `content://` URIs that only it gets.
 | `completed` | iOS: the user shared it. Android: the user chose an app. `false` when the sheet closed  |
 | `app`       | what was chosen, e.g. `com.apple.UIKit.activity.Mail` or `com.whatsapp`; `null` if none |
 
-Android only says which app was chosen: not whether the user sent it once there.
+Android only says which app was chosen: not whether the user sent it once there. It says so a
+moment after the chooser closes; a choice that takes longer than a second to arrive reads as closed.
 
 ## Errors
 
-| `code`                 | When                                         |
-| ---------------------- | -------------------------------------------- |
-| `ERR_NOT_FOUND`        | a file isn't there                           |
-| `ERR_INVALID_ARGUMENT` | on Android, a file outside the app's folders |
-| `ERR_UNAVAILABLE`      | the share sheet is already open              |
+| `code`                 | When                                                                 |
+| ---------------------- | -------------------------------------------------------------------- |
+| `ERR_NOT_FOUND`        | a file isn't there, or is a directory                                |
+| `ERR_INVALID_ARGUMENT` | a `url` that isn't one; on Android, a file outside the app's folders |
+| `ERR_UNAVAILABLE`      | the share sheet is already open, or the screen is changing           |
 
 ## Permissions
 

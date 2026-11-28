@@ -17,8 +17,10 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.core.content.IntentCompat
 import dev.nativue.ActivityListener
 import dev.nativue.NativuePlugin
+import dev.nativue.PluginException
 import dev.nativue.PluginRegistry
 import dev.nativue.Promise
 import java.io.File
@@ -36,18 +38,14 @@ class SharePlugin : NativuePlugin, ActivityListener {
     private var waiting: Promise? = null
     private var isListeningForChoices = false
 
-    private class ShareError(val code: String, message: String) : Exception(message)
+    /** Each share's own: a choice that arrives late, for an earlier share, is told apart. */
+    private var shareNumber = 0
 
     private val choiceReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            val component = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                intent.getParcelableExtra(Intent.EXTRA_CHOSEN_COMPONENT, ComponentName::class.java)
-            } else {
-                @Suppress("DEPRECATION")
-                intent.getParcelableExtra(Intent.EXTRA_CHOSEN_COMPONENT)
-            }
+            val component = IntentCompat.getParcelableExtra(intent, Intent.EXTRA_CHOSEN_COMPONENT, ComponentName::class.java)
 
-            answer(completed = true, app = component?.packageName)
+            if (intent.getIntExtra(SHARE_NUMBER, -1) == shareNumber) answer(completed = true, app = component?.packageName)
         }
     }
 
@@ -77,14 +75,16 @@ class SharePlugin : NativuePlugin, ActivityListener {
         chooserLauncher = activity.registerForActivityResult(StartActivityForResult()) {
             val closed = waiting
 
-            // A choice arrives as a broadcast, which can come just after the chooser closes.
+            // A choice arrives as a broadcast, which can come after the chooser closes; one later than
+            // CHOICE_WAIT_MS reads as closed. Android gives no other way to tell.
             mainThread.postDelayed({ if (waiting === closed) answer(completed = false, app = null) }, CHOICE_WAIT_MS)
         }
     }
 
-    // Its JavaScript goes with it: there's no one left to answer.
+    // Its JavaScript goes with it: there's no one left to answer, and its launcher can't launch.
     override fun onActivityDestroyed(activity: ComponentActivity) {
         waiting = null
+        chooserLauncher = null
     }
 
     private fun share(content: Map<String, Any?>, promise: Promise) {
@@ -95,12 +95,19 @@ class SharePlugin : NativuePlugin, ActivityListener {
 
         try {
             val dialogTitle = (content["dialogTitle"] as? String).orEmpty()
+
+            shareNumber++
+
             val chooser = Intent.createChooser(sendIntent(content), dialogTitle.ifEmpty { null }, choiceSender())
 
             waiting = promise
             launcher.launch(chooser)
-        } catch (error: ShareError) {
+        } catch (error: PluginException) {
+            waiting = null
             promise.reject(error.code, error.message ?: "")
+        } catch (error: Exception) {
+            waiting = null
+            promise.reject("ERR_UNAVAILABLE", error.message ?: "Couldn't open the share sheet")
         }
     }
 
@@ -141,12 +148,12 @@ class SharePlugin : NativuePlugin, ActivityListener {
         val context = registry.applicationContext
         val file = File(Uri.decode(fileUri.removePrefix("file://")))
 
-        if (!file.isFile) throw ShareError("ERR_NOT_FOUND", "${file.path} doesn't exist")
+        if (!file.isFile) throw PluginException("ERR_NOT_FOUND", "${file.path} doesn't exist")
 
         val uri = try {
             FileProvider.getUriForFile(context, "${context.packageName}.nativue.share", file)
         } catch (error: IllegalArgumentException) {
-            throw ShareError("ERR_INVALID_ARGUMENT", "Only files in the app's folders (Paths.document, Paths.cache) can be shared")
+            throw PluginException("ERR_INVALID_ARGUMENT", "Only files in the app's folders (Paths.document, Paths.cache) can be shared")
         }
         val mimeType = MimeTypeMap.getSingleton().getMimeTypeFromExtension(file.extension.lowercase()) ?: "application/octet-stream"
 
@@ -167,14 +174,16 @@ class SharePlugin : NativuePlugin, ActivityListener {
     /** What the chooser sends, with the chosen app, when the user picks one. Mutable: the chooser adds to it. */
     private fun choiceSender() = PendingIntent.getBroadcast(
         registry.applicationContext,
-        0,
-        Intent(choiceAction()).setPackage(registry.applicationContext.packageName),
+        // Its own request code: the same one would hand an earlier chooser's PendingIntent this share's number.
+        shareNumber,
+        Intent(choiceAction()).setPackage(registry.applicationContext.packageName).putExtra(SHARE_NUMBER, shareNumber),
         PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0),
     ).intentSender
 
     private fun choiceAction() = "${registry.applicationContext.packageName}.nativue.share.CHOSEN"
 
     private companion object {
-        const val CHOICE_WAIT_MS = 500L
+        const val CHOICE_WAIT_MS = 1000L
+        const val SHARE_NUMBER = "dev.nativue.share.SHARE_NUMBER"
     }
 }
