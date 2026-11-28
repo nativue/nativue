@@ -13,10 +13,11 @@ import android.window.OnBackInvokedCallback
 import android.window.OnBackInvokedDispatcher
 import androidx.activity.ComponentActivity
 import androidx.annotation.RequiresApi
+import androidx.fragment.app.FragmentActivity
 import com.facebook.soloader.SoLoader
 
 /** The app's activity: runs assets/main.bundle.js (or, in debug builds, the dev server's bundle). */
-open class NativueActivity : ComponentActivity() {
+open class NativueActivity : FragmentActivity() {
     private lateinit var bridge: Bridge
     private var lastRKeyTime = 0L
 

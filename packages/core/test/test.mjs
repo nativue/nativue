@@ -49,6 +49,8 @@ const files = new Map()
 const transfers = []
 // The sign-ins @nativue/auth-session opened, as [url, redirectUri].
 const openedSessions = []
+// What @nativue/biometrics was asked to authenticate with.
+const authenticationOptions = []
 // What @nativue/secure-store's native side keeps, by key.
 const secureItems = new Map()
 // The statements @nativue/sqlite sent, as [sql, parameters]: it gets no rows back, and a COUNT gets zeros.
@@ -162,6 +164,15 @@ globalThis.__native = {
     codeChallengeMethod: 'S256',
   }),
   'pluginAsync:authSession.randomString': resolvesWith('random-state'),
+  'pluginAsync:biometrics.getStatus': resolvesWith({
+    available: true,
+    enrolled: true,
+    types: ['face'],
+  }),
+  'pluginAsync:biometrics.authenticate': (callId, options) => {
+    authenticationOptions.push(options)
+    resolvesWith({ success: false, error: 'canceled' })(callId)
+  },
   'pluginAsync:share.share': (callId, content) => {
     sharedContents.push(content)
     resolvesWith({ completed: true, app: 'com.example.mail' })(callId)
@@ -1459,6 +1470,21 @@ assert.ok(openedSessions[0][0].includes('code_challenge=challenge'))
 const tokenRequest = fetchRequests.find(({ url }) => url.endsWith('/connect/token'))
 assert.ok(tokenRequest.body.string.includes('code=the-code'))
 assert.ok(tokenRequest.body.string.includes('code_verifier=verifier'))
+// @nativue/biometrics: the device's status shows, and a cancel is an answer, not an error.
+const biometricsId = await open('explore/biometrics')
+await settle()
+assert.ok(renderedTexts(biometricsId).some((text) => text.includes('Available')))
+press(pressableContaining('Or passcode', biometricsId))
+await settle()
+assert.deepEqual(authenticationOptions, [
+  {
+    reason: 'Unlock the demo’s secrets',
+    title: 'It’s you?',
+    cancelLabel: '',
+    allowDeviceCredential: true,
+  },
+])
+assert.ok(renderedTexts(biometricsId).includes('Not unlocked: canceled'))
 // @nativue/share: what's shared reaches the native side whole, and the chosen app shows.
 const shareId = await open('explore/share')
 press(pressableContaining('A link', shareId))

@@ -17,6 +17,7 @@ import {
   ListChecksIcon,
   LogInIcon,
   PaletteIcon,
+  ScanFaceIcon,
   Share2Icon,
   SparklesIcon,
   SquareTerminalIcon,
@@ -147,6 +148,13 @@ export const demoSections: DemoSection[] = [
         subtitle: 'OAuth sign-in in the secure browser: @nativue/auth-session',
         icon: LogInIcon,
         tint: colors.blue,
+      },
+      {
+        href: '/explore/biometrics',
+        title: 'Biometrics',
+        subtitle: 'Face ID, Touch ID and fingerprint: @nativue/biometrics',
+        icon: ScanFaceIcon,
+        tint: colors.purple,
       },
       {
         href: '/explore/clipboard',

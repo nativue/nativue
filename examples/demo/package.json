@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@nativue/auth-session": "*",
+    "@nativue/biometrics": "*",
     "@nativue/clipboard": "*",
     "@nativue/core": "*",
     "@nativue/file-system": "*",
